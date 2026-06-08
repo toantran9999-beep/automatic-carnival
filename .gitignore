@@ -30,6 +30,9 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
+# Runtime uploads
+apps/web/public/uploads/
+
 # OS files
 .DS_Store
 Thumbs.db

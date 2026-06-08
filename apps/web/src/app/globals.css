@@ -4,13 +4,14 @@
 
 /* TODA POS design tokens — accent matcha #7aa653 (đổi 1 dòng để sang vàng #c79a2e / terracotta #b06b4e). */
 :root {
+  --accent-runtime: #7aa653; /* đổi runtime qua bộ chọn Giao diện; mặc định matcha */
   --background: oklch(0.955 0.008 95);
   --foreground: oklch(0.26 0.02 255);
   --card: oklch(0.995 0.003 95);
   --card-foreground: oklch(0.26 0.02 255);
   --popover: oklch(0.995 0.003 95);
   --popover-foreground: oklch(0.26 0.02 255);
-  --primary: #7aa653;
+  --primary: var(--accent-runtime);
   --primary-foreground: #ffffff;
   --secondary: oklch(0.975 0.008 95);
   --secondary-foreground: oklch(0.26 0.02 255);
@@ -22,16 +23,16 @@
   --destructive-foreground: #ffffff;
   --border: oklch(0.885 0.01 95);
   --input: oklch(0.92 0.008 95);
-  --ring: #7aa653;
+  --ring: var(--accent-runtime);
   --radius: 0.875rem;
   --sidebar: oklch(0.99 0.006 95);
   --sidebar-foreground: oklch(0.26 0.02 255);
-  --sidebar-primary: #7aa653;
+  --sidebar-primary: var(--accent-runtime);
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: oklch(0.975 0.008 95);
   --sidebar-accent-foreground: oklch(0.26 0.02 255);
   --sidebar-border: oklch(0.92 0.008 95);
-  --sidebar-ring: #7aa653;
+  --sidebar-ring: var(--accent-runtime);
 }
 
 .dark {
@@ -41,7 +42,7 @@
   --card-foreground: oklch(0.955 0.008 95);
   --popover: oklch(0.215 0.012 250);
   --popover-foreground: oklch(0.955 0.008 95);
-  --primary: #7aa653;
+  --primary: var(--accent-runtime);
   --primary-foreground: #ffffff;
   --secondary: oklch(0.255 0.013 250);
   --secondary-foreground: oklch(0.955 0.008 95);
@@ -53,15 +54,15 @@
   --destructive-foreground: #ffffff;
   --border: oklch(0.30 0.012 250);
   --input: oklch(0.205 0.012 250);
-  --ring: #7aa653;
+  --ring: var(--accent-runtime);
   --sidebar: oklch(0.135 0.013 250);
   --sidebar-foreground: oklch(0.955 0.008 95);
-  --sidebar-primary: #7aa653;
+  --sidebar-primary: var(--accent-runtime);
   --sidebar-primary-foreground: #ffffff;
   --sidebar-accent: oklch(0.215 0.012 250);
   --sidebar-accent-foreground: oklch(0.955 0.008 95);
   --sidebar-border: oklch(0.255 0.012 250);
-  --sidebar-ring: #7aa653;
+  --sidebar-ring: var(--accent-runtime);
 }
 
 @theme inline {

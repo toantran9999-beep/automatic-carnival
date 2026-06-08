@@ -10,6 +10,12 @@
 # Dashboard + POS (Next.js)
 {$WEB_DOMAIN} {
 	encode gzip zstd
+
+	handle_path /uploads/* {
+		root * /srv/uploads
+		file_server
+	}
+
 	reverse_proxy web:3000
 }
 

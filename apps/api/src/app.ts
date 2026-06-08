@@ -28,6 +28,7 @@ import { settings } from "./routes/settings.js";
 import { customer } from "./routes/customer.js";
 import { uploads } from "./routes/uploads.js";
 import { coupons } from "./routes/coupons.js";
+import { aiImages } from "./routes/ai-images.js";
 
 const CORS_ORIGINS = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",")
@@ -78,6 +79,7 @@ app.route("/api/reports", reports);
 app.route("/api/settings", settings);
 app.route("/api/uploads", uploads);
 app.route("/api/coupons", coupons);
+app.route("/api/ai-images", aiImages);
 
 export type AppType = typeof app;
 export { app };

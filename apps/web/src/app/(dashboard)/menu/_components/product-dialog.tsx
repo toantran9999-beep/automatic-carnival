@@ -68,6 +68,7 @@ export function ProductDialog({
   const [imageUrl, setImageUrl] = useState<string>(
     initial?.image_url ?? initial?.imageUrl ?? ""
   );
+  const [aiPrompt, setAiPrompt] = useState("");
   const [linkKey, setLinkKey] = useState(0);
 
   const loading = createItem.isPending || updateItem.isPending;
@@ -75,6 +76,8 @@ export function ProductDialog({
   const unlinkedGroups = allModifierGroups.filter(
     (g: any) => !linkedGroupIds.includes(g.id)
   );
+  const selectedCategoryName =
+    categories.find((c: any) => c.id === categoryId)?.name ?? "";
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -210,7 +213,16 @@ export function ProductDialog({
             <ImageUploadButton
               currentUrl={imageUrl || null}
               onUploaded={(url) => setImageUrl(url)}
+              productName={name}
+              description={description}
+              categoryName={selectedCategoryName}
+              onGeneratedPrompt={setAiPrompt}
             />
+            {aiPrompt && (
+              <p className="rounded-md bg-muted px-3 py-2 text-[11px] leading-relaxed text-muted-foreground">
+                Prompt AI: {aiPrompt}
+              </p>
+            )}
           </div>
 
           {/* Modifier Groups section — only visible when editing */}

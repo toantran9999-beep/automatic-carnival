@@ -43,6 +43,22 @@ POSTGRES_PASSWORD=<mật-khẩu-mạnh>
 
 JWT_SECRET=<dán-kết-quả-openssl-1>
 JWT_REFRESH_SECRET=<dán-kết-quả-openssl-2>
+
+# Tao anh san pham bang GPT Image
+OPENAI_API_KEY=<openai-api-key>
+GPT_IMAGE_MODEL=gpt-image-1
+GPT_IMAGE_SIZE=1024x1024
+GPT_IMAGE_QUALITY=medium
+
+# Fal.ai image generation (uu tien neu co FAL_KEY)
+FAL_KEY=<fal-key>
+FAL_IMAGE_MODEL=fal-ai/gpt-image-2
+FAL_IMAGE_SIZE=square_hd
+FAL_IMAGE_QUALITY=medium
+FAL_IMAGE_TIMEOUT_MS=180000
+# Neu khong cau hinh R2, anh AI se luu vao volume uploadsdata va hien qua /uploads
+LOCAL_UPLOAD_DIR=/app/apps/web/public/uploads
+PUBLIC_UPLOAD_URL=/uploads
 ```
 
 Sinh secret mạnh:

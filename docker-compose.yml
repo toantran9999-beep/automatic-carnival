@@ -61,6 +61,19 @@ services:
       R2_SECRET_ACCESS_KEY: ${R2_SECRET_ACCESS_KEY:-}
       R2_BUCKET_NAME: ${R2_BUCKET_NAME:-restai}
       R2_PUBLIC_URL: ${R2_PUBLIC_URL:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
+      GPT_IMAGE_MODEL: ${GPT_IMAGE_MODEL:-gpt-image-1}
+      GPT_IMAGE_SIZE: ${GPT_IMAGE_SIZE:-1024x1024}
+      GPT_IMAGE_QUALITY: ${GPT_IMAGE_QUALITY:-medium}
+      FAL_KEY: ${FAL_KEY:-}
+      FAL_IMAGE_MODEL: ${FAL_IMAGE_MODEL:-fal-ai/gpt-image-2}
+      FAL_IMAGE_SIZE: ${FAL_IMAGE_SIZE:-square_hd}
+      FAL_IMAGE_QUALITY: ${FAL_IMAGE_QUALITY:-medium}
+      FAL_IMAGE_TIMEOUT_MS: ${FAL_IMAGE_TIMEOUT_MS:-180000}
+      LOCAL_UPLOAD_DIR: /app/apps/web/public/uploads
+      PUBLIC_UPLOAD_URL: /uploads
+    volumes:
+      - uploadsdata:/app/apps/web/public/uploads
     depends_on:
       postgres:
         condition: service_healthy
@@ -86,6 +99,8 @@ services:
         NEXT_PUBLIC_API_URL: https://${API_DOMAIN}
         NEXT_PUBLIC_WS_URL: wss://${API_DOMAIN}
     restart: unless-stopped
+    volumes:
+      - uploadsdata:/app/apps/web/public/uploads:ro
     expose:
       - "3000"
     depends_on:
@@ -105,6 +120,7 @@ services:
       ACME_EMAIL: ${ACME_EMAIL:-}
     volumes:
       - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - uploadsdata:/srv/uploads:ro
       - caddydata:/data
       - caddyconfig:/config
     depends_on:
@@ -116,3 +132,4 @@ volumes:
   redisdata:
   caddydata:
   caddyconfig:
+  uploadsdata:

@@ -112,7 +112,7 @@ export function ProductGrid({
                 <button
                   key={item.id}
                   onClick={() => onItemClick(item)}
-                  className="group relative text-left rounded-xl border bg-card overflow-hidden hover:border-primary/50 hover:shadow-md transition-all"
+                  className="group relative text-left rounded-xl border bg-card overflow-hidden hover:border-primary/50 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
                 >
                   {/* Image */}
                   <div className="aspect-[4/3] bg-muted relative overflow-hidden">

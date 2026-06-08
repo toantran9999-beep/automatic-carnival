@@ -69,9 +69,22 @@ export async function apiFetch<T = any>(path: string, options?: ApiFetchOptions)
     }
   }
 
-  const json = await res.json();
-  if (!json.success) {
-    throw new Error(json.error?.message || "Error desconocido");
+  const text = await res.text();
+  let json: any = null;
+
+  try {
+    json = text ? JSON.parse(text) : null;
+  } catch {
+    json = null;
+  }
+
+  if (!res.ok || !json?.success) {
+    const message =
+      json?.error?.message ||
+      json?.message ||
+      text ||
+      `Loi API ${res.status}`;
+    throw new Error(message);
   }
   return json.data as T;
 }

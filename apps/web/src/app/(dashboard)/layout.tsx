@@ -23,7 +23,6 @@ import {
   X,
   ChevronLeft,
   Building2,
-  Store,
   Smartphone,
 } from "lucide-react";
 import { Button } from "@restai/ui/components/button";
@@ -33,6 +32,9 @@ import { useOrgSettings, useBranches } from "@/hooks/use-settings";
 import { NotificationBell } from "@/components/notification-bell";
 import { useTranslation } from "@/stores/lang-store";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { ThemeSwitcher } from "@/components/theme-switcher";
+import { ClockNow } from "@/components/clock-now";
+import { TodaMark } from "@/components/toda-mark";
 
 interface NavGroup {
   label: string;
@@ -155,7 +157,7 @@ export default function DashboardLayout({
 }: {
   children: React.ReactNode;
 }) {
-  const { user, isAuthenticated, logout, selectedBranchId, setSelectedBranch } =
+  const { user, accessToken, isAuthenticated, logout, selectedBranchId, setSelectedBranch } =
     useAuthStore();
   const router = useRouter();
   const pathname = usePathname();
@@ -165,8 +167,9 @@ export default function DashboardLayout({
 
   const queryClient = useQueryClient();
 
-  const { data: org } = useOrgSettings();
-  const { data: branches } = useBranches();
+  const hasSession = !!user && !!accessToken;
+  const { data: org } = useOrgSettings({ enabled: hasSession });
+  const { data: branches } = useBranches({ enabled: hasSession });
   const availableBranches = branches ?? [];
   const canSwitchBranch = availableBranches.length > 1;
 
@@ -231,7 +234,7 @@ export default function DashboardLayout({
         {/* Brand header */}
         <div className="h-14 flex items-center gap-3 px-4 border-b border-sidebar-border">
           <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <Store className="h-4 w-4" />
+            <TodaMark size={20} />
           </div>
           {!collapsed && (
             <div className="flex-1 min-w-0">
@@ -396,6 +399,10 @@ export default function DashboardLayout({
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Real-time clock */}
+              <ClockNow />
+              {/* Appearance (theme + accent) */}
+              <ThemeSwitcher />
               {/* Language Switcher */}
               <LanguageSwitcher />
 
@@ -445,7 +452,7 @@ export default function DashboardLayout({
               <div className="h-14 flex items-center justify-between px-4 border-b border-sidebar-border">
                 <div className="flex items-center gap-3">
                   <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <Store className="h-4 w-4" />
+                    <TodaMark size={20} />
                   </div>
                   <span className="font-semibold text-sm text-sidebar-foreground">
                     {orgName}

@@ -30,7 +30,9 @@ WORKDIR /app
 
 # Non-root user
 RUN addgroup -g 1001 -S appgroup && \
-    adduser -S appuser -u 1001 -G appgroup
+    adduser -S appuser -u 1001 -G appgroup && \
+    mkdir -p /app/apps/web/public/uploads && \
+    chown -R appuser:appgroup /app/apps/web/public
 
 # Copy node_modules + source
 COPY --from=builder /app/node_modules ./node_modules

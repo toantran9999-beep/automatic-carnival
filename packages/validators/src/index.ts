@@ -1,5 +1,21 @@
 import { z } from "zod";
 
+const publicImageUrlSchema = z
+  .string()
+  .trim()
+  .refine(
+    (value) => {
+      if (value.startsWith("/")) return true;
+      try {
+        const url = new URL(value);
+        return url.protocol === "http:" || url.protocol === "https:";
+      } catch {
+        return false;
+      }
+    },
+    "Duong dan anh khong hop le",
+  );
+
 // Auth validators
 export const loginSchema = z.object({
   email: z.string().email("Email inválido"),
@@ -39,7 +55,7 @@ export const updateBranchSchema = createBranchSchema.partial();
 export const createCategorySchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().max(500).optional(),
-  imageUrl: z.string().url().optional(),
+  imageUrl: publicImageUrlSchema.optional(),
   sortOrder: z.number().int().min(0).default(0),
   isActive: z.boolean().default(true),
 });
@@ -51,7 +67,7 @@ export const createMenuItemSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().max(1000).optional(),
   price: z.number().int().min(0, "El precio no puede ser negativo"),
-  imageUrl: z.string().url().optional(),
+  imageUrl: publicImageUrlSchema.optional(),
   isAvailable: z.boolean().default(true),
   sortOrder: z.number().int().min(0).default(0),
   preparationTimeMin: z.number().int().min(1).max(120).optional(),

@@ -2,10 +2,11 @@
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/fetcher";
 
-export function useOrgSettings() {
+export function useOrgSettings(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["settings", "org"],
     queryFn: () => apiFetch("/api/settings/org", { includeBranchHeader: false }),
+    enabled: options?.enabled ?? true,
   });
 }
 
@@ -40,7 +41,7 @@ export function useUpdateBranch() {
   });
 }
 
-export function useBranches() {
+export function useBranches(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["branches"],
     queryFn: () =>
@@ -48,6 +49,7 @@ export function useBranches() {
         "/api/branches",
         { includeBranchHeader: false }
       ),
+    enabled: options?.enabled ?? true,
   });
 }
 

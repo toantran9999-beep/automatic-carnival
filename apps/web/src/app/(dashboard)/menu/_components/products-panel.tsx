@@ -342,6 +342,9 @@ export function ProductsPanel({
             {visibleItems.map((item: any) => {
               const available = item.isAvailable ?? item.is_available ?? true;
               const imageUrl = item.imageUrl || item.image_url;
+              const itemCategory = categoryList.find(
+                (c: any) => c.id === (item.categoryId || item.category_id)
+              );
               return (
                 <div
                   key={item.id}
@@ -417,6 +420,9 @@ export function ProductsPanel({
                           onUploaded={(url) =>
                             handleImageUploaded(item, url)
                           }
+                          productName={item.name}
+                          description={item.description}
+                          categoryName={itemCategory?.name}
                         />
                       </div>
                     </div>
@@ -437,10 +443,7 @@ export function ProductsPanel({
                       </p>
                       {selectedCategoryId === "all" && (
                         <span className="text-[10px] text-muted-foreground truncate ml-2">
-                          {categoryList.find(
-                            (c: any) =>
-                              c.id === (item.categoryId || item.category_id)
-                          )?.name ?? ""}
+                          {itemCategory?.name ?? ""}
                         </span>
                       )}
                     </div>

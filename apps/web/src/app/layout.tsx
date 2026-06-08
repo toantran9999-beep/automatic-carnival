@@ -39,7 +39,14 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="vi" suppressHydrationWarning className="dark">
+    <html lang="vi" suppressHydrationWarning>
+      <head>
+        <script
+          dangerouslySetInnerHTML={{
+            __html: `(function(){try{var t=localStorage.getItem('toda_theme')||'dark';var a=localStorage.getItem('toda_accent')||'#7aa653';var e=document.documentElement;e.classList.add(t);e.style.setProperty('--accent-runtime',a);}catch(e){document.documentElement.classList.add('dark');}})();`,
+          }}
+        />
+      </head>
       <body className={beVietnamPro.className}>
         <Providers>
           {children}

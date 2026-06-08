@@ -16,6 +16,7 @@ import {
   useUpdateCategory,
 } from "@/hooks/use-menu";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
 import { ImageUploadButton } from "./image-upload-button";
 
 export function CategoryDialog({
@@ -30,6 +31,7 @@ export function CategoryDialog({
   const isEdit = !!initial;
   const createCat = useCreateCategory();
   const updateCat = useUpdateCategory();
+  const { t } = useTranslation();
 
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
@@ -48,18 +50,18 @@ export function CategoryDialog({
           description: description.trim() || undefined,
           imageUrl: imageUrl || undefined,
         });
-        toast.success("Categoria actualizada");
+        toast.success(t("menu.saveSuccess"));
       } else {
         await createCat.mutateAsync({
           name: name.trim(),
           description: description.trim() || undefined,
           imageUrl: imageUrl || undefined,
         });
-        toast.success("Categoria creada");
+        toast.success(t("menu.saveSuccess"));
       }
       onOpenChange(false);
     } catch (err: any) {
-      toast.error(err.message || "Error al guardar");
+      toast.error(err.message || t("menu.saveError"));
     }
   };
 
@@ -68,31 +70,31 @@ export function CategoryDialog({
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            {isEdit ? "Editar Categoria" : "Nueva Categoria"}
+            {isEdit ? t("menu.editCategory") : t("menu.addCategory")}
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="cat-name">Nombre</Label>
+            <Label htmlFor="cat-name">{t("menu.name")}</Label>
             <Input
               id="cat-name"
               value={name}
               onChange={(e) => setName(e.target.value)}
-              placeholder="Ej: Entradas"
+              placeholder="..."
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="cat-desc">Descripcion</Label>
+            <Label htmlFor="cat-desc">{t("menu.description")}</Label>
             <Input
               id="cat-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Descripcion opcional"
+              placeholder="..."
             />
           </div>
           <div className="space-y-2">
-            <Label>Imagen</Label>
+            <Label>{t("menu.image")}</Label>
             <ImageUploadButton
               currentUrl={imageUrl || null}
               onUploaded={(url) => setImageUrl(url)}
@@ -106,10 +108,10 @@ export function CategoryDialog({
               onClick={() => onOpenChange(false)}
               disabled={loading}
             >
-              Cancelar
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Guardando..." : isEdit ? "Actualizar" : "Crear"}
+              {loading ? t("menu.saving") : isEdit ? t("common.save") : t("settings.create")}
             </Button>
           </DialogFooter>
         </form>

@@ -1,188 +1,140 @@
-# RestAI
+# TODA POS
 
-Sistema de gestion de restaurantes multi-tenant.
+He thong POS nha hang duoc Viet hoa tu RestAI, dang duoc dieu chinh cho quy trinh van hanh cua TODA.
+
+## Huong MVP
+
+- Nhan vien phuc vu hoac thu ngan tao don truc tiep trong dashboard POS.
+- QR khong phai luong khach tu goi mon trong phase 1; neu dung QR thi uu tien cho thanh toan hoac lien ket ban noi bo.
+- Thu ngan xu ly thanh toan, in hoa don, va dong ban/phien phuc vu.
+- Bep nhan ticket thoi gian thuc tu don hang do nhan vien gui.
+- Quan ly ban, khu vuc, nhan vien, menu, kho, thanh toan va bao cao trong dashboard.
 
 ## Stack
 
-- **Runtime:** [Bun](https://bun.sh)
+- **Runtime:** Bun
 - **Monorepo:** Turborepo + Bun workspaces
-- **API:** Hono + Drizzle ORM + WebSockets (Bun nativo)
+- **API:** Hono + Drizzle ORM + WebSockets
 - **Web:** Next.js 16 + TailwindCSS v4 + shadcn/ui
 - **DB:** PostgreSQL 17 + Redis 7
 
-## Estructura
+## Cau truc
 
-```
+```text
 restai/
 ├── apps/
-│   ├── api/          # API REST + WebSocket (Hono, puerto 3001)
-│   └── web/          # Dashboard + flujo cliente (Next.js, puerto 3000)
+│   ├── api/          # API REST + WebSocket, port 3001
+│   └── web/          # Dashboard + POS, port 3000
 ├── packages/
-│   ├── db/           # Schema Drizzle, migraciones, seed
-│   ├── ui/           # Componentes UI compartidos (shadcn/ui)
-│   ├── validators/   # Schemas Zod compartidos
-│   ├── types/        # Tipos TypeScript compartidos
-│   └── config/       # Configuracion compartida
+│   ├── db/           # Drizzle schema, migrations, seed
+│   ├── ui/           # UI components shared
+│   ├── validators/   # Zod schemas shared
+│   ├── types/        # TypeScript types shared
+│   └── config/       # Shared config and permissions
 ├── docker-compose.yml
 └── turbo.json
 ```
 
-## Requisitos
+## Yeu cau
 
-- [Bun](https://bun.sh) >= 1.3
-- [Docker](https://www.docker.com/) (para Redis)
-- [PostgreSQL](https://www.postgresql.org/) 17 (instalado localmente)
+- Bun >= 1.3
+- Docker, dung cho Redis neu chay local
+- PostgreSQL 17 local hoac PostgreSQL service rieng
 
-## Instalacion
+## Cai dat local
 
-### 1. Clonar el repositorio
-
-```bash
-git clone <repo-url>
-cd restai
-```
-
-### 2. Instalar dependencias
+### 1. Cai dependencies
 
 ```bash
 bun install
 ```
 
-### 3. Configurar variables de entorno
-
-Copiar el archivo de ejemplo y ajustar los valores:
+### 2. Tao file moi truong
 
 ```bash
 cp .env.example .env
-```
-
-Editar `.env` con tus credenciales:
-
-```env
-# Base de datos PostgreSQL (tu instancia local)
-DATABASE_URL=postgresql://usuario:password@localhost:5432/restai
-
-# Redis (via Docker)
-REDIS_URL=redis://localhost:6379
-
-# JWT (cambiar en produccion)
-JWT_SECRET=tu-secreto-seguro-aqui
-JWT_REFRESH_SECRET=otro-secreto-diferente-aqui
-
-# API
-API_PORT=3001
-API_URL=http://localhost:3001
-
-# Web
-NEXT_PUBLIC_API_URL=http://localhost:3001
-
-# Cloudflare R2 (opcional, para imagenes de productos)
-R2_ACCOUNT_ID=
-R2_ACCESS_KEY_ID=
-R2_SECRET_ACCESS_KEY=
-R2_BUCKET_NAME=restai
-R2_PUBLIC_URL=
-```
-
-Luego copiar los `.env` a cada app/package que lo necesite:
-
-```bash
 cp .env apps/api/.env
 cp .env packages/db/.env
-```
-
-Para el frontend solo se necesita:
-
-```bash
 echo "NEXT_PUBLIC_API_URL=http://localhost:3001" > apps/web/.env
 ```
 
-### 4. Levantar Redis con Docker
+Neu chay PostgreSQL local, chinh `DATABASE_URL` trong `.env`:
+
+```env
+DATABASE_URL=postgresql://restai:change-me-in-production@localhost:5432/restai
+REDIS_URL=redis://localhost:6379
+JWT_SECRET=doi-secret-nay
+JWT_REFRESH_SECRET=doi-secret-khac
+CORS_ORIGINS=http://localhost:3000
+NEXT_PUBLIC_API_URL=http://localhost:3001
+NEXT_PUBLIC_WS_URL=ws://localhost:3001
+```
+
+### 3. Chay Redis
 
 ```bash
 docker compose up -d
 ```
 
-Esto solo levanta Redis. PostgreSQL debe estar corriendo localmente.
-
-### 5. Crear la base de datos
-
-Si aun no existe la base de datos en tu PostgreSQL local:
+### 4. Tao database neu chua co
 
 ```bash
 createdb restai
 ```
 
-### 6. Aplicar schema a la base de datos
+### 5. Day schema va seed du lieu mau
 
 ```bash
 bun run db:push
-```
-
-### 7. Cargar datos de prueba (opcional)
-
-```bash
 bun run db:seed
 ```
 
-Esto crea una organizacion demo con categorias, productos, mesas y un usuario admin.
-
-### 8. Iniciar el proyecto
+### 6. Chay dev
 
 ```bash
 bun run dev
 ```
 
-Esto levanta ambas apps simultaneamente con Turborepo:
-
-| App | URL | Descripcion |
-|-----|-----|-------------|
-| Web | http://localhost:3000 | Dashboard admin + flujo cliente QR |
+| App | URL | Mo ta |
+| --- | --- | --- |
+| Web | http://localhost:3000 | Dashboard quan ly + POS |
 | API | http://localhost:3001 | API REST + WebSocket |
 
-## Scripts disponibles
+## Scripts
 
-| Comando | Descripcion |
-|---------|-------------|
-| `bun run dev` | Inicia API + Web en modo desarrollo |
-| `bun run build` | Build de produccion |
-| `bun run db:push` | Aplica schema a la base de datos |
-| `bun run db:generate` | Genera migraciones SQL |
-| `bun run db:migrate` | Ejecuta migraciones pendientes |
-| `bun run db:seed` | Carga datos de prueba |
-| `bun run db:studio` | Abre Drizzle Studio (explorador de DB) |
+| Lenh | Mo ta |
+| --- | --- |
+| `bun run dev` | Chay API + Web o che do dev |
+| `bun run build` | Build production |
+| `bun run db:push` | Day schema hien tai vao database |
+| `bun run db:generate` | Tao migration SQL |
+| `bun run db:migrate` | Chay migration |
+| `bun run db:seed` | Nap du lieu mau TODA |
+| `bun run db:studio` | Mo Drizzle Studio |
 
-## Credenciales por defecto (seed)
+## Tai khoan seed
 
-Despues de ejecutar `db:seed`:
+Sau khi chay `bun run db:seed`:
 
-- **Email:** `admin@restai.pe`
-- **Password:** `admin12345`
+| Vai tro | Email | Mat khau |
+| --- | --- | --- |
+| Admin | `admin@toda.local` | `admin12345` |
+| Quan ly | `quanly@toda.local` | `quanly123` |
+| Thu ngan | `thungan@toda.local` | `thungan123` |
+| Phuc vu | `phucvu@toda.local` | `phucvu123` |
+| Bep | `bep@toda.local` | `bep12345` |
 
-## Flujo del cliente (QR)
+## Trang thai hien tai
 
-1. El admin crea mesas en el dashboard con codigos QR
-2. El cliente escanea el QR de su mesa
-3. Ingresa su nombre y solicita acceso
-4. El personal aprueba la conexion desde el dashboard
-5. El cliente navega el menu, agrega items al carrito y hace pedidos
-6. La cocina ve los pedidos en tiempo real (Kanban)
-7. El personal gestiona pagos e imprime tickets
+- Dashboard da co cac module chinh: POS, don hang, ban, bep, menu, kho, nhan vien, thanh toan, loyalty, bao cao, cai dat.
+- UI dang duoc Viet hoa thong qua `apps/web/src/lib/translations.ts`.
+- POS da co chon ban, tao don, in ticket bep va hop thoai thanh toan nhanh.
+- Du lieu mac dinh dang chuyen sang Viet Nam: timezone `Asia/Ho_Chi_Minh`, tien te `VND`, VAT 10%.
 
-## POS en dashboard (estado actual)
+## Viec can lam tiep
 
-- La pantalla `http://localhost:3000/pos` permite crear ordenes rapidas para staff.
-- Actualmente soporta tipo de orden (`dine_in`, `takeout`, `delivery`) y carrito completo.
-- En la version actual no existe seleccion explicita de mesa/sesion desde POS.
-
-## Roadmap (corto plazo)
-
-- **POS con contexto de servicio (prioridad alta)**
-  - Selector de contexto: `Mesa`, `Mostrador/Takeout`, `Delivery`.
-  - Si es `Mesa`, obligar seleccion de mesa y asociar `table_session_id`.
-  - Si es `Mostrador` o `Delivery`, permitir orden sin mesa.
-  - Para `Delivery`, agregar campos minimos de despacho (contacto y direccion/referencia).
-- **Mesa y solicitudes**
-  - Filtro rapido en `/tables`: "Mostrar solo mesas con solicitud".
-- **Experiencia cliente**
-  - Unificar feedback/cooldown de solicitudes tambien en `/menu` (igual que en `/status`).
+- Tach ro luong staff-order va customer QR: phase 1 nen an hoac ha uu tien cac man hinh customer self-order.
+- Hoan thien POS theo ngu canh: an tai ban, mang ve, giao hang.
+- Them luong mo ban, gop/tach/chuyen ban, dong ban sau thanh toan.
+- Kiem tra in hoa don thuc te tren Android POS/RawBT hoac print bridge.
+- Chuan hoa phuong thuc thanh toan Viet Nam: tien mat, chuyen khoan QR, the, khac.

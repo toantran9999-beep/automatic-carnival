@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useMemo, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
 import { Button } from "@restai/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@restai/ui/components/card";
 import { Badge } from "@restai/ui/components/badge";
@@ -23,6 +24,7 @@ import {
 import { cn } from "@/lib/utils";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useAuthStore } from "@/stores/auth-store";
+import { useTranslation } from "@/stores/lang-store";
 import type { WsMessage } from "@restai/types";
 import { toast } from "sonner";
 import {
@@ -71,6 +73,8 @@ interface PendingSessionRequest {
 }
 
 export default function TablesPage() {
+  const { t, lang } = useTranslation();
+  const router = useRouter();
   const [activeTab, setActiveTab] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "planner">("grid");
   const [qrDialog, setQrDialog] = useState<any>(null);
@@ -84,6 +88,10 @@ export default function TablesPage() {
   const [serviceRequests, setServiceRequests] = useState<TableServiceRequest[]>([]);
   const [requestsDialogOpen, setRequestsDialogOpen] = useState(false);
   const { accessToken, selectedBranchId } = useAuthStore();
+
+  const handleCardClick = useCallback((table: any) => {
+    router.push(`/pos?tableId=${table.id}&tableNumber=${table.number}`);
+  }, [router]);
 
   // Data hooks
   const { data: spacesData, isLoading: spacesLoading } = useSpaces();
@@ -182,7 +190,7 @@ export default function TablesPage() {
         return [
           {
             id: payload.sessionId,
-            customer_name: payload.customerName || "Cliente",
+            customer_name: payload.customerName || t("pos.customerPOS"),
             customer_phone: null,
             started_at: new Date(msg.timestamp).toISOString(),
             table_id: payload.tableId,
@@ -199,6 +207,11 @@ export default function TablesPage() {
       setPendingSessions((prev) =>
         prev.filter((session) => session.id !== payload.sessionId)
       );
+      return;
+    }
+
+    if (msg.type === "table:status" || msg.type === "session:started" || msg.type === "session:ended") {
+      void refetch();
       return;
     }
 
@@ -228,7 +241,7 @@ export default function TablesPage() {
           tableId: payload.tableId,
           tableNumber: payload.tableNumber,
           tableSessionId: payload.tableSessionId,
-          customerName: payload.customerName || "Cliente",
+          customerName: payload.customerName || t("pos.customerPOS"),
           timestamp: msg.timestamp,
         },
         ...prev,
@@ -237,10 +250,10 @@ export default function TablesPage() {
 
     toast.info(
       requestType === "request_bill"
-        ? `Mesa ${payload.tableNumber}: ${payload.customerName || "Cliente"} solicita la cuenta`
-        : `Mesa ${payload.tableNumber}: ${payload.customerName || "Cliente"} solicita mozo`
+        ? `${t("tables.title")} ${payload.tableNumber}: ${payload.customerName || t("pos.customerPOS")} ${t("customer.requestBill").toLowerCase()}`
+        : `${t("tables.title")} ${payload.tableNumber}: ${payload.customerName || t("pos.customerPOS")} ${t("customer.callingStaff").toLowerCase()}`
     );
-  }, [currentTableIds, refetchPendingSessions]);
+  }, [currentTableIds, refetchPendingSessions, t]);
 
   useWebSocket(
     selectedBranchId ? [`branch:${selectedBranchId}`] : [],
@@ -280,15 +293,15 @@ export default function TablesPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Mesas</h1>
+          <h1 className="text-2xl font-bold">{t("tables.title")}</h1>
         </div>
         <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/5 flex items-center justify-between">
           <p className="text-sm text-destructive">
-            Error al cargar mesas: {(error as Error).message}
+            {t("tables.errorLoad")}: {(error as Error).message}
           </p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Reintentar
+            {t("common.retry")}
           </Button>
         </div>
       </div>
@@ -299,11 +312,11 @@ export default function TablesPage() {
     <div className="space-y-6">
       {/* Header */}
       <PageHeader
-        title="Mesas y Espacios"
+        title={`${t("tables.title")} & ${t("tables.spaces")}`}
         description={
           isLoading
-            ? "Cargando..."
-            : `${counts.available} disponibles, ${counts.occupied} ocupadas de ${counts.total} mesas`
+            ? t("common.loading")
+            : `${counts.available} ${t("tables.free").toLowerCase()}, ${counts.occupied} ${t("tables.occupied").toLowerCase()} ${lang === "vi" ? "trong số" : "of"} ${counts.total} ${t("tables.tablesCount")}`
         }
         actions={
           <>
@@ -327,11 +340,11 @@ export default function TablesPage() {
             </div>
             <Button variant="outline" onClick={() => setCreateSpaceDialog(true)}>
               <LayoutGrid className="h-4 w-4 mr-2" />
-              Nuevo Espacio
+              {t("tables.addSpace")}
             </Button>
             <Button onClick={() => setCreateTableDialog(true)}>
               <Plus className="h-4 w-4 mr-2" />
-              Nueva Mesa
+              {t("tables.addTable")}
             </Button>
           </>
         }
@@ -340,10 +353,10 @@ export default function TablesPage() {
       {/* Summary Cards */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
         {[
-          { label: "Total", value: counts.total, color: "text-foreground" },
-          { label: "Disponibles", value: counts.available, color: "text-green-600 dark:text-green-400" },
-          { label: "Ocupadas", value: counts.occupied, color: "text-blue-600 dark:text-blue-400" },
-          { label: "Reservadas", value: counts.reserved, color: "text-orange-600 dark:text-orange-400" },
+          { label: t("common.total"), value: counts.total, color: "text-foreground" },
+          { label: t("tables.free"), value: counts.available, color: "text-green-600 dark:text-green-400" },
+          { label: t("tables.occupied"), value: counts.occupied, color: "text-blue-600 dark:text-blue-400" },
+          { label: t("tables.reserved"), value: counts.reserved, color: "text-orange-600 dark:text-orange-400" },
         ].map((stat) => (
           <Card key={stat.label}>
             <CardContent className="p-4">
@@ -362,7 +375,7 @@ export default function TablesPage() {
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Bell className="h-4 w-4 text-amber-600" />
-              Solicitudes pendientes ({pendingSessions.length})
+              {t("tables.pendingRequests")} ({pendingSessions.length})
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -375,7 +388,7 @@ export default function TablesPage() {
                   <div>
                     <p className="font-medium">{session.customer_name}</p>
                     <p className="text-sm text-muted-foreground">
-                      Mesa {session.table_number}
+                      {t("tables.title")} {session.table_number}
                       {session.customer_phone && ` · ${session.customer_phone}`}
                     </p>
                   </div>
@@ -395,7 +408,7 @@ export default function TablesPage() {
                       onClick={() => approveSession.mutate(session.id)}
                     >
                       <Check className="h-4 w-4 mr-1" />
-                      Aceptar
+                      {t("common.confirm")}
                     </Button>
                   </div>
                 </div>
@@ -412,13 +425,13 @@ export default function TablesPage() {
             <div className="flex items-center gap-2">
               <Bell className="h-4 w-4 text-blue-600" />
               <p className="text-sm font-medium">
-                Solicitudes activas: {requestSummary.total}
+                {t("tables.activeRequests")}: {requestSummary.total}
               </p>
-              <Badge variant="outline">Cuenta: {requestSummary.requestBillCount}</Badge>
-              <Badge variant="outline">Mozo: {requestSummary.callWaiterCount}</Badge>
+              <Badge variant="outline">{t("customer.requestBill")}: {requestSummary.requestBillCount}</Badge>
+              <Badge variant="outline">{t("nav.role_waiter")}: {requestSummary.callWaiterCount}</Badge>
             </div>
             <Button size="sm" onClick={() => setRequestsDialogOpen(true)}>
-              Ver solicitudes
+              {t("tables.tableRequests")}
             </Button>
           </CardContent>
         </Card>
@@ -428,13 +441,13 @@ export default function TablesPage() {
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex items-center gap-2 overflow-x-auto">
           <TabsList>
-            <TabsTrigger value="all">Todas</TabsTrigger>
+            <TabsTrigger value="all">{t("tables.all")}</TabsTrigger>
             {spaces.map((space: any) => (
               <TabsTrigger key={space.id} value={space.id}>
                 {space.name}
               </TabsTrigger>
             ))}
-            <TabsTrigger value="unassigned">Sin espacio</TabsTrigger>
+            <TabsTrigger value="unassigned">{t("tables.unassigned")}</TabsTrigger>
           </TabsList>
         </div>
 
@@ -477,9 +490,10 @@ export default function TablesPage() {
             onHistory={setHistoryDialog}
             onAssign={setAssignDialog}
             onDelete={(table) =>
-              setDeleteConfirm({ type: "table", id: table.id, name: `Mesa ${table.number}` })
+              setDeleteConfirm({ type: "table", id: table.id, name: `${t("tables.title")} ${table.number}` })
             }
             onStatusChange={handleStatusChange}
+            onCardClick={handleCardClick}
           />
         )}
       </Tabs>
@@ -489,13 +503,13 @@ export default function TablesPage() {
         <DialogContent>
           <DialogHeader>
             <DialogTitle>
-              Solicitudes de mesa ({serviceRequests.length})
+              {t("tables.tableRequests")} ({serviceRequests.length})
             </DialogTitle>
           </DialogHeader>
           <div className="space-y-3 max-h-[60vh] overflow-y-auto pr-1">
             {serviceRequests.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-6">
-                No hay solicitudes activas.
+                {t("tables.noActiveRequests")}
               </p>
             ) : (
               serviceRequests.map((request) => (
@@ -504,23 +518,23 @@ export default function TablesPage() {
                   className="flex items-center justify-between p-3 rounded-lg bg-background border"
                 >
                   <div>
-                    <p className="font-medium">Mesa {request.tableNumber}</p>
+                    <p className="font-medium">{t("tables.title")} {request.tableNumber}</p>
                     <p className="text-sm text-muted-foreground">
                       {request.customerName} ·{" "}
                       {request.type === "request_bill"
-                        ? "Solicita la cuenta"
-                        : "Solicita mozo"}
+                        ? t("customer.requestBill")
+                        : t("customer.callingStaff")}
                     </p>
                   </div>
                   <div className="flex items-center gap-2">
                     <Badge variant="outline">
-                      {new Date(request.timestamp).toLocaleTimeString("es-PE", {
+                      {new Date(request.timestamp).toLocaleTimeString(lang === "vi" ? "vi-VN" : "en-US", {
                         hour: "2-digit",
                         minute: "2-digit",
                       })}
                     </Badge>
                     <Button size="sm" onClick={() => dismissServiceRequest(request.id)}>
-                      Atendido
+                      {t("tables.dismiss")}
                     </Button>
                   </div>
                 </div>
@@ -530,7 +544,7 @@ export default function TablesPage() {
           {serviceRequests.length > 0 && (
             <div className="flex justify-end">
               <Button variant="outline" size="sm" onClick={clearServiceRequests}>
-                Limpiar todo
+                {t("tables.clearAll")}
               </Button>
             </div>
           )}
@@ -543,11 +557,11 @@ export default function TablesPage() {
       <ConfirmDialog
         open={!!deleteConfirm}
         onOpenChange={(open) => !open && setDeleteConfirm(null)}
-        title="Confirmar Eliminacion"
+        title={t("tables.confirmDelete")}
         description={
           deleteConfirm?.type === "space"
-            ? `Estas seguro de eliminar el espacio "${deleteConfirm.name}"? Solo se puede eliminar si no tiene mesas asignadas.`
-            : `Estas seguro de eliminar "${deleteConfirm?.name}"? Esta accion no se puede deshacer.`
+            ? t("tables.deleteSpaceConfirm")
+            : t("tables.deleteTableConfirm")
         }
         onConfirm={handleDelete}
         loading={deleteTable.isPending || deleteSpace.isPending}

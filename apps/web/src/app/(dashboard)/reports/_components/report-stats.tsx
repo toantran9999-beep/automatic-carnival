@@ -3,6 +3,8 @@
 import { Card, CardContent, CardHeader, CardTitle } from "@restai/ui/components/card";
 import { formatCurrency } from "@/lib/utils";
 
+import { useTranslation } from "@/stores/lang-store";
+
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className ?? ""}`} />;
 }
@@ -22,12 +24,13 @@ export function ReportStats({
   totalTax,
   isLoading,
 }: ReportStatsProps) {
+  const { t } = useTranslation();
   return (
     <div className="grid gap-4 md:grid-cols-4">
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Total Ordenes
+            {t("reports.ordersCount")}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -41,7 +44,7 @@ export function ReportStats({
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Ingresos
+            {t("reports.revenue")}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -55,7 +58,7 @@ export function ReportStats({
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            Ticket Promedio
+            {t("reports.avgOrder")}
           </CardTitle>
         </CardHeader>
         <CardContent>
@@ -69,7 +72,7 @@ export function ReportStats({
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm font-medium text-muted-foreground">
-            IGV Recaudado
+            {t("reports.taxAmount")}
           </CardTitle>
         </CardHeader>
         <CardContent>

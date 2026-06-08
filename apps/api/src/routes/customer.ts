@@ -15,6 +15,7 @@ import { findOrCreate } from "../services/customer.service.js";
 import { createOrder, OrderValidationError } from "../services/order.service.js";
 import { redeemReward } from "../services/loyalty.service.js";
 import * as sessionService from "../services/session.service.js";
+import { getLang, t } from "../lib/i18n.js";
 
 const customer = new Hono<AppEnv>();
 const TABLE_ACTION_COOLDOWN_MS = 30_000;
@@ -34,7 +35,7 @@ customer.get("/:branchSlug/:tableCode/menu", async (c) => {
 
   if (!branch || !branch.is_active) {
     return c.json(
-      { success: false, error: { code: "NOT_FOUND", message: "Sucursal no encontrada" } },
+      { success: false, error: { code: "NOT_FOUND", message: t(c, "branch_not_found") } },
       404,
     );
   }
@@ -53,7 +54,7 @@ customer.get("/:branchSlug/:tableCode/menu", async (c) => {
 
   if (!table) {
     return c.json(
-      { success: false, error: { code: "NOT_FOUND", message: "Mesa no encontrada" } },
+      { success: false, error: { code: "NOT_FOUND", message: t(c, "table_not_found") } },
       404,
     );
   }
@@ -82,7 +83,7 @@ customer.get("/:branchSlug/:tableCode/menu", async (c) => {
   return c.json({
     success: true,
     data: {
-      branch: { id: branch.id, name: branch.name, slug: branch.slug, currency: branch.currency },
+      branch: { id: branch.id, name: branch.name, slug: branch.slug, currency: branch.currency, taxRate: branch.tax_rate },
       table: { id: table.id, number: table.number },
       categories,
       items,
@@ -106,11 +107,11 @@ customer.post(
 
     // Find branch
     const [branch] = await db.select().from(schema.branches).where(eq(schema.branches.slug, branchSlug)).limit(1);
-    if (!branch) return c.json({ success: false, error: { code: "NOT_FOUND", message: "Sucursal no encontrada" } }, 404);
+    if (!branch) return c.json({ success: false, error: { code: "NOT_FOUND", message: t(c, "branch_not_found") } }, 404);
 
     // Find table
     const [table] = await db.select().from(schema.tables).where(and(eq(schema.tables.qr_code, tableCode), eq(schema.tables.branch_id, branch.id))).limit(1);
-    if (!table) return c.json({ success: false, error: { code: "NOT_FOUND", message: "Mesa no encontrada" } }, 404);
+    if (!table) return c.json({ success: false, error: { code: "NOT_FOUND", message: t(c, "table_not_found") } }, 404);
 
     // Check if table already has an active session - return existing token
     const [activeSession] = await db
@@ -127,6 +128,8 @@ customer.post(
           token: activeSession.token,
           sessionId: activeSession.id,
           existing: true,
+          taxRate: branch.tax_rate,
+          currency: branch.currency,
         },
       });
     }
@@ -140,7 +143,7 @@ customer.post(
 
     if (pendingSession) {
       return c.json(
-        { success: false, error: { code: "SESSION_PENDING", message: "Esta mesa esta en espera de aprobacion" } },
+        { success: false, error: { code: "SESSION_PENDING", message: t(c, "table_waiting_approval") } },
         409,
       );
     }
@@ -174,7 +177,7 @@ customer.post(
       timestamp: Date.now(),
     });
 
-    return c.json({ success: true, data: { session, token, sessionId: session.id, customer: customer_record } }, 201);
+    return c.json({ success: true, data: { session, token, sessionId: session.id, customer: customer_record, taxRate: branch.tax_rate, currency: branch.currency } }, 201);
   },
 );
 
@@ -200,7 +203,7 @@ customer.get("/:branchSlug/:tableCode/check-session", async (c) => {
     .limit(1);
 
   if (!table) {
-    return c.json({ success: true, data: { hasSession: false } });
+    return c.json({ success: true, data: { hasSession: false, taxRate: branch.tax_rate, currency: branch.currency } });
   }
 
   // Check for active session
@@ -227,6 +230,8 @@ customer.get("/:branchSlug/:tableCode/check-session", async (c) => {
         status: "active",
         sessionId: activeSession.id,
         customerName: activeSession.customer_name,
+        taxRate: branch.tax_rate,
+        currency: branch.currency,
       },
     });
   }
@@ -255,11 +260,13 @@ customer.get("/:branchSlug/:tableCode/check-session", async (c) => {
         status: "pending",
         sessionId: pendingSession.id,
         customerName: pendingSession.customer_name,
+        taxRate: branch.tax_rate,
+        currency: branch.currency,
       },
     });
   }
 
-  return c.json({ success: true, data: { hasSession: false } });
+  return c.json({ success: true, data: { hasSession: false, taxRate: branch.tax_rate, currency: branch.currency } });
 });
 
 // POST /:branchSlug/:tableCode/session - Start session (public)
@@ -280,7 +287,7 @@ customer.post(
 
     if (!branch) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Sucursal no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "branch_not_found") } },
         404,
       );
     }
@@ -299,7 +306,7 @@ customer.post(
 
     if (!table) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Mesa no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "table_not_found") } },
         404,
       );
     }
@@ -324,6 +331,8 @@ customer.post(
           token: activeSession.token,
           sessionId: activeSession.id,
           existing: true,
+          taxRate: branch.tax_rate,
+          currency: branch.currency,
         },
       });
     }
@@ -346,7 +355,7 @@ customer.post(
           success: false,
           error: {
             code: "SESSION_PENDING",
-            message: "Esta mesa esta en espera de aprobacion",
+            message: t(c, "table_waiting_approval"),
           },
         },
         409,
@@ -392,7 +401,7 @@ customer.post(
       timestamp: Date.now(),
     });
 
-    return c.json({ success: true, data: { session, token, sessionId: session.id } }, 201);
+    return c.json({ success: true, data: { session, token, sessionId: session.id, taxRate: branch.tax_rate, currency: branch.currency } }, 201);
   },
 );
 
@@ -412,7 +421,7 @@ customer.get("/:branchSlug/:tableCode/session-status/:sessionId", async (c) => {
 
   if (!session) {
     return c.json(
-      { success: false, error: { code: "NOT_FOUND", message: "Sesion no encontrada" } },
+      { success: false, error: { code: "NOT_FOUND", message: t(c, "active_session_not_found") } },
       404,
     );
   }
@@ -434,7 +443,7 @@ customer.get("/:branchSlug/menu/items/:itemId/modifiers", async (c) => {
 
   if (!branch) {
     return c.json(
-      { success: false, error: { code: "NOT_FOUND", message: "Sucursal no encontrada" } },
+      { success: false, error: { code: "NOT_FOUND", message: t(c, "branch_not_found") } },
       404,
     );
   }
@@ -452,7 +461,7 @@ customer.get("/:branchSlug/menu/items/:itemId/modifiers", async (c) => {
 
   if (!item) {
     return c.json(
-      { success: false, error: { code: "NOT_FOUND", message: "Item no encontrado" } },
+      { success: false, error: { code: "NOT_FOUND", message: t(c, "item_not_found") } },
       404,
     );
   }
@@ -499,7 +508,7 @@ const customerAuth = async (c: any, next: any) => {
   const header = c.req.header("Authorization");
   if (!header || !header.startsWith("Bearer ")) {
     return c.json(
-      { success: false, error: { code: "UNAUTHORIZED", message: "Token requerido" } },
+      { success: false, error: { code: "UNAUTHORIZED", message: t(c, "token_required") } },
       401,
     );
   }
@@ -508,7 +517,7 @@ const customerAuth = async (c: any, next: any) => {
     const payload = await verifyAccessToken(header.slice(7));
     if ((payload as any).role !== "customer") {
       return c.json(
-        { success: false, error: { code: "FORBIDDEN", message: "Solo clientes" } },
+        { success: false, error: { code: "FORBIDDEN", message: t(c, "customers_only") } },
         403,
       );
     }
@@ -516,7 +525,7 @@ const customerAuth = async (c: any, next: any) => {
     return next();
   } catch {
     return c.json(
-      { success: false, error: { code: "UNAUTHORIZED", message: "Token inválido" } },
+      { success: false, error: { code: "UNAUTHORIZED", message: t(c, "invalid_token") } },
       401,
     );
   }
@@ -544,7 +553,7 @@ const requireActiveSession = async (c: any, next: any) => {
 
   if (!session) {
     return c.json(
-      { success: false, error: { code: "SESSION_ENDED", message: "Tu sesión ha finalizado" } },
+      { success: false, error: { code: "SESSION_ENDED", message: t(c, "session_ended") } },
       403,
     );
   }
@@ -722,6 +731,7 @@ customer.post("/orders", customerAuth, requireActiveSession, zValidator("json", 
       customerId: user.customerId || null,
       couponCode: body.couponCode || null,
       redemptionId: body.redemptionId || null,
+      lang: getLang(c),
     });
   } catch (err) {
     if (err instanceof OrderValidationError) {
@@ -789,7 +799,7 @@ customer.get("/orders/:id", customerAuth, zValidator("param", idParamSchema), as
 
   if (!order) {
     return c.json(
-      { success: false, error: { code: "NOT_FOUND", message: "Orden no encontrada" } },
+      { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
       404,
     );
   }
@@ -825,14 +835,14 @@ customer.post(
 
     if (!coupon) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Cupon no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "coupon_not_found") } },
         404,
       );
     }
 
     if (coupon.status !== "active") {
       return c.json(
-        { success: false, error: { code: "INVALID", message: "El cupon no esta activo" } },
+        { success: false, error: { code: "INVALID", message: t(c, "coupon_not_active") } },
         400,
       );
     }
@@ -840,19 +850,19 @@ customer.post(
     const now = new Date();
     if (coupon.starts_at && now < coupon.starts_at) {
       return c.json(
-        { success: false, error: { code: "INVALID", message: "El cupon aun no esta vigente" } },
+        { success: false, error: { code: "INVALID", message: t(c, "coupon_not_started") } },
         400,
       );
     }
     if (coupon.expires_at && now > coupon.expires_at) {
       return c.json(
-        { success: false, error: { code: "INVALID", message: "El cupon ha expirado" } },
+        { success: false, error: { code: "INVALID", message: t(c, "coupon_expired") } },
         400,
       );
     }
     if (coupon.max_uses_total && coupon.current_uses >= coupon.max_uses_total) {
       return c.json(
-        { success: false, error: { code: "INVALID", message: "El cupon ha alcanzado el limite de usos" } },
+        { success: false, error: { code: "INVALID", message: t(c, "coupon_limit") } },
         400,
       );
     }
@@ -898,7 +908,7 @@ customer.post(
 
     if (!order) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Orden no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
         404,
       );
     }
@@ -913,7 +923,7 @@ customer.post(
     const nonPendingItem = items.find((item) => item.status !== "pending");
     if (nonPendingItem) {
       return c.json(
-        { success: false, error: { code: "CONFLICT", message: "El pedido ya está siendo preparado" } },
+        { success: false, error: { code: "CONFLICT", message: t(c, "order_preparing") } },
         409,
       );
     }
@@ -1019,7 +1029,7 @@ customer.post(
       timestamp: Date.now(),
     });
 
-    return c.json({ success: true, data: { message: "Pedido cancelado exitosamente" } });
+    return c.json({ success: true, data: { message: t(c, "order_cancelled") } });
   },
 );
 
@@ -1047,7 +1057,7 @@ customer.post(
 
     if (tableSessionId !== activeSession.id) {
       return c.json(
-        { success: false, error: { code: "FORBIDDEN", message: "Sesion inválida para esta mesa" } },
+        { success: false, error: { code: "FORBIDDEN", message: t(c, "invalid_session_table") } },
         403,
       );
     }
@@ -1062,7 +1072,7 @@ customer.post(
           success: false,
           error: {
             code: "TOO_MANY_REQUESTS",
-            message: `Espera ${retryAfterSec}s antes de volver a enviar esta solicitud`,
+            message: t(c, "wait_retry", { sec: String(retryAfterSec) }),
           },
           data: { retryAfterSec },
         },
@@ -1079,13 +1089,13 @@ customer.post(
 
     if (!table) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Mesa no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "table_not_found") } },
         404,
       );
     }
 
     const eventType = action === "request_bill" ? "table:request_bill" : "table:call_waiter";
-    const message = action === "request_bill" ? "La cuenta ha sido solicitada" : "El mozo ha sido llamado";
+    const message = action === "request_bill" ? t(c, "bill_requested") : t(c, "waiter_called");
 
     await wsManager.publish(`branch:${branchId}`, {
       type: eventType,
@@ -1093,7 +1103,7 @@ customer.post(
         tableSessionId: activeSession.id,
         tableId,
         tableNumber: table.number,
-        customerName: activeSession.customer_name || "Cliente",
+        customerName: activeSession.customer_name || (getLang(c) === "en" ? "Customer" : "Khách hàng"),
         action,
       },
       timestamp: Date.now(),
@@ -1117,7 +1127,7 @@ customer.post(
 
     if (!customerId) {
       return c.json(
-        { success: false, error: { code: "BAD_REQUEST", message: "No tienes cuenta de fidelidad" } },
+        { success: false, error: { code: "BAD_REQUEST", message: t(c, "no_loyalty") } },
         400,
       );
     }
@@ -1131,7 +1141,7 @@ customer.post(
 
     if (!enrollment) {
       return c.json(
-        { success: false, error: { code: "BAD_REQUEST", message: "No estas inscrito en el programa de fidelidad" } },
+        { success: false, error: { code: "BAD_REQUEST", message: t(c, "not_enrolled_loyalty") } },
         400,
       );
     }
@@ -1148,13 +1158,13 @@ customer.post(
     } catch (err) {
       const message = err instanceof Error ? err.message : "";
       if (message === "REWARD_NOT_FOUND") {
-        return c.json({ success: false, error: { code: "NOT_FOUND", message: "Recompensa no encontrada" } }, 404);
+        return c.json({ success: false, error: { code: "NOT_FOUND", message: t(c, "reward_not_found") } }, 404);
       }
       if (message === "INSUFFICIENT_POINTS") {
-        return c.json({ success: false, error: { code: "BAD_REQUEST", message: "Puntos insuficientes" } }, 400);
+        return c.json({ success: false, error: { code: "BAD_REQUEST", message: t(c, "insufficient_points") } }, 400);
       }
       if (message === "PROGRAM_MISMATCH") {
-        return c.json({ success: false, error: { code: "BAD_REQUEST", message: "La recompensa no pertenece a tu programa" } }, 400);
+        return c.json({ success: false, error: { code: "BAD_REQUEST", message: t(c, "reward_mismatch") } }, 400);
       }
       throw err;
     }

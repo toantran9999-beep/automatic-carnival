@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import Link from "next/link";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 const ACTION_COOLDOWN_MS = 30_000;
@@ -54,11 +55,11 @@ interface OrderData {
 }
 
 const steps = [
-  { key: "pending", label: "Recibido", icon: Clock },
-  { key: "confirmed", label: "Confirmado", icon: CheckCircle },
-  { key: "preparing", label: "Preparando", icon: ChefHat },
-  { key: "ready", label: "Listo", icon: UtensilsCrossed },
-  { key: "served", label: "Servido", icon: CheckCircle },
+  { key: "pending", labelKey: "receivedStep", icon: Clock },
+  { key: "confirmed", labelKey: "confirmedStep", icon: CheckCircle },
+  { key: "preparing", labelKey: "preparingStep", icon: ChefHat },
+  { key: "ready", labelKey: "readyStep", icon: UtensilsCrossed },
+  { key: "served", labelKey: "servedStep", icon: CheckCircle },
 ];
 
 const stepIndex: Record<string, number> = {
@@ -68,14 +69,7 @@ const stepIndex: Record<string, number> = {
   ready: 3,
   served: 4,
   completed: 4,
-};
-
-const itemStatusLabels: Record<string, string> = {
-  pending: "En cola",
-  preparing: "Preparando",
-  ready: "Listo",
-  served: "Servido",
-  cancelled: "Cancelado",
+  cancelled: 4,
 };
 
 const itemStatusVariants: Record<string, string> = {
@@ -92,6 +86,7 @@ export default function OrderStatusPage({
   params: Promise<{ branchSlug: string; tableCode: string }>;
 }) {
   const { branchSlug, tableCode } = use(params);
+  const { t } = useTranslation();
 
   const storeOrderId = useCustomerStore((s) => s.orderId);
   const storeToken = useCustomerStore((s) => s.token);
@@ -151,7 +146,7 @@ export default function OrderStatusPage({
       const remainingSeconds = Math.ceil(remainingMs / 1000);
       setActionNotice({
         kind: "error",
-        message: `Espera ${remainingSeconds}s antes de volver a enviar esta solicitud.`,
+        message: t("customer.cooldownMessage").replace("{sec}", String(remainingSeconds)),
       });
       return;
     }
@@ -178,7 +173,7 @@ export default function OrderStatusPage({
             [action]: now + retryAfterSec * 1000,
           }));
         }
-        throw new Error(result.error?.message || "No se pudo enviar la solicitud");
+        throw new Error(result.error?.message || t("customer.errorSendingRequest"));
       }
 
       const now = Date.now();
@@ -190,28 +185,28 @@ export default function OrderStatusPage({
       }));
       const successMessage =
         action === "request_bill"
-          ? "Tu solicitud de cuenta fue enviada al restaurante."
-          : "Tu solicitud de mozo fue enviada al restaurante.";
+          ? t("customer.billRequestSent")
+          : t("customer.waiterRequestSent");
       setActionNotice({ kind: "success", message: successMessage });
       toast.success(successMessage);
     } catch (err) {
       const errorMessage =
         err instanceof Error
           ? err.message
-          : "No se pudo enviar la solicitud. Intenta nuevamente.";
+          : t("customer.errorSendingRequest");
       setActionNotice({ kind: "error", message: errorMessage });
       toast.error(errorMessage);
     } finally {
       setActionLoading(null);
     }
-  }, [getToken, getSessionId, actionCooldownUntil]);
+  }, [getToken, getSessionId, actionCooldownUntil, t]);
 
   const fetchOrder = useCallback(async () => {
     const orderId = getOrderId();
     const token = getToken();
 
     if (!orderId || !token) {
-      setError("No se encontro la orden. Intenta realizar un nuevo pedido.");
+      setError(t("customer.orderNotFound"));
       setLoading(false);
       return;
     }
@@ -225,16 +220,16 @@ export default function OrderStatusPage({
       );
       const result = await res.json();
       if (!result.success) {
-        throw new Error(result.error?.message || "Error al obtener la orden");
+        throw new Error(result.error?.message || t("customer.errorLoadingOrder"));
       }
       setOrder(result.data);
       setError(null);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error inesperado");
+      setError(err instanceof Error ? err.message : t("customer.unexpectedError"));
     } finally {
       setLoading(false);
     }
-  }, [getOrderId, getToken]);
+  }, [getOrderId, getToken, t]);
 
   const handleCancelOrder = useCallback(async () => {
     const orderId = getOrderId();
@@ -255,17 +250,17 @@ export default function OrderStatusPage({
       );
       const result = await res.json();
       if (!result.success) {
-        setError(result.error?.message || "No se pudo cancelar el pedido");
+        setError(result.error?.message || t("customer.errorCancellingOrder"));
         return;
       }
       await fetchOrder();
     } catch {
-      setError("Error al cancelar el pedido");
+      setError(t("customer.errorCancellingOrder"));
     } finally {
       setCancelling(false);
       setCancelDialogOpen(false);
     }
-  }, [getOrderId, getToken, fetchOrder]);
+  }, [getOrderId, getToken, fetchOrder, t]);
 
   useEffect(() => {
     fetchOrder();
@@ -324,7 +319,7 @@ export default function OrderStatusPage({
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Cargando tu pedido...</p>
+        <p className="text-sm text-muted-foreground">{t("common.loading")}</p>
       </div>
     );
   }
@@ -332,9 +327,9 @@ export default function OrderStatusPage({
   if (error || !order) {
     return (
       <div className="p-6 mt-12 text-center">
-        <p className="text-destructive font-medium mb-4">{error || "Orden no encontrada"}</p>
+        <p className="text-destructive font-medium mb-4">{error || t("customer.orderNotFound")}</p>
         <Link href={`/${branchSlug}/${tableCode}/menu`}>
-          <Button variant="outline">Volver al Menu</Button>
+          <Button variant="outline">{t("customer.backToMenu")}</Button>
         </Link>
       </div>
     );
@@ -342,7 +337,6 @@ export default function OrderStatusPage({
 
   const currentStep = stepIndex[order.status] ?? 0;
   const isCancelled = order.status === "cancelled";
-  // Only allow cancel when the ORDER itself is pending (not just item-level)
   const canCancel = order.status === "pending";
   const requestBillCooldownSeconds = Math.max(
     0,
@@ -353,21 +347,23 @@ export default function OrderStatusPage({
     Math.ceil((actionCooldownUntil.call_waiter - cooldownTick) / 1000)
   );
 
+  const taxRate = useCustomerStore((s) => s.taxRate) ?? 0;
+
   return (
-    <div className="p-4 space-y-5">
-      {/* Confirmation banner */}
+    <div className="min-h-screen bg-muted/40 pb-12">
+      {/* Navbar */}
       {showConfirmation && (
         <div className="rounded-lg bg-green-50 dark:bg-green-900/20 border border-green-200 dark:border-green-800 p-4 text-center animate-in fade-in slide-in-from-top-2 duration-300">
           <CheckCircle className="h-8 w-8 text-green-600 dark:text-green-400 mx-auto mb-2" />
-          <p className="font-semibold text-green-800 dark:text-green-300">Pedido recibido</p>
-          <p className="text-sm text-green-600 dark:text-green-400">Tu orden fue enviada a cocina</p>
+          <p className="font-semibold text-green-800 dark:text-green-300">{t("customer.orderReceived")}</p>
+          <p className="text-sm text-green-600 dark:text-green-400">{t("customer.orderSentToKitchen")}</p>
         </div>
       )}
 
       {/* Header */}
       <div className="text-center pt-2">
-        <h1 className="text-2xl font-bold">Tu Pedido</h1>
-        <p className="text-muted-foreground mt-1">Orden #{order.order_number}</p>
+        <h1 className="text-2xl font-bold">{t("customer.yourOrder")}</h1>
+        <p className="text-muted-foreground mt-1">{t("pos.orderNumber")} #{order.order_number}</p>
       </div>
 
       {/* Cancelled banner */}
@@ -375,8 +371,8 @@ export default function OrderStatusPage({
         <Card>
           <CardContent className="p-5 text-center">
             <XCircle className="h-12 w-12 text-red-500 mx-auto mb-3" />
-            <p className="font-semibold text-lg text-red-600 dark:text-red-400">Pedido Cancelado</p>
-            <p className="text-sm text-muted-foreground mt-1">Este pedido ha sido cancelado</p>
+            <p className="font-semibold text-lg text-red-600 dark:text-red-400">{t("customer.orderCancelled")}</p>
+            <p className="text-sm text-muted-foreground mt-1">{t("customer.orderCancelledDesc")}</p>
           </CardContent>
         </Card>
       ) : (
@@ -406,15 +402,15 @@ export default function OrderStatusPage({
                       <div className="flex-1">
                         <p
                           className={cn(
-                            "font-medium text-sm",
+                             "font-medium text-sm",
                             isCompleted ? "text-foreground" : "text-muted-foreground",
                           )}
                         >
-                          {step.label}
+                          {t(`customer.${step.labelKey}`)}
                         </p>
                         {isCurrent && (
                           <p className="text-xs text-primary font-medium mt-0.5">
-                            Estado actual
+                            {t("customer.currentStatus")}
                           </p>
                         )}
                       </div>
@@ -436,7 +432,7 @@ export default function OrderStatusPage({
       {/* Items */}
       <Card>
         <CardHeader className="pb-3">
-          <CardTitle className="text-base">Detalle del Pedido</CardTitle>
+          <CardTitle className="text-base">{t("customer.orderDetails")}</CardTitle>
         </CardHeader>
         <CardContent className="space-y-2">
           {order.items.map((item) => (
@@ -453,7 +449,7 @@ export default function OrderStatusPage({
                   itemStatusVariants[item.status] || "bg-muted text-muted-foreground border-border",
                 )}
               >
-                {itemStatusLabels[item.status] || item.status}
+                {item.status === 'pending' ? t("customer.inQueue") : t(`customer.${item.status}`)}
               </span>
             </div>
           ))}
@@ -463,24 +459,26 @@ export default function OrderStatusPage({
             <div className="pt-3 mt-2 border-t border-border space-y-1">
               {order.subtotal != null && (
                 <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>Subtotal</span>
+                  <span>{t("customer.subtotal")}</span>
                   <span>{formatCurrency(order.subtotal)}</span>
                 </div>
               )}
               {order.tax != null && order.tax > 0 && (
                 <div className="flex justify-between text-sm text-muted-foreground">
-                  <span>IGV</span>
+                  <span>
+                    {t("customer.tax").replace("18%", `${(taxRate / 100).toFixed(2).replace(/\.00$/, "")}%`)}
+                  </span>
                   <span>{formatCurrency(order.tax)}</span>
                 </div>
               )}
               {order.discount != null && order.discount > 0 && (
                 <div className="flex justify-between text-sm text-green-600 dark:text-green-400">
-                  <span>Descuento</span>
+                  <span>{t("customer.discount")}</span>
                   <span>-{formatCurrency(order.discount)}</span>
                 </div>
               )}
               <div className="flex justify-between font-bold text-sm pt-1">
-                <span>Total</span>
+                <span>{t("customer.total")}</span>
                 <span>{formatCurrency(order.total)}</span>
               </div>
             </div>
@@ -493,7 +491,7 @@ export default function OrderStatusPage({
         <Card className="border-primary/20 bg-primary/5 hover:bg-primary/10 transition-colors cursor-pointer">
           <CardContent className="p-4 flex items-center gap-3">
             <Star className="h-5 w-5 text-primary shrink-0" />
-            <p className="text-sm font-medium flex-1">Ver mis puntos y recompensas</p>
+            <p className="text-sm font-medium flex-1">{t("customer.viewPointsRewards")}</p>
             <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0" />
           </CardContent>
         </Card>
@@ -508,7 +506,7 @@ export default function OrderStatusPage({
           onClick={() => setCancelDialogOpen(true)}
         >
           <XCircle className="h-4 w-4" />
-          Cancelar Pedido
+          {t("customer.cancelOrder")}
         </Button>
       )}
 
@@ -530,11 +528,11 @@ export default function OrderStatusPage({
             ) : (
               <RefreshCcw className="h-4 w-4 mr-2" />
             )}
-            {refreshing ? "Actualizando..." : "Actualizar"}
+            {refreshing ? t("customer.updating") : t("customer.update")}
           </Button>
           <Link href={`/${branchSlug}/${tableCode}/menu`} className="flex-1">
             <Button variant="default" className="w-full">
-              Pedir Mas
+              {t("customer.orderMore")}
             </Button>
           </Link>
         </div>
@@ -552,12 +550,12 @@ export default function OrderStatusPage({
             >
               <Receipt className="h-4 w-4" />
               {actionLoading === "request_bill"
-                ? "Enviando..."
+                ? t("customer.sending")
                 : requestBillCooldownSeconds > 0
-                  ? `Reintentar en ${requestBillCooldownSeconds}s`
+                  ? t("customer.retryIn").replace("{sec}", String(requestBillCooldownSeconds))
                   : actionSent.request_bill
-                    ? "Solicitar Cuenta (de nuevo)"
-                    : "Pedir la Cuenta"}
+                    ? t("customer.requestBillAgain")
+                    : t("customer.requestBillLabel")}
             </Button>
             <Button
               variant="outline"
@@ -567,12 +565,12 @@ export default function OrderStatusPage({
             >
               <Bell className="h-4 w-4" />
               {actionLoading === "call_waiter"
-                ? "Enviando..."
+                ? t("customer.sending")
                 : callWaiterCooldownSeconds > 0
-                  ? `Reintentar en ${callWaiterCooldownSeconds}s`
+                  ? t("customer.retryIn").replace("{sec}", String(callWaiterCooldownSeconds))
                   : actionSent.call_waiter
-                    ? "Llamar al Mozo (de nuevo)"
-                    : "Llamar al Mozo"}
+                    ? t("customer.callWaiterAgain")
+                    : t("customer.callWaiterLabel")}
             </Button>
           </div>
           {actionNotice && (
@@ -589,7 +587,7 @@ export default function OrderStatusPage({
           )}
           {(requestBillCooldownSeconds > 0 || callWaiterCooldownSeconds > 0) && (
             <p className="text-xs text-muted-foreground">
-              Anti-spam activo: cada solicitud tiene 30 segundos de espera.
+              {t("customer.antiSpamMessage")}
             </p>
           )}
         </>
@@ -599,7 +597,7 @@ export default function OrderStatusPage({
       {isCancelled && (
         <Link href={`/${branchSlug}/${tableCode}/menu`}>
           <Button variant="default" className="w-full">
-            Volver al Menu
+            {t("customer.backToMenu")}
           </Button>
         </Link>
       )}
@@ -608,9 +606,9 @@ export default function OrderStatusPage({
       <Dialog open={cancelDialogOpen} onOpenChange={setCancelDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Cancelar Pedido</DialogTitle>
+            <DialogTitle>{t("customer.cancelOrderConfirmTitle")}</DialogTitle>
             <DialogDescription>
-              Esta seguro que desea cancelar su pedido? Esta accion no se puede deshacer.
+              {t("customer.cancelOrderConfirmDesc")}
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
@@ -619,7 +617,7 @@ export default function OrderStatusPage({
               onClick={() => setCancelDialogOpen(false)}
               disabled={cancelling}
             >
-              No, mantener pedido
+              {t("customer.keepOrder")}
             </Button>
             <Button
               variant="destructive"
@@ -629,10 +627,10 @@ export default function OrderStatusPage({
               {cancelling ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Cancelando...
+                  {t("customer.cancelling")}
                 </>
               ) : (
-                "Si, cancelar pedido"
+                t("customer.confirmCancelOrder")
               )}
             </Button>
           </DialogFooter>

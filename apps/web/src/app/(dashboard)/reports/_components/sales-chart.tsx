@@ -13,6 +13,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+import { useTranslation } from "@/stores/lang-store";
+
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className ?? ""}`} />;
 }
@@ -23,10 +25,11 @@ interface SalesChartProps {
 }
 
 export function SalesChart({ days, isLoading }: SalesChartProps) {
+  const { t, lang } = useTranslation();
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Ventas por Dia</CardTitle>
+        <CardTitle>{t("reports.salesOverTime")}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="h-[300px]">
@@ -48,13 +51,16 @@ export function SalesChart({ days, isLoading }: SalesChartProps) {
                 <YAxis
                   className="text-xs"
                   tick={{ fill: "currentColor" }}
-                  tickFormatter={(v) => `S/${(v / 100).toFixed(0)}`}
+                  tickFormatter={(v) => {
+                    const val = v / 100;
+                    return lang === "vi" ? `${val} đ` : `$${val}`;
+                  }}
                 />
                 <Tooltip
-                  formatter={(value: number) => [formatCurrency(value), "Ventas"]}
+                  formatter={(value: number) => [formatCurrency(value), lang === "vi" ? "Doanh thu" : "Sales"]}
                   labelFormatter={(label) => {
                     const d = new Date(label + "T00:00:00");
-                    return d.toLocaleDateString("es-PE", { dateStyle: "medium" });
+                    return d.toLocaleDateString(lang === "vi" ? "vi-VN" : "en-US", { dateStyle: "medium" });
                   }}
                   contentStyle={{
                     backgroundColor: "var(--card)",
@@ -74,7 +80,7 @@ export function SalesChart({ days, isLoading }: SalesChartProps) {
             </ResponsiveContainer>
           ) : (
             <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-              No hay datos de ventas disponibles
+              {lang === "vi" ? "Không có dữ liệu doanh thu" : "No sales data available"}
             </div>
           )}
         </div>

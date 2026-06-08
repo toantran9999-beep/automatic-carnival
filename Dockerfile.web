@@ -20,9 +20,12 @@ RUN bun install --frozen-lockfile
 FROM base AS builder
 WORKDIR /app
 
-# Build-time env (baked into client JS)
-ENV NEXT_PUBLIC_API_URL=https://api.hosteleria.me
-ENV NEXT_PUBLIC_WS_URL=wss://api.hosteleria.me
+# Build-time public env (baked into client JS at build).
+# Override per deployment via docker build args / compose build.args.
+ARG NEXT_PUBLIC_API_URL=http://localhost:3001
+ARG NEXT_PUBLIC_WS_URL=ws://localhost:3001
+ENV NEXT_PUBLIC_API_URL=$NEXT_PUBLIC_API_URL
+ENV NEXT_PUBLIC_WS_URL=$NEXT_PUBLIC_WS_URL
 
 # Copy source code (workspace packages + web)
 COPY packages/ packages/

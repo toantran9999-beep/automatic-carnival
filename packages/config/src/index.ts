@@ -2,10 +2,10 @@
 export const ROLES = {
   super_admin: { level: 0, label: "Super Admin" },
   org_admin: { level: 1, label: "Org Admin" },
-  branch_manager: { level: 2, label: "Branch Manager" },
-  cashier: { level: 3, label: "Cajero" },
-  waiter: { level: 4, label: "Mesero" },
-  kitchen: { level: 5, label: "Cocina" },
+  branch_manager: { level: 2, label: "Quản lý" },
+  cashier: { level: 3, label: "Thu ngân" },
+  waiter: { level: 4, label: "Phục vụ" },
+  kitchen: { level: 5, label: "Bếp" },
 } as const;
 
 export type Role = keyof typeof ROLES;
@@ -74,12 +74,12 @@ export const TABLE_STATUS_TRANSITIONS: Record<string, string[]> = {
   maintenance: ["available"],
 };
 
-// Peru-specific constants
+// Vietnam-specific constants. Keep the exported name for compatibility with existing imports.
 export const PERU = {
-  CURRENCY: "PEN",
-  TIMEZONE: "America/Lima",
-  DEFAULT_TAX_RATE: 1800, // 18.00% IGV stored as basis points
-  TAX_NAME: "IGV",
+  CURRENCY: "VND",
+  TIMEZONE: "Asia/Ho_Chi_Minh",
+  DEFAULT_TAX_RATE: 1000, // 10.00% VAT stored as basis points
+  TAX_NAME: "VAT",
 } as const;
 
 // JWT config
@@ -98,16 +98,16 @@ export const PAGINATION = {
 
 // Payment methods with labels
 export const PAYMENT_METHODS = {
-  cash: { label: "Efectivo" },
-  card: { label: "Tarjeta" },
-  yape: { label: "Yape" },
-  plin: { label: "Plin" },
-  transfer: { label: "Transferencia" },
-  other: { label: "Otro" },
+  cash: { label: "Tiền mặt" },
+  card: { label: "Thẻ" },
+  yape: { label: "QR ngân hàng" },
+  plin: { label: "Ví điện tử" },
+  transfer: { label: "Chuyển khoản" },
+  other: { label: "Khác" },
 } as const;
 
 // Invoice types
 export const INVOICE_TYPES = {
-  boleta: { label: "Boleta de Venta", doc_types: ["dni", "ce"] },
-  factura: { label: "Factura", doc_types: ["ruc"] },
+  boleta: { label: "Hóa đơn bán lẻ", doc_types: ["dni", "ce"] },
+  factura: { label: "Hóa đơn VAT", doc_types: ["ruc"] },
 } as const;

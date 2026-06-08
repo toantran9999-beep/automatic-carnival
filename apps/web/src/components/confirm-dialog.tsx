@@ -10,6 +10,8 @@ import {
   DialogFooter,
 } from "@restai/ui/components/dialog";
 
+import { useTranslation } from "@/stores/lang-store";
+
 interface ConfirmDialogProps {
   open: boolean;
   onOpenChange: (v: boolean) => void;
@@ -31,8 +33,9 @@ export function ConfirmDialog({
   loading,
   variant = "destructive",
   confirmLabel,
-  cancelLabel = "Cancelar",
+  cancelLabel,
 }: ConfirmDialogProps) {
+  const { t } = useTranslation();
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
@@ -46,7 +49,7 @@ export function ConfirmDialog({
             onClick={() => onOpenChange(false)}
             disabled={loading}
           >
-            {cancelLabel}
+            {cancelLabel ?? t("common.cancel")}
           </Button>
           <Button
             variant={variant}
@@ -54,8 +57,8 @@ export function ConfirmDialog({
             disabled={loading}
           >
             {loading
-              ? "Procesando..."
-              : confirmLabel ?? (variant === "destructive" ? "Eliminar" : "Confirmar")}
+              ? t("common.saving")
+              : confirmLabel ?? (variant === "destructive" ? t("common.delete") : t("common.confirm"))}
           </Button>
         </DialogFooter>
       </DialogContent>

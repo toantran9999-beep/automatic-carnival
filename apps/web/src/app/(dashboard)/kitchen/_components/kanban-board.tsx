@@ -4,19 +4,12 @@ import { Clock, ChefHat, CheckCircle } from "lucide-react";
 import { ColumnHeader } from "./column-header";
 import { KitchenOrderCard } from "./order-card";
 import { useKitchenContext } from "./kitchen-context";
+import { useTranslation } from "@/stores/lang-store";
 
 type TabKey = "pending" | "preparing" | "ready";
 
-const COLUMN_CONFIG: Record<
-  TabKey,
-  { icon: React.ComponentType<{ className?: string }>; label: string; emptyLabel: string }
-> = {
-  pending: { icon: Clock, label: "Pendientes", emptyLabel: "Sin ordenes pendientes" },
-  preparing: { icon: ChefHat, label: "En Preparacion", emptyLabel: "Nada en preparacion" },
-  ready: { icon: CheckCircle, label: "Listos", emptyLabel: "Sin ordenes listas" },
-};
-
 function KanbanColumn({ status }: { status: TabKey }) {
+  const { t, lang } = useTranslation();
   const {
     columns,
     advanceOrder,
@@ -26,6 +19,27 @@ function KanbanColumn({ status }: { status: TabKey }) {
     isAdvancing,
     isUpdatingItem,
   } = useKitchenContext();
+
+  const COLUMN_CONFIG: Record<
+    TabKey,
+    { icon: React.ComponentType<{ className?: string }>; label: string; emptyLabel: string }
+  > = {
+    pending: {
+      icon: Clock,
+      label: t("kitchen.pending"),
+      emptyLabel: lang === "vi" ? "Không có đơn hàng chờ xử lý" : "No pending orders"
+    },
+    preparing: {
+      icon: ChefHat,
+      label: t("kitchen.preparing"),
+      emptyLabel: lang === "vi" ? "Không có món nào đang chế biến" : "No items in preparation"
+    },
+    ready: {
+      icon: CheckCircle,
+      label: t("kitchen.ready"),
+      emptyLabel: lang === "vi" ? "Chưa có đơn hàng hoàn thành" : "No ready orders"
+    },
+  };
 
   const config = COLUMN_CONFIG[status];
   const columnOrders = columns[status];

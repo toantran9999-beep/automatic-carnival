@@ -15,6 +15,7 @@ import { useUpdateStaff } from "@/hooks/use-staff";
 import { useBranches } from "@/hooks/use-settings";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
+import { useTranslation } from "@/stores/lang-store";
 
 interface EditStaffDialogProps {
   open: boolean;
@@ -27,6 +28,7 @@ export function EditStaffDialog({ open, onOpenChange, member }: EditStaffDialogP
   const updateStaff = useUpdateStaff();
   const { data: branchesData } = useBranches();
   const branches = branchesData ?? [];
+  const { t } = useTranslation();
 
   useEffect(() => {
     if (member) {
@@ -40,7 +42,7 @@ export function EditStaffDialog({ open, onOpenChange, member }: EditStaffDialogP
 
   const handleEdit = async () => {
     if (!member || !editForm.name) {
-      toast.error("El nombre es requerido");
+      toast.error(t("staff.requiredFields"));
       return;
     }
     try {
@@ -50,10 +52,10 @@ export function EditStaffDialog({ open, onOpenChange, member }: EditStaffDialogP
         role: editForm.role,
         branchIds: editForm.branchIds,
       });
-      toast.success("Staff actualizado");
+      toast.success(t("menu.saveSuccess"));
       onOpenChange(false);
     } catch (err: any) {
-      toast.error(err.message || "Error al actualizar staff");
+      toast.error(err.message || t("staff.statusError"));
     }
   };
 
@@ -61,34 +63,34 @@ export function EditStaffDialog({ open, onOpenChange, member }: EditStaffDialogP
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Editar Staff</DialogTitle>
+          <DialogTitle>{t("staff.editStaff")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Nombre</Label>
+            <Label>{t("staff.name")}</Label>
             <Input
               value={editForm.name}
               onChange={(e) => setEditForm({ ...editForm, name: e.target.value })}
-              placeholder="Nombre completo"
+              placeholder={t("staff.name")}
             />
           </div>
           <div className="space-y-2">
-            <Label>Rol</Label>
+            <Label>{t("staff.role")}</Label>
             <Select value={editForm.role} onValueChange={(v) => setEditForm({ ...editForm, role: v })}>
               <SelectTrigger>
-                <SelectValue placeholder="Seleccionar rol" />
+                <SelectValue placeholder={t("staff.roleSelectPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="org_admin">Admin</SelectItem>
-                <SelectItem value="branch_manager">Gerente</SelectItem>
-                <SelectItem value="cashier">Cajero</SelectItem>
-                <SelectItem value="waiter">Mesero</SelectItem>
-                <SelectItem value="kitchen">Cocina</SelectItem>
+                <SelectItem value="org_admin">{t("staff.role_org_admin")}</SelectItem>
+                <SelectItem value="branch_manager">{t("staff.role_branch_manager")}</SelectItem>
+                <SelectItem value="cashier">{t("staff.role_cashier")}</SelectItem>
+                <SelectItem value="waiter">{t("staff.role_waiter")}</SelectItem>
+                <SelectItem value="kitchen">{t("staff.role_kitchen")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Sedes asignadas *</Label>
+            <Label>{t("staff.assignedBranches")}</Label>
             <div className="border rounded-md max-h-40 overflow-y-auto">
               {branches.map((branch) => {
                 const isChecked = editForm.branchIds.includes(branch.id);
@@ -119,7 +121,7 @@ export function EditStaffDialog({ open, onOpenChange, member }: EditStaffDialogP
               })}
             </div>
             {editForm.branchIds.length === 0 && (
-              <p className="text-xs text-destructive">Selecciona al menos una sede</p>
+              <p className="text-xs text-destructive">{t("staff.selectBranchError")}</p>
             )}
           </div>
           <Button
@@ -127,7 +129,7 @@ export function EditStaffDialog({ open, onOpenChange, member }: EditStaffDialogP
             onClick={handleEdit}
             disabled={updateStaff.isPending || editForm.branchIds.length === 0}
           >
-            {updateStaff.isPending ? "Guardando..." : "Guardar Cambios"}
+            {updateStaff.isPending ? t("staff.saving") : t("staff.saveChanges")}
           </Button>
         </div>
       </DialogContent>

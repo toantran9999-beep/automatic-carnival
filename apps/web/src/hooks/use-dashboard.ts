@@ -2,10 +2,11 @@
 import { useQuery } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/fetcher";
 
-export function useDashboardStats() {
+export function useDashboardStats(allBranches?: boolean) {
   return useQuery({
-    queryKey: ["dashboard", "stats"],
-    queryFn: () => apiFetch("/api/reports/dashboard"),
+    queryKey: ["dashboard", "stats", allBranches],
+    queryFn: () =>
+      apiFetch(`/api/reports/dashboard${allBranches ? "?allBranches=true" : ""}`),
     refetchInterval: 30000,
   });
 }

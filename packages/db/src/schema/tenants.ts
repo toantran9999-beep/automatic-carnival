@@ -34,9 +34,9 @@ export const branches = pgTable(
     slug: varchar("slug", { length: 100 }).notNull(),
     address: text("address"),
     phone: varchar("phone", { length: 20 }),
-    timezone: varchar("timezone", { length: 50 }).default("America/Lima").notNull(),
-    currency: varchar("currency", { length: 3 }).default("PEN").notNull(),
-    tax_rate: integer("tax_rate").default(1800).notNull(), // 18.00%
+    timezone: varchar("timezone", { length: 50 }).default("Asia/Ho_Chi_Minh").notNull(),
+    currency: varchar("currency", { length: 3 }).default("VND").notNull(),
+    tax_rate: integer("tax_rate").default(1000).notNull(), // 10.00%
     is_active: boolean("is_active").default(true).notNull(),
     settings: jsonb("settings").default({}).notNull(),
     created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),

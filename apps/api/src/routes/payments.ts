@@ -8,6 +8,8 @@ import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { peruStartOfDay, peruEndOfDay } from "../lib/timezone.js";
+import { t } from "../lib/i18n.js";
+import { wsManager } from "../ws/manager.js";
 
 const payments = new Hono<AppEnv>();
 
@@ -173,7 +175,7 @@ payments.post(
 
     if (!order) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Orden no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
         404,
       );
     }
@@ -194,37 +196,170 @@ payments.post(
     const previouslyPaid = Number(prevPayments?.total_paid || 0);
 
     const remaining = order.total - previouslyPaid;
-    if (remaining <= 0) {
-      return c.json(
-        { success: false, error: { code: "BAD_REQUEST", message: "La orden ya está pagada" } },
-        400,
-      );
+
+    let amountToDistribute = body.amount;
+    const paymentsCreated = [];
+    let fullyPaid = false;
+
+    if (order.table_session_id) {
+      const tableSessionId = order.table_session_id;
+      // Fetch all unpaid/partially paid orders in the same session
+      const sessionOrders = await db
+        .select()
+        .from(schema.orders)
+        .where(
+          and(
+            eq(schema.orders.table_session_id, tableSessionId),
+            sql`orders.status NOT IN ('completed', 'cancelled')`
+          )
+        )
+        .orderBy(schema.orders.created_at);
+
+      // Sort so that the requested order is paid first, then others
+      const sortedOrders = [
+        order,
+        ...sessionOrders.filter(o => o.id !== order.id)
+      ];
+
+      for (const o of sortedOrders) {
+        if (amountToDistribute <= 0) break;
+
+        // Sum previous payments for this specific order
+        const [prevOPayments] = await db
+          .select({ total_paid: sum(schema.payments.amount) })
+          .from(schema.payments)
+          .where(
+            and(
+              eq(schema.payments.order_id, o.id),
+              eq(schema.payments.status, "completed")
+            )
+          );
+
+        const oPreviouslyPaid = Number(prevOPayments?.total_paid || 0);
+        const orderRemaining = o.total - oPreviouslyPaid;
+
+        if (orderRemaining <= 0) continue;
+
+        const payAmount = Math.min(amountToDistribute, orderRemaining);
+        amountToDistribute -= payAmount;
+
+        const [payment] = await db
+          .insert(schema.payments)
+          .values({
+            order_id: o.id,
+            organization_id: tenant.organizationId,
+            branch_id: tenant.branchId,
+            method: body.method,
+            amount: payAmount,
+            reference: body.reference,
+            tip: o.id === order.id ? body.tip : 0, // only apply tip to the main order
+            status: "completed",
+          })
+          .returning();
+
+        paymentsCreated.push(payment);
+
+        if (oPreviouslyPaid + payAmount >= o.total) {
+          // Update order status to completed
+          await db
+            .update(schema.orders)
+            .set({ status: "completed", updated_at: new Date() })
+            .where(eq(schema.orders.id, o.id));
+        }
+      }
+
+      // Check if ALL orders in the session are now completed
+      const otherUncompletedOrders = await db
+        .select()
+        .from(schema.orders)
+        .where(
+          and(
+            eq(schema.orders.table_session_id, tableSessionId),
+            sql`orders.status NOT IN ('completed', 'cancelled')`
+          )
+        );
+
+      if (otherUncompletedOrders.length === 0) {
+        fullyPaid = true;
+        // Close session and free table
+        const [session] = await db
+          .select({ table_id: schema.tableSessions.table_id })
+          .from(schema.tableSessions)
+          .where(eq(schema.tableSessions.id, tableSessionId))
+          .limit(1);
+
+        await db.transaction(async (tx) => {
+          await tx
+            .update(schema.tableSessions)
+            .set({ status: "completed", ended_at: new Date() })
+            .where(eq(schema.tableSessions.id, tableSessionId));
+
+          if (session) {
+            await tx
+              .update(schema.tables)
+              .set({ status: "available" })
+              .where(eq(schema.tables.id, session.table_id));
+          }
+        });
+
+        if (session) {
+          // Broadcast session ended and table status
+          await wsManager.publish(`branch:${tenant.branchId}`, {
+            type: "session:ended",
+            payload: { sessionId: tableSessionId, tableId: session.table_id },
+            timestamp: Date.now(),
+          });
+          await wsManager.publish(`branch:${tenant.branchId}`, {
+            type: "table:status",
+            payload: { tableId: session.table_id, status: "available" },
+            timestamp: Date.now(),
+          });
+        }
+      }
+    } else {
+      // Normal single order payment (takeout, etc.)
+      if (remaining <= 0) {
+        return c.json(
+          { success: false, error: { code: "BAD_REQUEST", message: t(c, "order_paid") } },
+          400,
+        );
+      }
+
+      const payAmount = Math.min(amountToDistribute, remaining);
+      const [payment] = await db
+        .insert(schema.payments)
+        .values({
+          order_id: body.orderId,
+          organization_id: tenant.organizationId,
+          branch_id: tenant.branchId,
+          method: body.method,
+          amount: payAmount,
+          reference: body.reference,
+          tip: body.tip,
+          status: "completed",
+        })
+        .returning();
+
+      paymentsCreated.push(payment);
+      fullyPaid = (previouslyPaid + payAmount) >= order.total;
+
+      if (fullyPaid) {
+        await db
+          .update(schema.orders)
+          .set({ status: "completed", updated_at: new Date() })
+          .where(eq(schema.orders.id, order.id));
+      }
     }
 
-    // Cap payment to remaining balance
-    const effectiveAmount = Math.min(body.amount, remaining);
-
-    const [payment] = await db
-      .insert(schema.payments)
-      .values({
-        order_id: body.orderId,
-        organization_id: tenant.organizationId,
-        branch_id: tenant.branchId,
-        method: body.method,
-        amount: effectiveAmount,
-        reference: body.reference,
-        tip: body.tip,
-        status: "completed",
-      })
-      .returning();
-
-    const totalPaid = previouslyPaid + effectiveAmount;
-    const fullyPaid = totalPaid >= order.total;
+    const firstPayment = paymentsCreated[0] || {};
+    const totalPaid = order.table_session_id
+      ? (previouslyPaid + (firstPayment.amount || 0))
+      : (previouslyPaid + (firstPayment.amount || 0));
 
     return c.json({
       success: true,
       data: {
-        ...payment,
+        ...firstPayment,
         order_number: order.order_number,
         order_total: order.total,
         total_paid: totalPaid,
@@ -272,7 +407,7 @@ payments.get(
 
     if (!result) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Pago no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "payment_not_found") } },
         404,
       );
     }

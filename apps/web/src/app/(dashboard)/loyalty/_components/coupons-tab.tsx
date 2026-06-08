@@ -40,20 +40,7 @@ import { formatCurrency } from "@/lib/utils";
 import { toast } from "sonner";
 import { CreateCouponDialog } from "./coupon-dialog";
 
-const couponTypeLabels: Record<string, string> = {
-  percentage: "Porcentaje",
-  fixed: "Monto fijo",
-  item_free: "Item gratis",
-  item_discount: "Descuento en item",
-  category_discount: "Descuento en categoria",
-  buy_x_get_y: "Compra X lleva Y",
-};
-
-const couponStatusLabels: Record<string, { label: string; color: string }> = {
-  active: { label: "Activo", color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
-  inactive: { label: "Inactivo", color: "bg-gray-100 text-gray-800 dark:bg-gray-700/40 dark:text-gray-300" },
-  expired: { label: "Expirado", color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" },
-};
+import { useTranslation } from "@/stores/lang-store";
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className ?? ""}`} />;
@@ -73,6 +60,7 @@ function AssignCouponDialog({
   const [timer, setTimer] = useState<ReturnType<typeof setTimeout> | null>(null);
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const assignCoupon = useAssignCoupon();
+  const { t, lang } = useTranslation();
 
   const { data: customersData, isLoading: customersLoading } = useLoyaltyCustomers(debouncedSearch || undefined);
   const { data: assignmentsData } = useCouponAssignments(coupon?.id || "");
@@ -101,7 +89,11 @@ function AssignCouponDialog({
       {
         onSuccess: () => {
           setSelectedIds([]);
-          toast.success(`Cupon asignado a ${selectedIds.length} cliente(s)`);
+          toast.success(
+            lang === "vi"
+              ? `Đã giao mã giảm giá cho ${selectedIds.length} khách hàng`
+              : `Coupon assigned to ${selectedIds.length} customer(s)`
+          );
           onOpenChange(false);
         },
         onError: (err) => toast.error(`Error: ${(err as Error).message}`),
@@ -113,13 +105,13 @@ function AssignCouponDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Asignar Cupon: {coupon?.code}</DialogTitle>
+          <DialogTitle>{t("loyalty.assignCoupon")}: {coupon?.code}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
-              placeholder="Buscar clientes..."
+              placeholder={t("loyalty.searchCustomers")}
               value={search}
               onChange={(e) => handleSearch(e.target.value)}
               className="pl-9"
@@ -130,7 +122,7 @@ function AssignCouponDialog({
           {assignments.length > 0 && (
             <div>
               <p className="text-xs font-medium text-muted-foreground mb-2">
-                Ya asignados ({assignments.length}):
+                {t("loyalty.alreadyAssigned")} ({assignments.length}):
               </p>
               <div className="flex flex-wrap gap-1">
                 {assignments.map((a: any) => (
@@ -138,9 +130,9 @@ function AssignCouponDialog({
                     key={a.id}
                     className="text-xs px-2 py-1 rounded-full bg-muted text-muted-foreground"
                   >
-                    {a.customer_name || "Sin nombre"}
-                    {a.seen_at && " (visto)"}
-                    {a.used_at && " (usado)"}
+                    {a.customer_name || (lang === "vi" ? "Không có tên" : "No name")}
+                    {a.seen_at && (lang === "vi" ? " (đã xem)" : " (seen)")}
+                    {a.used_at && (lang === "vi" ? " (đã dùng)" : " (used)")}
                   </span>
                 ))}
               </div>
@@ -151,11 +143,11 @@ function AssignCouponDialog({
           <div className="max-h-60 overflow-y-auto border border-border rounded-lg">
             {customersLoading ? (
               <div className="p-4 text-center text-sm text-muted-foreground">
-                Cargando...
+                {t("loyalty.loading")}
               </div>
             ) : customers.length === 0 ? (
               <div className="p-4 text-center text-sm text-muted-foreground">
-                {debouncedSearch ? "Sin resultados" : "No hay clientes"}
+                {debouncedSearch ? t("loyalty.noResults") : t("loyalty.noCustomers")}
               </div>
             ) : (
               customers.map((cust: any) => {
@@ -177,11 +169,11 @@ function AssignCouponDialog({
                     <div>
                       <p className="text-sm font-medium">{cust.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {cust.phone || cust.email || "Sin contacto"}
+                        {cust.phone || cust.email || (lang === "vi" ? "Không có liên hệ" : "No contact")}
                       </p>
                     </div>
                     {alreadyAssigned ? (
-                      <span className="text-xs text-muted-foreground">Asignado</span>
+                      <span className="text-xs text-muted-foreground">{t("loyalty.alreadyAssigned")}</span>
                     ) : isSelected ? (
                       <CheckCircle2 className="h-4 w-4 text-primary" />
                     ) : null}
@@ -193,21 +185,23 @@ function AssignCouponDialog({
 
           {selectedIds.length > 0 && (
             <p className="text-sm text-muted-foreground">
-              {selectedIds.length} cliente(s) seleccionado(s)
+              {lang === "vi"
+                ? `Đã chọn ${selectedIds.length} khách hàng`
+                : `${selectedIds.length} customer(s) selected`}
             </p>
           )}
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={handleAssign}
             disabled={assignCoupon.isPending || selectedIds.length === 0}
           >
             {assignCoupon.isPending
-              ? "Asignando..."
-              : `Asignar (${selectedIds.length})`}
+              ? t("loyalty.assigning")
+              : `${t("loyalty.assign")} (${selectedIds.length})`}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -216,6 +210,7 @@ function AssignCouponDialog({
 }
 
 export function CouponsTab() {
+  const { t, lang } = useTranslation();
   const [statusFilter, setStatusFilter] = useState("all");
   const [typeFilter, setTypeFilter] = useState("all");
   const { data, isLoading, error, refetch } = useCoupons({
@@ -230,9 +225,26 @@ export function CouponsTab() {
 
   const couponsList: any[] = data ?? [];
 
+  const couponTypeLabels: Record<string, string> = {
+    percentage: t("loyalty.couponTypePercentage"),
+    fixed: t("loyalty.couponTypeFixed"),
+    item_free: t("loyalty.couponTypeItemFree"),
+    item_discount: t("loyalty.couponTypeItemDiscount"),
+    category_discount: t("loyalty.couponTypeCategoryDiscount"),
+    buy_x_get_y: t("loyalty.couponTypeBuyXGetY"),
+  };
+
+  const couponStatusLabels: Record<string, { label: string; color: string }> = {
+    active: { label: lang === "vi" ? "Hoạt động" : "Active", color: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300" },
+    inactive: { label: lang === "vi" ? "Ngưng hoạt động" : "Inactive", color: "bg-gray-100 text-gray-800 dark:bg-gray-700/40 dark:text-gray-300" },
+    expired: { label: lang === "vi" ? "Hết hạn" : "Expired", color: "bg-red-100 text-red-800 dark:bg-red-900/30 dark:text-red-300" },
+  };
+
   function handleCopyCode(code: string) {
     navigator.clipboard.writeText(code);
-    toast.success(`Codigo "${code}" copiado`);
+    toast.success(
+      lang === "vi" ? `Đã sao chép mã "${code}"` : `Code "${code}" copied`
+    );
   }
 
   function handleToggleStatus(coupon: any) {
@@ -240,7 +252,12 @@ export function CouponsTab() {
     updateCoupon.mutate(
       { id: coupon.id, status: newStatus },
       {
-        onSuccess: () => toast.success(`Cupon ${newStatus === "active" ? "activado" : "desactivado"}`),
+        onSuccess: () =>
+          toast.success(
+            lang === "vi"
+              ? `Mã giảm giá đã ${newStatus === "active" ? "kích hoạt" : "ngừng hoạt động"}`
+              : `Coupon ${newStatus === "active" ? "activated" : "deactivated"}`
+          ),
         onError: (err) => toast.error(`Error: ${(err as Error).message}`),
       },
     );
@@ -249,7 +266,10 @@ export function CouponsTab() {
   function handleDelete() {
     if (!deleteConfirm) return;
     deleteCoupon.mutate(deleteConfirm.id, {
-      onSuccess: () => { setDeleteConfirm(null); toast.success("Cupon eliminado"); },
+      onSuccess: () => {
+        setDeleteConfirm(null);
+        toast.success(t("loyalty.couponDeleted"));
+      },
       onError: (err) => toast.error(`Error: ${(err as Error).message}`),
     });
   }
@@ -258,10 +278,10 @@ export function CouponsTab() {
     switch (coupon.type) {
       case "percentage": return `${coupon.discount_value}% off`;
       case "fixed": return `${formatCurrency(coupon.discount_value)} off`;
-      case "item_free": return "Item gratis";
-      case "item_discount": return `${coupon.discount_value}% en item`;
-      case "category_discount": return `${coupon.discount_value}% en categoria`;
-      case "buy_x_get_y": return `${coupon.buy_quantity}x${coupon.get_quantity}`;
+      case "item_free": return lang === "vi" ? "Món miễn phí" : "Free Item";
+      case "item_discount": return `${coupon.discount_value}% ${lang === "vi" ? "giảm cho món" : "off item"}`;
+      case "category_discount": return `${coupon.discount_value}% ${lang === "vi" ? "giảm cho danh mục" : "off category"}`;
+      case "buy_x_get_y": return `${lang === "vi" ? "Mua" : "Buy"} ${coupon.buy_quantity} ${lang === "vi" ? "Tặng" : "Get"} ${coupon.get_quantity}`;
       default: return "-";
     }
   }
@@ -269,9 +289,13 @@ export function CouponsTab() {
   if (error) {
     return (
       <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10 flex items-center justify-between">
-        <p className="text-sm text-destructive">Error al cargar cupones: {(error as Error).message}</p>
+        <p className="text-sm text-destructive">
+          {lang === "vi" ? "Lỗi khi tải mã giảm giá: " : "Error loading coupons: "}
+          {(error as Error).message}
+        </p>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="h-4 w-4 mr-2" />Reintentar
+          <RefreshCw className="h-4 w-4 mr-2" />
+          {t("common.retry")}
         </Button>
       </div>
     );
@@ -283,32 +307,33 @@ export function CouponsTab() {
       <div className="flex flex-wrap gap-2 items-center">
         <Select value={statusFilter} onValueChange={setStatusFilter}>
           <SelectTrigger className="w-40">
-            <SelectValue placeholder="Todos los estados" />
+            <SelectValue placeholder={t("loyalty.allStatuses")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos los estados</SelectItem>
-            <SelectItem value="active">Activos</SelectItem>
-            <SelectItem value="inactive">Inactivos</SelectItem>
-            <SelectItem value="expired">Expirados</SelectItem>
+            <SelectItem value="all">{t("loyalty.allStatuses")}</SelectItem>
+            <SelectItem value="active">{lang === "vi" ? "Hoạt động" : "Active"}</SelectItem>
+            <SelectItem value="inactive">{lang === "vi" ? "Ngưng hoạt động" : "Inactive"}</SelectItem>
+            <SelectItem value="expired">{lang === "vi" ? "Hết hạn" : "Expired"}</SelectItem>
           </SelectContent>
         </Select>
         <Select value={typeFilter} onValueChange={setTypeFilter}>
           <SelectTrigger className="w-48">
-            <SelectValue placeholder="Todos los tipos" />
+            <SelectValue placeholder={t("loyalty.allTypes")} />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Todos los tipos</SelectItem>
-            <SelectItem value="percentage">Porcentaje</SelectItem>
-            <SelectItem value="fixed">Monto fijo</SelectItem>
-            <SelectItem value="item_free">Item gratis</SelectItem>
-            <SelectItem value="item_discount">Descuento en item</SelectItem>
-            <SelectItem value="category_discount">Descuento en categoria</SelectItem>
-            <SelectItem value="buy_x_get_y">Compra X lleva Y</SelectItem>
+            <SelectItem value="all">{t("loyalty.allTypes")}</SelectItem>
+            <SelectItem value="percentage">{t("loyalty.couponTypePercentage")}</SelectItem>
+            <SelectItem value="fixed">{t("loyalty.couponTypeFixed")}</SelectItem>
+            <SelectItem value="item_free">{t("loyalty.couponTypeItemFree")}</SelectItem>
+            <SelectItem value="item_discount">{t("loyalty.couponTypeItemDiscount")}</SelectItem>
+            <SelectItem value="category_discount">{t("loyalty.couponTypeCategoryDiscount")}</SelectItem>
+            <SelectItem value="buy_x_get_y">{t("loyalty.couponTypeBuyXGetY")}</SelectItem>
           </SelectContent>
         </Select>
         <div className="ml-auto">
           <Button onClick={() => setShowCreate(true)}>
-            <Plus className="h-4 w-4 mr-2" />Crear Cupon
+            <Plus className="h-4 w-4 mr-2" />
+            {t("loyalty.createCoupon")}
           </Button>
         </div>
       </div>
@@ -324,8 +349,8 @@ export function CouponsTab() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Ticket className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground mb-1">No hay cupones creados</p>
-            <p className="text-xs text-muted-foreground">Crea cupones de descuento para tus clientes</p>
+            <p className="text-muted-foreground mb-1">{t("loyalty.noCoupons")}</p>
+            <p className="text-xs text-muted-foreground">{t("loyalty.createCouponsHelp")}</p>
           </CardContent>
         </Card>
       ) : (
@@ -358,14 +383,14 @@ export function CouponsTab() {
                       <button
                         onClick={() => setAssignCouponData(coupon)}
                         className="p-1.5 rounded hover:bg-muted"
-                        title="Asignar a clientes"
+                        title={t("loyalty.assignToCustomers")}
                       >
                         <Send className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                       </button>
                       <button
                         onClick={() => handleToggleStatus(coupon)}
                         className="p-1.5 rounded hover:bg-muted"
-                        title={coupon.status === "active" ? "Desactivar" : "Activar"}
+                        title={coupon.status === "active" ? t("loyalty.deactivate") : t("loyalty.activate")}
                       >
                         <CheckCircle2 className={`h-4 w-4 ${coupon.status === "active" ? "text-green-600 dark:text-green-400" : "text-muted-foreground"}`} />
                       </button>
@@ -377,7 +402,7 @@ export function CouponsTab() {
 
                   <div className="flex flex-wrap items-center gap-2 mb-3">
                     <span className={`text-xs px-2 py-1 rounded-full font-medium ${statusInfo.color}`}>
-                      {isExpired ? "Expirado" : statusInfo.label}
+                      {isExpired ? (lang === "vi" ? "Hết hạn" : "Expired") : statusInfo.label}
                     </span>
                     <Badge variant="secondary" className="text-xs">
                       <Tag className="h-3 w-3 mr-1" />
@@ -390,7 +415,7 @@ export function CouponsTab() {
 
                   <div className="flex items-center justify-between text-xs text-muted-foreground">
                     <span>
-                      Usos: {coupon.current_uses}{coupon.max_uses_total ? `/${coupon.max_uses_total}` : " (ilim.)"}
+                      {t("loyalty.uses")} {coupon.current_uses}{coupon.max_uses_total ? `/${coupon.max_uses_total}` : ` (${lang === "vi" ? "không gh." : "unlim."})`}
                     </span>
                     {coupon.min_order_amount > 0 && (
                       <span>Min: {formatCurrency(coupon.min_order_amount)}</span>
@@ -400,10 +425,10 @@ export function CouponsTab() {
                   {(coupon.starts_at || coupon.expires_at) && (
                     <div className="mt-2 text-xs text-muted-foreground">
                       {coupon.starts_at && (
-                        <span>Desde: {new Date(coupon.starts_at).toLocaleDateString("es-PE")} </span>
+                        <span>{t("loyalty.since")} {new Date(coupon.starts_at).toLocaleDateString(lang === "vi" ? "vi-VN" : "en-US")} </span>
                       )}
                       {coupon.expires_at && (
-                        <span>Hasta: {new Date(coupon.expires_at).toLocaleDateString("es-PE")}</span>
+                        <span>{t("loyalty.until")} {new Date(coupon.expires_at).toLocaleDateString(lang === "vi" ? "vi-VN" : "en-US")}</span>
                       )}
                     </div>
                   )}
@@ -427,8 +452,8 @@ export function CouponsTab() {
       <ConfirmDialog
         open={!!deleteConfirm}
         onOpenChange={(v) => { if (!v) setDeleteConfirm(null); }}
-        title="Eliminar cupon"
-        description={`Estas seguro de eliminar el cupon ${deleteConfirm?.name}?`}
+        title={t("loyalty.deleteCouponTitle")}
+        description={`${t("loyalty.deleteCouponConfirm")} (${deleteConfirm?.name})`}
         onConfirm={handleDelete}
         loading={deleteCoupon.isPending}
       />

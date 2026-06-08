@@ -1,23 +1,23 @@
 /**
- * Peru timezone utilities.
- * Peru is always UTC-5 (no DST).
+ * Vietnam timezone utilities.
+ * Vietnam is always UTC+7 (no DST).
  */
 
-const PERU_OFFSET_MS = -5 * 60 * 60 * 1000;
+const VIETNAM_OFFSET_MS = 7 * 60 * 60 * 1000;
 
 /**
- * Returns the start of "today" in Peru timezone (UTC-5),
+ * Returns the start of "today" in Vietnam timezone (UTC+7),
  * expressed as a UTC Date object.
  */
 export function peruStartOfDay(date: Date = new Date()): Date {
-  const peruTime = new Date(date.getTime() + PERU_OFFSET_MS);
+  const vietnamTime = new Date(date.getTime() + VIETNAM_OFFSET_MS);
   return new Date(
-    Date.UTC(peruTime.getUTCFullYear(), peruTime.getUTCMonth(), peruTime.getUTCDate()) - PERU_OFFSET_MS,
+    Date.UTC(vietnamTime.getUTCFullYear(), vietnamTime.getUTCMonth(), vietnamTime.getUTCDate()) - VIETNAM_OFFSET_MS,
   );
 }
 
 /**
- * Returns the end of "today" in Peru timezone (UTC-5),
+ * Returns the end of "today" in Vietnam timezone (UTC+7),
  * expressed as a UTC Date object (start of next day).
  */
 export function peruEndOfDay(date: Date = new Date()): Date {

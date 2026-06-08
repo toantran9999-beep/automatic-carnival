@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@restai/ui/components/
 import { formatCurrency } from "@/lib/utils";
 import type { TopItemReport } from "@/hooks/use-reports";
 
+import { useTranslation } from "@/stores/lang-store";
+
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className ?? ""}`} />;
 }
@@ -14,10 +16,11 @@ interface TopItemsListProps {
 }
 
 export function TopItemsList({ topItems, isLoading }: TopItemsListProps) {
+  const { t, lang } = useTranslation();
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Top Productos</CardTitle>
+        <CardTitle>{t("reports.topItems")}</CardTitle>
       </CardHeader>
       <CardContent>
         {isLoading ? (
@@ -37,7 +40,7 @@ export function TopItemsList({ topItems, isLoading }: TopItemsListProps) {
           </div>
         ) : topItems.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">
-            No hay datos de productos
+            {lang === "vi" ? "Không có dữ liệu món ăn" : "No product data available"}
           </p>
         ) : (
           <div className="space-y-3">
@@ -53,7 +56,7 @@ export function TopItemsList({ topItems, isLoading }: TopItemsListProps) {
                   <div>
                     <p className="font-medium text-sm">{item.name}</p>
                     <p className="text-xs text-muted-foreground">
-                      {item.totalQuantity} vendidos
+                      {item.totalQuantity} {lang === "vi" ? "đã bán" : "sold"}
                     </p>
                   </div>
                 </div>

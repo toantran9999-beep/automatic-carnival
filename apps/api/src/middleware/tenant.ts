@@ -1,11 +1,12 @@
 import { createMiddleware } from "hono/factory";
 import type { AppEnv } from "../types.js";
+import { t } from "../lib/i18n.js";
 
 export const tenantMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   const user = c.get("user") as any;
   if (!user) {
     return c.json(
-      { success: false, error: { code: "UNAUTHORIZED", message: "No autenticado" } },
+      { success: false, error: { code: "UNAUTHORIZED", message: t(c, "token_required") } },
       401,
     );
   }
@@ -34,7 +35,7 @@ export const tenantMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     !user.branches.includes(branchId)
   ) {
     return c.json(
-      { success: false, error: { code: "FORBIDDEN", message: "No tienes acceso a esta sucursal" } },
+      { success: false, error: { code: "FORBIDDEN", message: t(c, "no_branch_access") } },
       403,
     );
   }
@@ -49,7 +50,7 @@ export const requireBranch = createMiddleware<AppEnv>(async (c, next) => {
     return c.json(
       {
         success: false,
-        error: { code: "BAD_REQUEST", message: "Se requiere x-branch-id header o branchId query param" },
+        error: { code: "BAD_REQUEST", message: t(c, "branch_header_required") },
       },
       400,
     );

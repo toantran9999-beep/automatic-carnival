@@ -2,16 +2,7 @@
 
 import { Button } from "@restai/ui/components/button";
 import { SearchInput } from "@/components/search-input";
-
-const statusConfig: Record<string, { label: string }> = {
-  pending: { label: "Pendiente" },
-  confirmed: { label: "Confirmado" },
-  preparing: { label: "Preparando" },
-  ready: { label: "Listo" },
-  served: { label: "Servido" },
-  completed: { label: "Completado" },
-  cancelled: { label: "Cancelado" },
-};
+import { useTranslation } from "@/stores/lang-store";
 
 interface OrderFiltersProps {
   search: string;
@@ -26,12 +17,14 @@ export function OrderFilters({
   statusFilter,
   onStatusFilterChange,
 }: OrderFiltersProps) {
+  const { t } = useTranslation();
+
   return (
     <div className="flex flex-col sm:flex-row gap-3">
       <SearchInput
         value={search}
         onChange={onSearchChange}
-        placeholder="Buscar por numero, mesa o cliente..."
+        placeholder={t("orders.searchPlaceholderStaff")}
         className="flex-1"
       />
       <div className="flex gap-2 flex-wrap">
@@ -44,8 +37,8 @@ export function OrderFilters({
               onClick={() => onStatusFilterChange(status)}
             >
               {status === "all"
-                ? "Todos"
-                : statusConfig[status]?.label || status}
+                ? t("orders.all")
+                : t("orders.status_" + status)}
             </Button>
           )
         )}

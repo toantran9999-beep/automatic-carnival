@@ -8,6 +8,7 @@ import { useBranchSettings } from "@/hooks/use-settings";
 import { useMyAssignedTables } from "@/hooks/use-tables";
 import { cn } from "@/lib/utils";
 import type { WsMessage } from "@restai/types";
+import { useTranslation } from "@/stores/lang-store";
 
 interface Notification {
   id: string;
@@ -25,13 +26,13 @@ interface Toast {
   type: Notification["type"];
 }
 
-function timeAgo(ts: number): string {
+function timeAgo(ts: number, t: (key: string, defaultValue?: string) => string): string {
   const seconds = Math.floor((Date.now() - ts) / 1000);
-  if (seconds < 60) return "hace un momento";
+  if (seconds < 60) return t("notifications.justNow");
   const minutes = Math.floor(seconds / 60);
-  if (minutes < 60) return `hace ${minutes}m`;
+  if (minutes < 60) return t("notifications.minutesAgo").replace("{min}", String(minutes));
   const hours = Math.floor(minutes / 60);
-  return `hace ${hours}h`;
+  return t("notifications.hoursAgo").replace("{hours}", String(hours));
 }
 
 const notificationIcon: Record<Notification["type"], typeof Bell> = {
@@ -48,6 +49,7 @@ const notificationColor: Record<Notification["type"], string> = {
 
 export function NotificationBell() {
   const { accessToken, selectedBranchId, user } = useAuthStore();
+  const { t } = useTranslation();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -95,7 +97,9 @@ export function NotificationBell() {
       if (msg.type === "table:call_waiter") {
         addNotification({
           type: "call_waiter",
-          message: `Mesa ${payload.tableNumber}: ${payload.customerName || "Cliente"} solicita al mozo`,
+          message: t("notifications.callWaiter")
+            .replace("{table}", String(payload.tableNumber))
+            .replace("{name}", payload.customerName || t("notifications.client")),
           tableNumber: payload.tableNumber,
           tableId: payload.tableId,
           timestamp: msg.timestamp,
@@ -103,7 +107,9 @@ export function NotificationBell() {
       } else if (msg.type === "table:request_bill") {
         addNotification({
           type: "request_bill",
-          message: `Mesa ${payload.tableNumber}: ${payload.customerName || "Cliente"} solicita la cuenta`,
+          message: t("notifications.requestBill")
+            .replace("{table}", String(payload.tableNumber))
+            .replace("{name}", payload.customerName || t("notifications.client")),
           tableNumber: payload.tableNumber,
           tableId: payload.tableId,
           timestamp: msg.timestamp,
@@ -111,14 +117,16 @@ export function NotificationBell() {
       } else if (msg.type === "session:pending") {
         addNotification({
           type: "session_pending",
-          message: `Mesa ${payload.tableNumber}: Nueva conexion de ${payload.customerName || "cliente"}`,
+          message: t("notifications.sessionPending")
+            .replace("{table}", String(payload.tableNumber))
+            .replace("{name}", payload.customerName || t("notifications.client")),
           tableNumber: payload.tableNumber,
           tableId: payload.tableId,
           timestamp: msg.timestamp,
         });
       }
     },
-    [addNotification, shouldFilter],
+    [addNotification, shouldFilter, t],
   );
 
   useWebSocket(
@@ -203,13 +211,13 @@ export function NotificationBell() {
         {open && (
           <div className="absolute right-0 top-full mt-2 w-80 bg-popover border rounded-lg shadow-lg z-50">
             <div className="flex items-center justify-between px-4 py-3 border-b">
-              <h3 className="text-sm font-semibold">Notificaciones</h3>
+              <h3 className="text-sm font-semibold">{t("notifications.title")}</h3>
               {notifications.length > 0 && (
                 <button
                   onClick={clearAll}
                   className="text-xs text-muted-foreground hover:text-foreground transition-colors"
                 >
-                  Limpiar todo
+                  {t("notifications.clearAll")}
                 </button>
               )}
             </div>
@@ -217,7 +225,7 @@ export function NotificationBell() {
             <div className="max-h-80 overflow-y-auto">
               {notifications.length === 0 ? (
                 <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                  Sin notificaciones
+                  {t("notifications.noNotifications")}
                 </div>
               ) : (
                 notifications.map((notif) => {
@@ -236,7 +244,7 @@ export function NotificationBell() {
                       <div className="flex-1 min-w-0">
                         <p className="text-sm leading-snug">{notif.message}</p>
                         <p className="text-[11px] text-muted-foreground mt-0.5">
-                          {timeAgo(notif.timestamp)}
+                          {timeAgo(notif.timestamp, t)}
                         </p>
                       </div>
                       <button

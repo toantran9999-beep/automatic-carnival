@@ -15,6 +15,7 @@ import { tenantMiddleware } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { findOrCreateByPhone } from "../services/customer.service.js";
 import { redeemReward } from "../services/loyalty.service.js";
+import { t } from "../lib/i18n.js";
 
 const loyalty = new Hono<AppEnv>();
 
@@ -201,7 +202,7 @@ loyalty.delete(
 
     if (!customer) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Cliente no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "customer_not_found") } },
         404,
       );
     }
@@ -236,7 +237,7 @@ loyalty.get(
 
     if (!customer) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Cliente no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "customer_not_found") } },
         404,
       );
     }
@@ -427,7 +428,7 @@ loyalty.patch(
 
     if (!existing) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Programa no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "program_not_found") } },
         404,
       );
     }
@@ -470,7 +471,7 @@ loyalty.delete(
 
     if (!existing) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Programa no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "program_not_found") } },
         404,
       );
     }
@@ -515,7 +516,7 @@ loyalty.post(
 
     if (!program) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Programa no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "program_not_found") } },
         404,
       );
     }
@@ -572,7 +573,7 @@ loyalty.patch(
 
     if (!tier) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Nivel no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "tier_not_found") } },
         404,
       );
     }
@@ -617,7 +618,7 @@ loyalty.delete(
 
     if (!tier) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Nivel no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "tier_not_found") } },
         404,
       );
     }
@@ -689,7 +690,7 @@ loyalty.post(
 
     if (!program) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Programa no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "program_not_found") } },
         404,
       );
     }
@@ -747,7 +748,7 @@ loyalty.patch(
 
     if (!reward) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Recompensa no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "reward_not_found") } },
         404,
       );
     }
@@ -795,7 +796,7 @@ loyalty.delete(
 
     if (!reward) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Recompensa no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "reward_not_found") } },
         404,
       );
     }
@@ -847,25 +848,25 @@ loyalty.post(
     } catch (err: any) {
       if (err.message === "REWARD_NOT_FOUND") {
         return c.json(
-          { success: false, error: { code: "NOT_FOUND", message: "Recompensa no encontrada" } },
+          { success: false, error: { code: "NOT_FOUND", message: t(c, "reward_not_found") } },
           404,
         );
       }
       if (err.message === "LOYALTY_NOT_FOUND") {
         return c.json(
-          { success: false, error: { code: "NOT_FOUND", message: "Registro de lealtad no encontrado" } },
+          { success: false, error: { code: "NOT_FOUND", message: t(c, "loyalty_not_found") } },
           404,
         );
       }
       if (err.message === "PROGRAM_MISMATCH") {
         return c.json(
-          { success: false, error: { code: "BAD_REQUEST", message: "La recompensa no pertenece al programa del cliente" } },
+          { success: false, error: { code: "BAD_REQUEST", message: t(c, "reward_mismatch") } },
           400,
         );
       }
       if (err.message === "INSUFFICIENT_POINTS") {
         return c.json(
-          { success: false, error: { code: "BAD_REQUEST", message: "Puntos insuficientes" } },
+          { success: false, error: { code: "BAD_REQUEST", message: t(c, "insufficient_points") } },
           400,
         );
       }

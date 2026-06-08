@@ -14,6 +14,7 @@ import {
 } from "@restai/ui/components/dialog";
 import { useCreateInventoryItem } from "@/hooks/use-inventory";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
 
 export function CreateItemDialog({
   open,
@@ -22,6 +23,7 @@ export function CreateItemDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const { t, lang } = useTranslation();
   const createItem = useCreateInventoryItem();
   const [form, setForm] = useState({
     name: "",
@@ -53,9 +55,9 @@ export function CreateItemDialog({
         category: "",
       });
       onOpenChange(false);
-      toast.success("Item creado exitosamente");
+      toast.success(t("inventory.saveSuccess"));
     } catch (err) {
-      toast.error(`Error: ${(err as Error).message}`);
+      toast.error(`${t("common.error")}: ${(err as Error).message}`);
     }
   }
 
@@ -63,24 +65,24 @@ export function CreateItemDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nuevo Item de Inventario</DialogTitle>
+          <DialogTitle>{t("inventory.addIngredient")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="itemName">Nombre *</Label>
+            <Label htmlFor="itemName">{t("common.name")} *</Label>
             <Input
               id="itemName"
-              placeholder="Ej: Arroz, Pollo, Aceite..."
+              placeholder={lang === "vi" ? "Ví dụ: Gạo, Thịt gà, Dầu ăn..." : "e.g. Rice, Chicken, Oil..."}
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               required
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="itemCategory">Categoria</Label>
+            <Label htmlFor="itemCategory">{t("menu.category")}</Label>
             <Input
               id="itemCategory"
-              placeholder="Ej: Carnes, Verduras, Lacteos..."
+              placeholder={lang === "vi" ? "Ví dụ: Thịt, Rau củ, Sữa..." : "e.g. Meats, Vegetables, Dairy..."}
               value={form.category}
               onChange={(e) =>
                 setForm({ ...form, category: e.target.value })
@@ -89,26 +91,26 @@ export function CreateItemDialog({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="itemUnit">Unidad</Label>
+              <Label htmlFor="itemUnit">{lang === "vi" ? "Đơn vị" : "Unit"}</Label>
               <Select
                 value={form.unit}
                 onValueChange={(v) => setForm({ ...form, unit: v })}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar unidad..." />
+                  <SelectValue placeholder={lang === "vi" ? "Chọn đơn vị..." : "Select unit..."} />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="kg">Kilogramos (kg)</SelectItem>
-                  <SelectItem value="g">Gramos (g)</SelectItem>
-                  <SelectItem value="lt">Litros (lt)</SelectItem>
-                  <SelectItem value="ml">Mililitros (ml)</SelectItem>
-                  <SelectItem value="und">Unidades (und)</SelectItem>
-                  <SelectItem value="paq">Paquetes (paq)</SelectItem>
+                  <SelectItem value="kg">{lang === "vi" ? "Ki-lô-gam (kg)" : "Kilograms (kg)"}</SelectItem>
+                  <SelectItem value="g">{lang === "vi" ? "Gam (g)" : "Grams (g)"}</SelectItem>
+                  <SelectItem value="lt">{lang === "vi" ? "Lít (l)" : "Liters (lt)"}</SelectItem>
+                  <SelectItem value="ml">{lang === "vi" ? "Mi-li-lít (ml)" : "Milliliters (ml)"}</SelectItem>
+                  <SelectItem value="und">{lang === "vi" ? "Đơn vị (chiếc)" : "Units (pcs)"}</SelectItem>
+                  <SelectItem value="paq">{lang === "vi" ? "Gói (gói)" : "Packets (pkg)"}</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="itemCost">Costo por unidad (S/)</Label>
+              <Label htmlFor="itemCost">{t("inventory.cost")} / {lang === "vi" ? "đơn vị" : "unit"} ({lang === "vi" ? "đ" : "$"})</Label>
               <Input
                 id="itemCost"
                 type="number"
@@ -124,7 +126,7 @@ export function CreateItemDialog({
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="itemStock">Stock Inicial</Label>
+              <Label htmlFor="itemStock">{lang === "vi" ? "Tồn kho ban đầu" : "Initial Stock"}</Label>
               <Input
                 id="itemStock"
                 type="number"
@@ -138,7 +140,7 @@ export function CreateItemDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="itemMinStock">Stock Minimo</Label>
+              <Label htmlFor="itemMinStock">{t("inventory.minStock")}</Label>
               <Input
                 id="itemMinStock"
                 type="number"
@@ -154,10 +156,10 @@ export function CreateItemDialog({
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={createItem.isPending || !form.name}>
-              {createItem.isPending ? "Creando..." : "Crear Item"}
+              {createItem.isPending ? t("staff.creating") : t("inventory.addIngredient")}
             </Button>
           </DialogFooter>
         </form>

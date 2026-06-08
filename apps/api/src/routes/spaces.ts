@@ -7,6 +7,7 @@ import { createSpaceSchema, updateSpaceSchema, idParamSchema } from "@restai/val
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { t } from "../lib/i18n.js";
 
 const spaces = new Hono<AppEnv>();
 
@@ -89,7 +90,7 @@ spaces.patch(
 
     if (!updated) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Espacio no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "space_not_found") } },
         404,
       );
     }
@@ -125,7 +126,7 @@ spaces.delete(
           success: false,
           error: {
             code: "BAD_REQUEST",
-            message: "No se puede eliminar un espacio que tiene mesas asignadas",
+            message: t(c, "cannot_delete_space_with_tables"),
           },
         },
         400,
@@ -144,7 +145,7 @@ spaces.delete(
 
     if (!deleted) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Espacio no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "space_not_found") } },
         404,
       );
     }

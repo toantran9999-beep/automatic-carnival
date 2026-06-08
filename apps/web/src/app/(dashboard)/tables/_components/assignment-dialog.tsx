@@ -15,6 +15,7 @@ import {
 import { UserMinus } from "lucide-react";
 import { useTableAssignments, useAssignWaiter, useRemoveAssignment } from "@/hooks/use-tables";
 import { useStaffList } from "@/hooks/use-staff";
+import { useTranslation } from "@/stores/lang-store";
 
 interface AssignmentDialogProps {
   table: any | null;
@@ -22,6 +23,7 @@ interface AssignmentDialogProps {
 }
 
 export function AssignmentDialog({ table, onClose }: AssignmentDialogProps) {
+  const { t, lang } = useTranslation();
   const [assignKey, setAssignKey] = useState(0);
   const { data: assignmentsData } = useTableAssignments(table?.id);
   const assignWaiter = useAssignWaiter();
@@ -36,19 +38,21 @@ export function AssignmentDialog({ table, onClose }: AssignmentDialogProps) {
       <DialogContent>
         <DialogHeader>
           <DialogTitle>
-            Asignar Mozos - Mesa {table?.number}
+            {t("tables.assign")} {t("nav.role_waiter").toLowerCase()} - {t("tables.title")} {table?.number}
           </DialogTitle>
           <DialogDescription>
-            Gestiona los mozos asignados a esta mesa
+            {lang === "vi"
+              ? "Quản lý nhân viên phục vụ phân công cho bàn này"
+              : "Manage waiters assigned to this table"}
           </DialogDescription>
         </DialogHeader>
         {table && (
           <div className="space-y-4">
             {/* Current assignments */}
             <div>
-              <Label className="text-sm mb-2 block">Mozos asignados</Label>
+              <Label className="text-sm mb-2 block">{t("tables.assignedWaiters")}</Label>
               {assignments.length === 0 ? (
-                <p className="text-sm text-muted-foreground py-2">Ningun mozo asignado</p>
+                <p className="text-sm text-muted-foreground py-2">{t("tables.noWaiters")}</p>
               ) : (
                 <div className="space-y-2">
                   {assignments.map((a: any) => (
@@ -82,7 +86,7 @@ export function AssignmentDialog({ table, onClose }: AssignmentDialogProps) {
 
             {/* Add waiter */}
             <div>
-              <Label className="text-sm mb-2 block">Agregar mozo</Label>
+              <Label className="text-sm mb-2 block">{t("tables.addWaiter")}</Label>
               <Select
                 key={assignKey}
                 onValueChange={(userId) => {
@@ -93,7 +97,7 @@ export function AssignmentDialog({ table, onClose }: AssignmentDialogProps) {
                 }}
               >
                 <SelectTrigger>
-                  <SelectValue placeholder="Seleccionar mozo..." />
+                  <SelectValue placeholder={t("tables.selectWaiter")} />
                 </SelectTrigger>
                 <SelectContent>
                   {waiters
@@ -110,7 +114,7 @@ export function AssignmentDialog({ table, onClose }: AssignmentDialogProps) {
         )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            Cerrar
+            {t("common.cancel")}
           </Button>
         </DialogFooter>
       </DialogContent>

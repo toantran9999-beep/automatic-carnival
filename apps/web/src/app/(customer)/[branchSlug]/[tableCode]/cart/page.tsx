@@ -11,9 +11,9 @@ import { useCustomerStore } from "@/stores/customer-store";
 import { formatCurrency } from "@/lib/utils";
 import { Minus, Plus, Trash2, ArrowLeft, ShoppingBag, Ticket, Check, X, ChevronDown, Gift, ChevronRight } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-const TAX_RATE = 1800; // 18% IGV
 
 function useCartPageLocalState() {
   const [notes, setNotes] = useState<Record<string, string>>({});
@@ -26,7 +26,7 @@ function useCartPageLocalState() {
   const [couponError, setCouponError] = useState<string | null>(null);
   const [appliedCoupon, setAppliedCoupon] = useState<{ code: string; name: string; type: string; discount_value: number; menu_item_id?: string | null } | null>(null);
   const [availableCoupons, setAvailableCoupons] = useState<any[]>([]);
-  const [pendingRedemptions, setPendingRedemptions] = useState<Array<{ id: string; reward_name: string; discount_type: string; discount_value: number }>>([]);
+  const [pendingRedemptions, setPendingRedemptions] = useState<any[]>([]);
   const [appliedRedemption, setAppliedRedemption] = useState<{ id: string; reward_name: string; discount_type: string; discount_value: number } | null>(null);
 
   return {
@@ -58,6 +58,7 @@ function useCartPageLocalState() {
 }
 
 function SlideToConfirm({ onConfirm, label }: { onConfirm: () => void; label: string }) {
+  const { t } = useTranslation();
   const trackRef = useRef<HTMLDivElement>(null);
   const isDragging = useRef(false);
   const startX = useRef(0);
@@ -160,7 +161,7 @@ function SlideToConfirm({ onConfirm, label }: { onConfirm: () => void; label: st
           ref={labelRef}
           className="text-sm font-semibold text-background/70 tracking-wide"
         >
-          {confirmed ? "Pedido confirmado" : label}
+          {confirmed ? t("customer.orderConfirmed") : label}
         </span>
       </div>
 
@@ -188,7 +189,6 @@ function SlideToConfirm({ onConfirm, label }: { onConfirm: () => void; label: st
           </div>
         )}
       </div>
-
     </div>
   );
 }
@@ -201,6 +201,7 @@ export default function CartPage({
   "use no memo";
   const { branchSlug, tableCode } = use(params);
   const router = useRouter();
+  const { t } = useTranslation();
   const {
     items,
     updateQuantity,
@@ -313,9 +314,10 @@ export default function CartPage({
     return () => clearTimeout(timeout);
   }, [loadDiscounts]);
 
+  const taxRate = useCustomerStore((state) => state.taxRate) ?? 1000;
   const subtotal = getSubtotal();
-  const tax = getTax(TAX_RATE);
-  const total = getTotal(TAX_RATE);
+  const tax = getTax(taxRate);
+  const total = getTotal(taxRate);
 
   const handleValidateCoupon = () => {
     if (!couponCode.trim()) return;
@@ -333,7 +335,7 @@ export default function CartPage({
       .then((res) => res.json())
       .then((data) => {
         if (!data.success) {
-          setCouponError(data.error?.message || "Cupon invalido");
+          setCouponError(data.error?.message || t("customer.invalidCoupon"));
           setCouponLoading(false);
           return;
         }
@@ -348,7 +350,7 @@ export default function CartPage({
         setCouponLoading(false);
       })
       .catch(() => {
-        setCouponError("Error al validar cupon");
+        setCouponError(t("customer.errorValidatingCoupon"));
         setCouponLoading(false);
       });
   };
@@ -381,7 +383,6 @@ export default function CartPage({
         break;
       }
       case "buy_x_get_y": {
-        // Server calculates exact discount — show approximate as "promo applied"
         discount = 0;
         break;
       }
@@ -405,10 +406,8 @@ export default function CartPage({
 
   const redemptionDiscount = getRedemptionDiscount();
   const totalDiscount = couponDiscount + redemptionDiscount;
-  // IGV is calculated on (subtotal - discount) to match backend logic
-  const taxableBase = subtotal - totalDiscount;
-  const adjustedTax = totalDiscount > 0 ? Math.round((taxableBase * TAX_RATE) / 10000) : tax;
-  const adjustedTotal = totalDiscount > 0 ? taxableBase + adjustedTax : total;
+  const adjustedTotal = subtotal - totalDiscount;
+  const adjustedTax = Math.round(adjustedTotal - (adjustedTotal / (1 + (taxRate / 10000))));
 
   const handleConfirmOrder = () => {
     setLoading(true);
@@ -437,7 +436,7 @@ export default function CartPage({
       .then((res) => res.json())
       .then((data) => {
         if (!data.success) {
-          setError(data.error?.message || "Error al crear orden");
+          setError(data.error?.message || t("customer.errorPlacingOrder"));
           setLoading(false);
           return;
         }
@@ -447,14 +446,14 @@ export default function CartPage({
         }
 
         clearCart();
-        toast.success("Pedido enviado a cocina", {
-          description: `Orden #${data.data?.order_number || ""} recibida`,
+        toast.success(t("customer.orderSentToKitchen"), {
+          description: `${t("customer.orderReceived")} #${data.data?.order_number || ""}`,
         });
         setLoading(false);
         router.push(`/${branchSlug}/${tableCode}/status`);
       })
       .catch(() => {
-        setError("Error inesperado");
+        setError(t("customer.unexpectedError"));
         setLoading(false);
       });
   };
@@ -465,14 +464,14 @@ export default function CartPage({
         <div className="mx-auto mb-4 flex h-20 w-20 items-center justify-center rounded-full bg-muted">
           <ShoppingBag className="h-10 w-10 text-muted-foreground" />
         </div>
-        <h2 className="text-xl font-bold mb-2">Carrito vacio</h2>
-        <p className="text-muted-foreground mb-6">Agrega productos desde el menu</p>
+        <h2 className="text-xl font-bold mb-2">{t("customer.cartIsEmpty")}</h2>
+        <p className="text-muted-foreground mb-6">{t("customer.addItemsFromMenu")}</p>
         <Button
           variant="outline"
           onClick={() => router.push(`/${branchSlug}/${tableCode}/menu`)}
         >
           <ArrowLeft className="h-4 w-4 mr-2" />
-          Volver al Menu
+          {t("customer.backToMenu")}
         </Button>
       </div>
     );
@@ -489,8 +488,8 @@ export default function CartPage({
         >
           <ArrowLeft className="h-5 w-5" />
         </Button>
-        <h1 className="text-xl font-bold">Tu Pedido</h1>
-        <span className="text-sm text-muted-foreground">({items.length} items)</span>
+        <h1 className="text-xl font-bold">{t("customer.yourOrder")}</h1>
+        <span className="text-sm text-muted-foreground">({items.length} {t("customer.items")})</span>
       </div>
 
       {error && (
@@ -508,7 +507,7 @@ export default function CartPage({
                 <div className="flex-1 min-w-0">
                   <h3 className="font-medium">{item.name}</h3>
                   <p className="text-sm text-muted-foreground">
-                    {formatCurrency(item.unitPrice)} c/u
+                    {formatCurrency(item.unitPrice)} {t("customer.each")}
                   </p>
                   {item.modifiers.length > 0 && (
                     <p className="text-xs text-muted-foreground mt-1">
@@ -550,7 +549,7 @@ export default function CartPage({
               </div>
               <div className="mt-3">
                 <Input
-                  placeholder="Notas (ej: sin cebolla)"
+                  placeholder={t("customer.notesPlaceholder")}
                   className="text-sm h-9"
                   value={notes[item.menuItemId] || ""}
                   onChange={(e) =>
@@ -571,10 +570,10 @@ export default function CartPage({
             className="flex items-center gap-2 text-sm font-medium text-foreground w-full"
           >
             <Ticket className="h-4 w-4 text-primary" />
-            Tengo un cupon
+            {t("customer.haveCoupon")}
             {appliedCoupon && (
               <span className="text-[10px] font-medium text-green-600 dark:text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
-                Aplicado
+                {t("customer.applied")}
               </span>
             )}
             <ChevronDown
@@ -592,7 +591,7 @@ export default function CartPage({
             <div className="pt-3 space-y-2">
               {availableCoupons.length > 0 && !appliedCoupon && (
                 <div className="space-y-2 mb-3">
-                  <p className="text-xs font-medium text-muted-foreground">Cupones disponibles:</p>
+                  <p className="text-xs font-medium text-muted-foreground">{t("customer.availableCoupons")}</p>
                   {availableCoupons.map((coupon: any) => (
                     <button
                       key={coupon.id}
@@ -615,9 +614,9 @@ export default function CartPage({
                         {coupon.type === "percentage" || coupon.type === "item_discount"
                           ? `${coupon.discount_value}%`
                           : coupon.type === "item_free"
-                            ? "Gratis"
+                            ? t("customer.free")
                             : coupon.type === "buy_x_get_y"
-                              ? "Promo"
+                              ? t("customer.promo")
                               : formatCurrency(coupon.discount_value || 0)}
                       </span>
                     </button>
@@ -630,7 +629,7 @@ export default function CartPage({
                     <Check className="h-4 w-4 text-green-600 dark:text-green-400" />
                     <div>
                       <p className="text-sm font-medium text-green-800 dark:text-green-300">{appliedCoupon.code}</p>
-                      <p className="text-xs text-green-600 dark:text-green-400">{appliedCoupon.name} - {formatCurrency(couponDiscount)} descuento</p>
+                      <p className="text-xs text-green-600 dark:text-green-400">{appliedCoupon.name} - {formatCurrency(couponDiscount)} {t("customer.discount")}</p>
                     </div>
                   </div>
                   <button onClick={() => setAppliedCoupon(null)} className="p-1">
@@ -641,7 +640,7 @@ export default function CartPage({
                 <>
                   <div className="flex gap-2">
                     <Input
-                      placeholder="Ingresa tu codigo"
+                      placeholder={t("loyalty.couponCode")}
                       value={couponCode}
                       onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(null); }}
                       className="text-sm h-9 font-mono"
@@ -652,7 +651,7 @@ export default function CartPage({
                       disabled={couponLoading || !couponCode.trim()}
                       className="h-9 px-4"
                     >
-                      {couponLoading ? "..." : "Aplicar"}
+                      {couponLoading ? "..." : t("customer.apply")}
                     </Button>
                   </div>
                   {couponError && (
@@ -672,10 +671,10 @@ export default function CartPage({
           <CardContent className="p-4">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground mb-3">
               <Gift className="h-4 w-4 text-primary" />
-              Recompensas Canjeadas
+              {t("customer.redeemedRewards")}
               {appliedRedemption && (
                 <span className="text-[10px] font-medium text-green-600 dark:text-green-400 bg-green-500/10 px-1.5 py-0.5 rounded">
-                  Aplicada
+                  {t("customer.applied")}
                 </span>
               )}
             </div>
@@ -688,8 +687,8 @@ export default function CartPage({
                     <p className="text-sm font-medium text-green-800 dark:text-green-300">{appliedRedemption.reward_name}</p>
                     <p className="text-xs text-green-600 dark:text-green-400">
                       {appliedRedemption.discount_type === "percentage"
-                        ? `${appliedRedemption.discount_value}% de descuento`
-                        : `${formatCurrency(appliedRedemption.discount_value)} de descuento`}
+                        ? `${appliedRedemption.discount_value}% ${t("customer.discount")}`
+                        : `${formatCurrency(appliedRedemption.discount_value)} ${t("customer.discount")}`}
                       {redemptionDiscount > 0 && ` · -${formatCurrency(redemptionDiscount)}`}
                     </p>
                   </div>
@@ -710,11 +709,11 @@ export default function CartPage({
                       <p className="text-sm font-medium">{r.reward_name}</p>
                       <p className="text-xs text-muted-foreground">
                         {r.discount_type === "percentage"
-                          ? `${r.discount_value}% de descuento`
-                          : `${formatCurrency(r.discount_value)} de descuento`}
+                          ? `${r.discount_value}% ${t("customer.discount")}`
+                          : `${formatCurrency(r.discount_value)} ${t("customer.discount")}`}
                       </p>
                     </div>
-                    <span className="text-xs font-bold text-primary">Aplicar</span>
+                    <span className="text-xs font-bold text-primary">{t("customer.apply")}</span>
                   </button>
                 ))}
               </div>
@@ -727,28 +726,30 @@ export default function CartPage({
       <Card>
         <CardContent className="p-4 space-y-3">
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">Subtotal</span>
+            <span className="text-muted-foreground">{t("customer.subtotal")}</span>
             <span className="font-medium">{formatCurrency(subtotal)}</span>
           </div>
           {couponDiscount > 0 && (
             <div className="flex justify-between text-sm">
-              <span className="text-green-600 dark:text-green-400">Cupon ({appliedCoupon?.code})</span>
+              <span className="text-green-600 dark:text-green-400">{t("customer.coupon")} ({appliedCoupon?.code})</span>
               <span className="font-medium text-green-600 dark:text-green-400">-{formatCurrency(couponDiscount)}</span>
             </div>
           )}
           {redemptionDiscount > 0 && (
             <div className="flex justify-between text-sm">
-              <span className="text-green-600 dark:text-green-400">Recompensa</span>
+              <span className="text-green-600 dark:text-green-400">{t("customer.reward")}</span>
               <span className="font-medium text-green-600 dark:text-green-400">-{formatCurrency(redemptionDiscount)}</span>
             </div>
           )}
           <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">IGV (18%)</span>
+            <span className="text-muted-foreground">
+              {t("customer.tax").replace("18%", `${(taxRate / 100).toFixed(2).replace(/\.00$/, "")}%`)}
+            </span>
             <span className="font-medium">{formatCurrency(totalDiscount > 0 ? adjustedTax : tax)}</span>
           </div>
           <div className="border-t border-border pt-3">
             <div className="flex justify-between font-bold text-lg">
-              <span>Total</span>
+              <span>{t("customer.total")}</span>
               <span className="text-primary">{formatCurrency(adjustedTotal)}</span>
             </div>
           </div>
@@ -761,12 +762,12 @@ export default function CartPage({
           {loading ? (
             <div className="h-14 rounded-2xl bg-foreground flex items-center justify-center gap-2">
               <div className="h-4 w-4 border-2 border-background/30 border-t-background rounded-full animate-spin" />
-              <span className="text-background font-semibold">Enviando pedido...</span>
+              <span className="text-background font-semibold">{t("customer.sendingOrder")}</span>
             </div>
           ) : (
             <SlideToConfirm
               onConfirm={handleConfirmOrder}
-              label={`Desliza para confirmar · ${formatCurrency(adjustedTotal)}`}
+              label={`${t("customer.slideToConfirm")} · ${formatCurrency(adjustedTotal)}`}
             />
           )}
         </div>

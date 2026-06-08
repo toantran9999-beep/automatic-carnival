@@ -20,6 +20,7 @@ import { Label } from "@restai/ui/components/label";
 import { DatePicker } from "@restai/ui/components/date-picker";
 import { UtensilsCrossed, Star, RefreshCw } from "lucide-react";
 import { useCustomerStore } from "@/stores/customer-store";
+import { useTranslation } from "@/stores/lang-store";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -42,6 +43,8 @@ function useCustomerEntryLocalState() {
     sessionId?: string;
     customerName?: string;
     token?: string;
+    taxRate?: number;
+    currency?: string;
   } | null>(null);
   const [checkingSession, setCheckingSession] = useState(true);
 
@@ -75,6 +78,7 @@ function CustomerEntryPageContent({
   "use no memo";
   const { branchSlug, tableCode } = use(params);
   const router = useRouter();
+  const { t } = useTranslation();
   const {
     loading,
     setLoading,
@@ -118,15 +122,20 @@ function CustomerEntryPageContent({
   }, [checkExistingSession]);
 
   const handleReconnect = () => {
-    if (existingSession?.token && existingSession?.sessionId) {
+    const localToken = useCustomerStore.getState().token;
+    if (localToken && existingSession?.sessionId) {
       setSession({
-        token: existingSession.token,
+        token: localToken,
         sessionId: existingSession.sessionId,
         branchSlug,
         tableCode,
-        customerName: existingSession.customerName,
+        customerName: existingSession.customerName || useCustomerStore.getState().customerName || "",
+        taxRate: existingSession.taxRate,
+        currency: existingSession.currency,
       });
       router.push(`/${branchSlug}/${tableCode}/menu`);
+    } else {
+      setExistingSession(null);
     }
   };
 
@@ -172,7 +181,7 @@ function CustomerEntryPageContent({
             setLoading(false);
             return;
           }
-          setError(result.error?.message || "Error al iniciar sesion");
+          setError(result.error?.message || t("customer.errorStartSession"));
           setLoading(false);
           return;
         }
@@ -185,6 +194,8 @@ function CustomerEntryPageContent({
             branchSlug,
             tableCode,
             customerName: data.customerName,
+            taxRate: result.data.taxRate,
+            currency: result.data.currency,
           });
           setLoading(false);
           router.push(`/${branchSlug}/${tableCode}/menu`);
@@ -197,12 +208,14 @@ function CustomerEntryPageContent({
           branchSlug,
           tableCode,
           customerName: data.customerName,
+          taxRate: result.data.taxRate,
+          currency: result.data.currency,
         });
         setLoading(false);
         router.push(`/${branchSlug}/${tableCode}/waiting`);
       })
       .catch(() => {
-        setError("Error inesperado");
+        setError(t("customer.unexpectedError"));
         setLoading(false);
       });
   };
@@ -210,7 +223,7 @@ function CustomerEntryPageContent({
   if (checkingSession) {
     return (
       <div className="p-4 mt-8 flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Verificando mesa...</div>
+        <div className="animate-pulse text-muted-foreground">{t("customer.checkingTable")}</div>
       </div>
     );
   }
@@ -224,21 +237,21 @@ function CustomerEntryPageContent({
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-green-500/10">
               <RefreshCw className="h-8 w-8 text-green-600" />
             </div>
-            <CardTitle className="text-2xl">Sesion activa</CardTitle>
+            <CardTitle className="text-2xl">{t("customer.activeSession")}</CardTitle>
             <CardDescription>
-              Esta mesa tiene una sesion activa de {existingSession.customerName}
+              {t("customer.activeSessionDesc").replace("{name}", existingSession.customerName || "")}
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-3">
             <Button className="w-full" onClick={handleReconnect}>
-              Reconectar a sesion existente
+              {t("customer.reconnect")}
             </Button>
             <Button
               variant="outline"
               className="w-full"
               onClick={() => setExistingSession(null)}
             >
-              Iniciar nueva sesion
+              {t("customer.startNewSession")}
             </Button>
           </CardContent>
         </Card>
@@ -255,9 +268,9 @@ function CustomerEntryPageContent({
             <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-amber-500/10">
               <UtensilsCrossed className="h-8 w-8 text-amber-600" />
             </div>
-            <CardTitle className="text-2xl">Mesa en espera</CardTitle>
+            <CardTitle className="text-2xl">{t("customer.tableWaiting")}</CardTitle>
             <CardDescription>
-              Esta mesa esta esperando aprobacion del personal. Intenta de nuevo en unos momentos.
+              {t("customer.tableWaitingDesc")}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -270,7 +283,7 @@ function CustomerEntryPageContent({
                 void checkExistingSession();
               }}
             >
-              Verificar de nuevo
+              {t("customer.checkAgain")}
             </Button>
           </CardContent>
         </Card>
@@ -285,9 +298,9 @@ function CustomerEntryPageContent({
           <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
             <UtensilsCrossed className="h-8 w-8 text-primary" />
           </div>
-          <CardTitle className="text-2xl">Bienvenido</CardTitle>
+          <CardTitle className="text-2xl">{t("customer.welcome")}</CardTitle>
           <CardDescription>
-            Mesa {tableCode} - Ingresa tus datos para empezar a ordenar
+            {t("customer.welcomeDesc").replace("{tableCode}", tableCode)}
           </CardDescription>
         </CardHeader>
         <form onSubmit={handleSubmit(onSubmit)}>
@@ -298,23 +311,25 @@ function CustomerEntryPageContent({
               </div>
             )}
             <div className="space-y-2">
-              <Label htmlFor="customerName">Tu nombre *</Label>
+              <Label htmlFor="customerName">{t("customer.yourName")}</Label>
               <Input
                 id="customerName"
-                placeholder="Ingresa tu nombre"
+                placeholder={t("customer.enterName")}
                 {...register("customerName")}
               />
               {errors.customerName && (
                 <p className="text-sm text-destructive">
-                  {errors.customerName.message}
+                  {errors.customerName.message === "Ingresa tu nombre" || errors.customerName.type === "required" || errors.customerName.message === "Required"
+                    ? t("customer.invalidName")
+                    : errors.customerName.message}
                 </p>
               )}
             </div>
             <div className="space-y-2">
-              <Label htmlFor="customerPhone">Telefono (opcional)</Label>
+              <Label htmlFor="customerPhone">{t("customer.phoneOptional")}</Label>
               <Input
                 id="customerPhone"
-                placeholder="987 654 321"
+                placeholder={t("customer.phonePlaceholder")}
                 {...register("customerPhone")}
               />
               {errors.customerPhone && (
@@ -343,10 +358,10 @@ function CustomerEntryPageContent({
                 </div>
                 <div className="flex-1 min-w-0">
                   <p className="text-sm font-medium text-foreground">
-                    Quieres acumular puntos?
+                    {t("customer.wantPoints")}
                   </p>
                   <p className="text-xs text-muted-foreground">
-                    Registrate y gana puntos con cada pedido
+                    {t("customer.earnPointsDesc")}
                   </p>
                 </div>
                 <div className={`h-5 w-9 rounded-full transition-colors relative ${
@@ -362,21 +377,23 @@ function CustomerEntryPageContent({
             {wantsLoyalty && (
               <div className="space-y-4 animate-in fade-in slide-in-from-top-2 duration-200">
                 <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
+                  <Label htmlFor="email">{t("customer.email")}</Label>
                   <Input
                     id="email"
                     type="email"
-                    placeholder="tu@email.com"
+                    placeholder={t("customer.emailPlaceholder")}
                     {...register("email")}
                   />
                   {errors.email && (
                     <p className="text-sm text-destructive">
-                      {errors.email.message}
+                      {errors.email.message === "Email invalido" || errors.email.message === "email_invalid"
+                        ? t("customer.invalidEmail")
+                        : errors.email.message}
                     </p>
                   )}
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="birthDate">Fecha de nacimiento (opcional)</Label>
+                  <Label htmlFor="birthDate">{t("customer.birthDateOptional")}</Label>
                   <Controller
                     control={control}
                     name="birthDate"
@@ -393,7 +410,7 @@ function CustomerEntryPageContent({
             )}
 
             <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Iniciando..." : "Ver Menu"}
+              {loading ? t("customer.starting") : t("customer.viewMenu")}
             </Button>
           </CardContent>
         </form>

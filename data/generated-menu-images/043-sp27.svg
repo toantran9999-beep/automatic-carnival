@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="600" height="600" viewBox="0 0 600 600">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#FAFFF5"/>
+      <stop offset="55%" stop-color="#F5DA7A" stop-opacity="0.55"/>
+      <stop offset="100%" stop-color="#61A96F" stop-opacity="0.25"/>
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="12" stdDeviation="16" flood-color="#000000" flood-opacity="0.18"/>
+    </filter>
+  </defs>
+  <rect width="600" height="600" rx="56" fill="url(#bg)"/>
+  <circle cx="502" cy="94" r="118" fill="#61A96F" opacity="0.18"/>
+  <circle cx="90" cy="508" r="132" fill="#174A3A" opacity="0.08"/>
+  <rect x="86" y="94" width="428" height="322" rx="42" fill="#ffffff" opacity="0.74" filter="url(#shadow)"/>
+  <circle cx="300" cy="197" r="74" fill="#174A3A" opacity="0.96"/>
+  <text x="300" y="222" text-anchor="middle" font-family="Arial, sans-serif" font-size="76" fill="#ffffff">🍵</text>
+  <text x="300" y="292" text-anchor="middle" font-family="Arial, sans-serif" font-size="38" font-weight="800" fill="#174A3A">Trà đào</text>
+  <text x="300" y="444" text-anchor="middle" font-family="Arial, sans-serif" font-size="22" font-weight="700" fill="#61A96F">TRÀ &amp; MÓN KHÁC</text>
+  <text x="300" y="491" text-anchor="middle" font-family="Arial, sans-serif" font-size="30" font-weight="800" fill="#174A3A">22.000đ</text>
+  <text x="300" y="548" text-anchor="middle" font-family="Arial, sans-serif" font-size="20" font-weight="700" fill="#174A3A" opacity="0.72">TODA CAFÉ</text>
+</svg>

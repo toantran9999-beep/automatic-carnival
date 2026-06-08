@@ -13,6 +13,7 @@ import {
   DialogFooter,
 } from "@restai/ui/components/dialog";
 import { useCreateTable } from "@/hooks/use-tables";
+import { useTranslation } from "@/stores/lang-store";
 
 interface CreateTableDialogProps {
   open: boolean;
@@ -21,6 +22,7 @@ interface CreateTableDialogProps {
 }
 
 export function CreateTableDialog({ open, onOpenChange, spaces }: CreateTableDialogProps) {
+  const { t } = useTranslation();
   const [newTableNumber, setNewTableNumber] = useState("");
   const [newTableCapacity, setNewTableCapacity] = useState("4");
   const [newTableSpaceId, setNewTableSpaceId] = useState("none");
@@ -51,22 +53,22 @@ export function CreateTableDialog({ open, onOpenChange, spaces }: CreateTableDia
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Nueva Mesa</DialogTitle>
+          <DialogTitle>{t("tables.addTable")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-4">
           <div className="space-y-2">
-            <Label htmlFor="table-number">Numero de mesa</Label>
+            <Label htmlFor="table-number">{t("tables.tableName")}</Label>
             <Input
               id="table-number"
               type="number"
               min={1}
               value={newTableNumber}
               onChange={(e) => setNewTableNumber(e.target.value)}
-              placeholder="Ej: 1"
+              placeholder="1"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="table-capacity">Capacidad (personas)</Label>
+            <Label htmlFor="table-capacity">{t("tables.tableCapacity")}</Label>
             <Input
               id="table-capacity"
               type="number"
@@ -78,13 +80,13 @@ export function CreateTableDialog({ open, onOpenChange, spaces }: CreateTableDia
             />
           </div>
           <div className="space-y-2">
-            <Label>Espacio (opcional)</Label>
+            <Label>{t("tables.spaces")} ({t("menu.optional").toLowerCase()})</Label>
             <Select value={newTableSpaceId} onValueChange={setNewTableSpaceId}>
               <SelectTrigger>
-                <SelectValue placeholder="Sin espacio" />
+                <SelectValue placeholder={t("tables.unassigned")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="none">Sin espacio</SelectItem>
+                <SelectItem value="none">{t("tables.unassigned")}</SelectItem>
                 {spaces.map((space: any) => (
                   <SelectItem key={space.id} value={space.id}>
                     {space.name}
@@ -96,13 +98,13 @@ export function CreateTableDialog({ open, onOpenChange, spaces }: CreateTableDia
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={handleCreateTable}
             disabled={createTable.isPending || !newTableNumber}
           >
-            {createTable.isPending ? "Creando..." : "Crear Mesa"}
+            {createTable.isPending ? t("staff.creating") : t("tables.addTable")}
           </Button>
         </DialogFooter>
       </DialogContent>

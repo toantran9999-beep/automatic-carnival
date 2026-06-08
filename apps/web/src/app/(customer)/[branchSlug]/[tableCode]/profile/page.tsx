@@ -27,6 +27,7 @@ import {
   User,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useTranslation } from "@/stores/lang-store";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -73,16 +74,6 @@ interface OrderData {
   items: Array<{ id: string; name: string; quantity: number; status: string }>;
 }
 
-const orderStatusLabels: Record<string, string> = {
-  pending: "Pendiente",
-  confirmed: "Confirmado",
-  preparing: "Preparando",
-  ready: "Listo",
-  served: "Servido",
-  completed: "Completado",
-  cancelled: "Cancelado",
-};
-
 const orderStatusVariants: Record<string, string> = {
   pending: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20",
   confirmed: "bg-blue-500/15 text-blue-700 dark:text-blue-400 border-blue-500/20",
@@ -99,6 +90,7 @@ export default function ProfilePage({
   params: Promise<{ branchSlug: string; tableCode: string }>;
 }) {
   const { branchSlug, tableCode } = use(params);
+  const { t, lang } = useTranslation();
 
   const storeToken = useCustomerStore((s) => s.token);
   const storeCustomerName = useCustomerStore((s) => s.customerName);
@@ -117,6 +109,16 @@ export default function ProfilePage({
   const [redeemResult, setRedeemResult] = useState<{ discount: { type: string; value: number }; newBalance: number } | null>(null);
 
   const customerName = storeCustomerName || (typeof window !== "undefined" ? sessionStorage.getItem("customer_name") : null);
+
+  const orderStatusLabels: Record<string, string> = {
+    pending: t("dashboard.status_pending"),
+    confirmed: t("dashboard.status_confirmed"),
+    preparing: t("dashboard.status_preparing"),
+    ready: t("dashboard.status_ready"),
+    served: t("dashboard.status_served"),
+    completed: t("dashboard.status_completed"),
+    cancelled: lang === "vi" ? "Đã hủy" : "Cancelled",
+  };
 
   const getToken = useCallback(() => {
     if (storeToken) return storeToken;
@@ -216,7 +218,7 @@ export default function ProfilePage({
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Cargando perfil...</p>
+        <p className="text-sm text-muted-foreground">{lang === "vi" ? "Đang tải hồ sơ..." : "Loading profile..."}</p>
       </div>
     );
   }
@@ -228,10 +230,10 @@ export default function ProfilePage({
         <Link href={`/${branchSlug}/${tableCode}/menu`}>
           <Button variant="ghost" size="sm" className="gap-1.5">
             <ArrowLeft className="h-4 w-4" />
-            Menu
+            {t("customer.menu")}
           </Button>
         </Link>
-        <h1 className="text-xl font-bold flex-1">Mi Perfil</h1>
+        <h1 className="text-xl font-bold flex-1">{t("customer.profile")}</h1>
       </div>
 
       {/* Customer info */}
@@ -242,8 +244,8 @@ export default function ProfilePage({
               <User className="h-6 w-6 text-primary" />
             </div>
             <div>
-              <p className="font-semibold text-lg">{customerName || "Cliente"}</p>
-              <p className="text-sm text-muted-foreground">Mesa {tableCode}</p>
+              <p className="font-semibold text-lg">{customerName || (lang === "vi" ? "Khách hàng" : "Customer")}</p>
+              <p className="text-sm text-muted-foreground">{t("connections.table")} {tableCode}</p>
             </div>
           </div>
         </CardContent>
@@ -267,13 +269,13 @@ export default function ProfilePage({
               <span className="text-3xl font-bold text-primary">
                 {loyalty.points_balance.toLocaleString()}
               </span>
-              <span className="text-sm text-muted-foreground">puntos disponibles</span>
+              <span className="text-sm text-muted-foreground">{t("loyalty.availablePoints")}</span>
             </div>
 
             {loyalty.next_tier && (
               <div className="space-y-1">
                 <div className="flex justify-between text-xs text-muted-foreground">
-                  <span>Progreso a {loyalty.next_tier.name}</span>
+                  <span>{lang === "vi" ? `Tiến trình đạt ${loyalty.next_tier.name}` : `Progress to ${loyalty.next_tier.name}`}</span>
                   <span>
                     {loyalty.total_points_earned.toLocaleString()} / {loyalty.next_tier.min_points.toLocaleString()}
                   </span>
@@ -291,7 +293,7 @@ export default function ProfilePage({
 
             <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
               <TrendingUp className="h-3 w-3" />
-              <span>Ganas puntos con cada pedido</span>
+              <span>{lang === "vi" ? "Tích lũy điểm với mỗi đơn hàng" : "Earn points with every order"}</span>
             </div>
           </CardContent>
         </Card>
@@ -303,7 +305,7 @@ export default function ProfilePage({
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Gift className="h-4 w-4 text-primary" />
-              Recompensas Disponibles
+              {t("loyalty.availableRewards")}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -323,8 +325,8 @@ export default function ProfilePage({
                     <p className="font-medium text-sm truncate">{reward.name}</p>
                     <p className="text-xs text-muted-foreground">
                       {reward.discount_type === "percentage"
-                        ? `${reward.discount_value}% de descuento`
-                        : `${formatCurrency(reward.discount_value)} de descuento`}
+                        ? `${reward.discount_value}% ${lang === "vi" ? "giảm giá" : "discount"}`
+                        : `${formatCurrency(reward.discount_value)} ${lang === "vi" ? "giảm giá" : "discount"}`}
                     </p>
                   </div>
                   <div className="shrink-0 ml-3 flex flex-col items-end gap-1">
@@ -342,11 +344,11 @@ export default function ProfilePage({
                         className="h-7 text-xs px-3"
                         onClick={() => handleRedeemClick(reward)}
                       >
-                        Canjear
+                        {t("loyalty.redeem")}
                       </Button>
                     ) : (
                       <p className="text-[10px] text-muted-foreground">
-                        Faltan {(reward.points_cost - loyalty.points_balance).toLocaleString()}
+                        {lang === "vi" ? `Còn thiếu ${(reward.points_cost - loyalty.points_balance).toLocaleString()}` : `${(reward.points_cost - loyalty.points_balance).toLocaleString()} points needed`}
                       </p>
                     )}
                   </div>
@@ -363,7 +365,7 @@ export default function ProfilePage({
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <CheckCircle className="h-4 w-4 text-green-600" />
-              Canjes Pendientes
+              {lang === "vi" ? "Đổi quà đang chờ xử lý" : "Pending Redemptions"}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -376,17 +378,17 @@ export default function ProfilePage({
                   <p className="font-medium text-sm">{r.reward_name}</p>
                   <p className="text-xs text-muted-foreground">
                     {r.discount_type === "percentage"
-                      ? `${r.discount_value}% de descuento`
-                      : `${formatCurrency(r.discount_value)} de descuento`}
+                      ? `${r.discount_value}% ${lang === "vi" ? "giảm giá" : "discount"}`
+                      : `${formatCurrency(r.discount_value)} ${lang === "vi" ? "giảm giá" : "discount"}`}
                   </p>
                 </div>
                 <Badge variant="secondary" className="text-[10px] bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/20 shrink-0">
-                  Pendiente
+                  {t("dashboard.status_pending")}
                 </Badge>
               </div>
             ))}
             <p className="text-[10px] text-muted-foreground text-center">
-              Se aplicara automaticamente en tu proximo pedido desde el carrito
+              {lang === "vi" ? "Sẽ tự động áp dụng trong đơn hàng tiếp theo từ giỏ hàng" : "Will be automatically applied to your next order from the cart"}
             </p>
           </CardContent>
         </Card>
@@ -398,7 +400,7 @@ export default function ProfilePage({
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <Ticket className="h-4 w-4 text-primary" />
-              Mis Cupones
+              {lang === "vi" ? "Mã giảm giá của tôi" : "My Coupons"}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -416,10 +418,10 @@ export default function ProfilePage({
                   </div>
                   <p className="text-xs text-muted-foreground mt-1">
                     {coupon.type === "percentage"
-                      ? `${coupon.discount_value}% de descuento`
-                      : `${formatCurrency(coupon.discount_value)} de descuento`}
+                      ? `${coupon.discount_value}% ${lang === "vi" ? "giảm giá" : "discount"}`
+                      : `${formatCurrency(coupon.discount_value)} ${lang === "vi" ? "giảm giá" : "discount"}`}
                     {coupon.expires_at && (
-                      <> · Vence {new Date(coupon.expires_at).toLocaleDateString("es-PE")}</>
+                      <> · {lang === "vi" ? "Hết hạn" : "Expires"} {new Date(coupon.expires_at).toLocaleDateString(lang === "vi" ? "vi-VN" : "en-US")}</>
                     )}
                   </p>
                 </div>
@@ -435,7 +437,7 @@ export default function ProfilePage({
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
               <ShoppingBag className="h-4 w-4 text-primary" />
-              Mis Pedidos
+              {lang === "vi" ? "Đơn hàng của tôi" : "My Orders"}
             </CardTitle>
           </CardHeader>
           <CardContent className="space-y-2">
@@ -480,7 +482,7 @@ export default function ProfilePage({
           <CardContent className="p-6 text-center">
             <Star className="h-10 w-10 text-muted-foreground/30 mx-auto mb-3" />
             <p className="text-sm text-muted-foreground">
-              Aun no tienes actividad. Realiza un pedido para empezar a acumular puntos.
+              {lang === "vi" ? "Bạn chưa có hoạt động nào. Hãy đặt món để bắt đầu tích lũy điểm." : "No activity yet. Place an order to start earning points."}
             </p>
           </CardContent>
         </Card>
@@ -490,17 +492,31 @@ export default function ProfilePage({
       <Dialog open={redeemDialogOpen} onOpenChange={setRedeemDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Canjear Recompensa</DialogTitle>
+            <DialogTitle>{t("loyalty.redeemReward")}</DialogTitle>
             <DialogDescription>
               {selectedReward && loyalty && (
                 <>
-                  Canjear <strong>{selectedReward.name}</strong> por{" "}
-                  <strong>{selectedReward.points_cost.toLocaleString()} pts</strong>?
-                  <br />
-                  Tu balance quedara en{" "}
-                  <strong>
-                    {(loyalty.points_balance - selectedReward.points_cost).toLocaleString()} pts
-                  </strong>
+                  {lang === "vi" ? (
+                    <>
+                      Đổi <strong>{selectedReward.name}</strong> lấy{" "}
+                      <strong>{selectedReward.points_cost.toLocaleString()} điểm</strong>?
+                      <br />
+                      Số dư điểm của bạn sẽ còn{" "}
+                      <strong>
+                        {(loyalty.points_balance - selectedReward.points_cost).toLocaleString()} điểm
+                      </strong>
+                    </>
+                  ) : (
+                    <>
+                      Redeem <strong>{selectedReward.name}</strong> for{" "}
+                      <strong>{selectedReward.points_cost.toLocaleString()} pts</strong>?
+                      <br />
+                      Your balance will be{" "}
+                      <strong>
+                        {(loyalty.points_balance - selectedReward.points_cost).toLocaleString()} pts
+                      </strong>
+                    </>
+                  )}
                 </>
               )}
             </DialogDescription>
@@ -511,16 +527,16 @@ export default function ProfilePage({
               onClick={() => setRedeemDialogOpen(false)}
               disabled={redeeming}
             >
-              Cancelar
+              {t("common.cancel")}
             </Button>
             <Button onClick={handleConfirmRedeem} disabled={redeeming}>
               {redeeming ? (
                 <>
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Canjeando...
+                  {t("loyalty.redeeming")}
                 </>
               ) : (
-                "Confirmar Canje"
+                lang === "vi" ? "Xác nhận đổi" : "Confirm Redeem"
               )}
             </Button>
           </DialogFooter>
@@ -533,29 +549,29 @@ export default function ProfilePage({
           <DialogHeader>
             <DialogTitle className="text-center">
               <CheckCircle className="h-12 w-12 text-green-600 mx-auto mb-3" />
-              Recompensa Canjeada
+              {lang === "vi" ? "Đổi phần thưởng thành công" : "Reward Redeemed"}
             </DialogTitle>
             <DialogDescription className="text-center">
               {redeemResult && (
                 <>
                   {redeemResult.discount.type === "percentage"
-                    ? `${redeemResult.discount.value}% de descuento`
-                    : `${formatCurrency(redeemResult.discount.value)} de descuento`}
+                    ? `${redeemResult.discount.value}% ${lang === "vi" ? "giảm giá" : "discount"}`
+                    : `${formatCurrency(redeemResult.discount.value)} ${lang === "vi" ? "giảm giá" : "discount"}`}
                   <br />
                   <span className="text-xs">
-                    Balance actual: {redeemResult.newBalance.toLocaleString()} pts
+                    {lang === "vi" ? `Số dư hiện tại: ${redeemResult.newBalance.toLocaleString()} điểm` : `Current balance: ${redeemResult.newBalance.toLocaleString()} pts`}
                   </span>
                 </>
               )}
               <br />
               <strong className="text-foreground text-sm mt-2 block">
-                Ve al carrito para aplicar el descuento en tu proximo pedido
+                {lang === "vi" ? "Đến giỏ hàng để áp dụng giảm giá cho đơn hàng tiếp theo" : "Go to cart to apply discount on your next order"}
               </strong>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button className="w-full" onClick={() => setSuccessDialogOpen(false)}>
-              Entendido
+              {lang === "vi" ? "Đồng ý" : "Got it"}
             </Button>
           </DialogFooter>
         </DialogContent>

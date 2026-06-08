@@ -23,7 +23,6 @@ import {
   X,
   ChevronLeft,
   Building2,
-  ChevronDown,
   Store,
   Smartphone,
 } from "lucide-react";
@@ -32,6 +31,8 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { useOrgSettings, useBranches } from "@/hooks/use-settings";
 import { NotificationBell } from "@/components/notification-bell";
+import { useTranslation } from "@/stores/lang-store";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 interface NavGroup {
   label: string;
@@ -45,61 +46,104 @@ interface Branch {
   address: string | null;
 }
 
-const navGroups: NavGroup[] = [
-  {
-    label: "General",
-    items: [
-      { href: "/", label: "Panel", icon: LayoutDashboard },
-    ],
-  },
-  {
-    label: "Operaciones",
-    items: [
-      { href: "/pos", label: "POS", icon: Smartphone },
-      { href: "/orders", label: "Ordenes", icon: ClipboardList },
-      { href: "/tables", label: "Mesas", icon: Grid3X3 },
-      { href: "/kitchen", label: "Cocina", icon: ChefHat },
-      { href: "/connections", label: "Conexiones", icon: Wifi },
-      { href: "/menu", label: "Menu", icon: UtensilsCrossed },
-    ],
-  },
-  {
-    label: "Gestion",
-    items: [
-      { href: "/inventory", label: "Inventario", icon: Package },
-      { href: "/staff", label: "Personal", icon: Users },
-      { href: "/payments", label: "Pagos", icon: CreditCard },
-    ],
-  },
-  {
-    label: "Negocio",
-    items: [
-      { href: "/loyalty", label: "Fidelizacion", icon: Heart },
-      { href: "/reports", label: "Reportes", icon: BarChart3 },
-      { href: "/settings", label: "Configuracion", icon: Settings },
-    ],
-  },
-];
-
-// Role-based nav access map
-const roleNavAccess: Record<string, Set<string>> = {
-  org_admin: new Set(navGroups.flatMap((g) => g.items.map((i) => i.href))),
-  branch_manager: new Set(
-    navGroups.flatMap((g) => g.items.filter((i) => i.href !== "/settings").map((i) => i.href))
-  ),
+const allowedPaths = {
+  org_admin: new Set([
+    "/",
+    "/pos",
+    "/orders",
+    "/tables",
+    "/kitchen",
+    "/connections",
+    "/menu",
+    "/inventory",
+    "/staff",
+    "/payments",
+    "/loyalty",
+    "/reports",
+    "/settings",
+  ]),
+  branch_manager: new Set([
+    "/",
+    "/pos",
+    "/orders",
+    "/tables",
+    "/kitchen",
+    "/connections",
+    "/menu",
+    "/inventory",
+    "/staff",
+    "/payments",
+    "/loyalty",
+    "/reports",
+  ]),
   cashier: new Set(["/", "/pos", "/orders", "/payments"]),
   waiter: new Set(["/", "/pos", "/orders", "/tables", "/connections", "/kitchen"]),
   kitchen: new Set(["/", "/kitchen"]),
 };
 
-function getFilteredNavGroups(role: string | undefined): NavGroup[] {
-  const allowed = roleNavAccess[role || ""] || roleNavAccess.org_admin;
-  return navGroups
+function getTranslatedNavGroups(t: any): NavGroup[] {
+  return [
+    {
+      label: t("nav.general"),
+      items: [{ href: "/", label: t("nav.dashboard"), icon: LayoutDashboard }],
+    },
+    {
+      label: t("nav.operations"),
+      items: [
+        { href: "/pos", label: t("nav.pos"), icon: Smartphone },
+        { href: "/orders", label: t("nav.orders"), icon: ClipboardList },
+        { href: "/tables", label: t("nav.tables"), icon: Grid3X3 },
+        { href: "/kitchen", label: t("nav.kitchen"), icon: ChefHat },
+        { href: "/connections", label: t("nav.connections"), icon: Wifi },
+        { href: "/menu", label: t("nav.menu"), icon: UtensilsCrossed },
+      ],
+    },
+    {
+      label: t("nav.management"),
+      items: [
+        { href: "/inventory", label: t("nav.inventory"), icon: Package },
+        { href: "/staff", label: t("nav.staff"), icon: Users },
+        { href: "/payments", label: t("nav.payments"), icon: CreditCard },
+      ],
+    },
+    {
+      label: t("nav.business"),
+      items: [
+        { href: "/loyalty", label: t("nav.loyalty"), icon: Heart },
+        { href: "/reports", label: t("nav.reports"), icon: BarChart3 },
+        { href: "/settings", label: t("nav.settings"), icon: Settings },
+      ],
+    },
+  ];
+}
+
+function getFilteredNavGroups(role: string | undefined, t: any): NavGroup[] {
+  const allowed = allowedPaths[role as keyof typeof allowedPaths] || allowedPaths.org_admin;
+  return getTranslatedNavGroups(t)
     .map((group) => ({
       ...group,
       items: group.items.filter((item) => allowed.has(item.href)),
     }))
     .filter((group) => group.items.length > 0);
+}
+
+function getRoleLabel(role: string, t: any) {
+  switch (role) {
+    case "owner":
+      return t("nav.role_owner");
+    case "org_admin":
+      return t("nav.role_admin");
+    case "branch_manager":
+      return t("nav.role_manager");
+    case "cashier":
+      return t("nav.role_cashier");
+    case "waiter":
+      return t("nav.role_waiter");
+    case "kitchen":
+      return t("nav.role_kitchen");
+    default:
+      return t("nav.role_staff");
+  }
 }
 
 function isActive(pathname: string, href: string) {
@@ -117,6 +161,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
+  const { t } = useTranslation();
 
   const queryClient = useQueryClient();
 
@@ -158,7 +203,7 @@ export default function DashboardLayout({
   if (!user) {
     return (
       <div className="min-h-screen flex items-center justify-center">
-        <div className="animate-pulse text-muted-foreground">Cargando...</div>
+        <div className="animate-pulse text-muted-foreground">{t("common.loading")}</div>
       </div>
     );
   }
@@ -168,9 +213,9 @@ export default function DashboardLayout({
     router.push("/login");
   };
 
-  const orgName = org?.name || "RestAI";
+  const orgName = org?.name || "TODA POS";
 
-  const filteredNavGroups = getFilteredNavGroups(user.role);
+  const filteredNavGroups = getFilteredNavGroups(user.role, t);
   const allFilteredItems = filteredNavGroups.flatMap((g) => g.items);
   const mobileNavItems = allFilteredItems.slice(0, 5);
 
@@ -194,7 +239,7 @@ export default function DashboardLayout({
                 {orgName}
               </p>
               <p className="text-[11px] text-muted-foreground truncate leading-tight">
-                Gestion de restaurante
+                {t("nav.restaurantMgmt")}
               </p>
             </div>
           )}
@@ -204,11 +249,11 @@ export default function DashboardLayout({
         {!collapsed && canSwitchBranch && (
           <div className="px-3 py-2 border-b border-sidebar-border">
             <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
-              Sede activa
+              {t("nav.activeBranch")}
             </label>
             <Select value={selectedBranchId || undefined} onValueChange={handleBranchChange}>
               <SelectTrigger className="h-auto text-xs bg-sidebar-accent/50 text-sidebar-foreground border-sidebar-border py-1.5 focus:ring-sidebar-ring">
-                <SelectValue placeholder="Seleccionar sede" />
+                <SelectValue placeholder={t("nav.selectBranch")} />
               </SelectTrigger>
               <SelectContent>
                 {availableBranches.map((branch: Branch) => (
@@ -242,7 +287,7 @@ export default function DashboardLayout({
                   {group.label}
                 </p>
               )}
-              {collapsed && group.label !== "General" && (
+              {collapsed && group.label !== t("nav.general") && (
                 <div className="mx-2 my-2 border-t border-sidebar-border" />
               )}
               <div className="space-y-0.5">
@@ -301,12 +346,12 @@ export default function DashboardLayout({
                   {user.name}
                 </p>
                 <p className="text-[11px] text-muted-foreground truncate leading-tight">
-                  {user.role === "owner" ? "Propietario" : user.role === "admin" ? "Administrador" : "Personal"}
+                  {getRoleLabel(user.role, t)}
                 </p>
               </div>
               <button
                 onClick={handleLogout}
-                title="Cerrar sesion"
+                title={t("nav.logout")}
                 className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
               >
                 <LogOut className="h-4 w-4" />
@@ -319,7 +364,7 @@ export default function DashboardLayout({
               </div>
               <button
                 onClick={handleLogout}
-                title="Cerrar sesion"
+                title={t("nav.logout")}
                 className="p-1.5 rounded-md text-muted-foreground hover:text-foreground hover:bg-sidebar-accent transition-colors"
               >
                 <LogOut className="h-3.5 w-3.5" />
@@ -351,13 +396,16 @@ export default function DashboardLayout({
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Language Switcher */}
+              <LanguageSwitcher />
+
               {/* Mobile branch selector */}
               {canSwitchBranch && (
                 <div className="md:hidden">
-                  <Select value={selectedBranchId || undefined} onValueChange={handleBranchChange}>
-                    <SelectTrigger className="h-auto text-xs py-1.5 w-auto min-w-[8rem]">
-                      <SelectValue placeholder="Sede" />
-                    </SelectTrigger>
+                    <Select value={selectedBranchId || undefined} onValueChange={handleBranchChange}>
+                      <SelectTrigger className="h-auto text-xs py-1.5 w-auto min-w-[8rem]">
+                        <SelectValue placeholder={t("nav.selectBranch")} />
+                      </SelectTrigger>
                     <SelectContent>
                       {availableBranches.map((branch: Branch) => (
                         <SelectItem key={branch.id} value={branch.id}>
@@ -415,11 +463,11 @@ export default function DashboardLayout({
               {canSwitchBranch && (
                 <div className="px-3 py-2 border-b border-sidebar-border">
                   <label className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1 block">
-                    Sede activa
+                    {t("nav.activeBranch")}
                   </label>
                   <Select value={selectedBranchId || undefined} onValueChange={handleBranchChange}>
                     <SelectTrigger className="h-auto text-xs bg-sidebar-accent/50 text-sidebar-foreground border-sidebar-border py-1.5 focus:ring-sidebar-ring">
-                      <SelectValue placeholder="Seleccionar sede" />
+                      <SelectValue placeholder={t("nav.selectBranch")} />
                     </SelectTrigger>
                     <SelectContent>
                       {availableBranches.map((branch: Branch) => (
@@ -489,7 +537,7 @@ export default function DashboardLayout({
                       {user.name}
                     </p>
                     <p className="text-[11px] text-muted-foreground truncate">
-                      {user.email}
+                      {getRoleLabel(user.role, t)}
                     </p>
                   </div>
                   <button

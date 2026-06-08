@@ -7,6 +7,7 @@ import { useStaffList, useUpdateStaff, useShifts, useCreateShift, useEndShift } 
 import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/stores/lang-store";
 import { StaffGrid } from "./_components/staff-grid";
 import { ShiftsSection } from "./_components/shifts-section";
 import { CreateStaffDialog } from "./_components/create-staff-dialog";
@@ -21,6 +22,7 @@ export default function StaffPage() {
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   const [editingMember, setEditingMember] = useState<any>(null);
   const [passwordMember, setPasswordMember] = useState<any>(null);
+  const { t } = useTranslation();
 
   const { data, isLoading, error, refetch } = useStaffList(showInactive);
   const { data: shiftsData, isLoading: shiftsLoading } = useShifts();
@@ -38,18 +40,18 @@ export default function StaffPage() {
   const handleStartShift = async () => {
     try {
       await createShift.mutateAsync({});
-      toast.success("Turno iniciado");
+      toast.success(t("staff.shiftStarted"));
     } catch (err: any) {
-      toast.error(err.message || "Error al iniciar turno");
+      toast.error(err.message || t("staff.shiftStartError"));
     }
   };
 
   const handleEndShift = async (shiftId: string) => {
     try {
       await endShift.mutateAsync(shiftId);
-      toast.success("Turno finalizado");
+      toast.success(t("staff.shiftEnded"));
     } catch (err: any) {
-      toast.error(err.message || "Error al finalizar turno");
+      toast.error(err.message || t("staff.shiftEndError"));
     }
   };
 
@@ -59,9 +61,9 @@ export default function StaffPage() {
         id: member.id,
         isActive: !member.isActive,
       });
-      toast.success(member.isActive ? "Staff desactivado" : "Staff activado");
+      toast.success(member.isActive ? t("staff.staffDeactivated") : t("staff.staffActivated"));
     } catch (err: any) {
-      toast.error(err.message || "Error al cambiar estado");
+      toast.error(err.message || t("staff.statusError"));
     }
   };
 
@@ -79,13 +81,13 @@ export default function StaffPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Staff</h1>
+          <h1 className="text-2xl font-bold">{t("staff.title")}</h1>
         </div>
         <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/5 flex items-center justify-between">
-          <p className="text-sm text-destructive">Error al cargar staff: {(error as Error).message}</p>
+          <p className="text-sm text-destructive">{t("staff.loadError")}: {(error as Error).message}</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Reintentar
+            {t("staff.retry")}
           </Button>
         </div>
       </div>
@@ -95,8 +97,8 @@ export default function StaffPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Staff"
-        description={isLoading ? "Cargando..." : `${activeCount} miembros activos`}
+        title={t("staff.title")}
+        description={isLoading ? t("common.loading") : `${activeCount} ${t("staff.activeCount")}`}
         actions={
           <>
             {myActiveShift ? (
@@ -106,7 +108,7 @@ export default function StaffPage() {
                 disabled={endShift.isPending}
               >
                 <LogOut className="h-4 w-4 mr-2" />
-                Finalizar Turno
+                {t("staff.endShift")}
               </Button>
             ) : (
               <Button
@@ -115,12 +117,12 @@ export default function StaffPage() {
                 disabled={createShift.isPending}
               >
                 <LogIn className="h-4 w-4 mr-2" />
-                Iniciar Turno
+                {t("staff.startShift")}
               </Button>
             )}
             <Button onClick={() => setDialogOpen(true)}>
               <UserPlus className="h-4 w-4 mr-2" />
-              Agregar Staff
+              {t("staff.addStaff")}
             </Button>
           </>
         }

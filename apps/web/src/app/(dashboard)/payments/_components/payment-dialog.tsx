@@ -21,6 +21,8 @@ import {
 } from "@restai/ui/components/dialog";
 import { useCreatePayment, useUnpaidOrders } from "@/hooks/use-payments";
 import { formatCurrency } from "@/lib/utils";
+import { useTranslation } from "@/stores/lang-store";
+import { useBranchSettings } from "@/hooks/use-settings";
 
 interface PaymentDialogProps {
   open: boolean;
@@ -33,6 +35,9 @@ export function PaymentDialog({
   onOpenChange,
   preselectedOrderId,
 }: PaymentDialogProps) {
+  const { t, lang } = useTranslation();
+  const { data: branchSettings } = useBranchSettings();
+  const currency = (branchSettings as any)?.currency || "VND";
   const [selectedOrderId, setSelectedOrderId] = useState("");
   const [method, setMethod] = useState("cash");
   const [amount, setAmount] = useState("");
@@ -56,7 +61,7 @@ export function PaymentDialog({
   // Pre-fill amount when order is selected
   useEffect(() => {
     if (selectedOrder) {
-      setAmount((selectedOrder.remaining / 100).toFixed(2));
+      setAmount(selectedOrder.remaining % 100 === 0 ? (selectedOrder.remaining / 100).toString() : (selectedOrder.remaining / 100).toFixed(2));
     }
   }, [selectedOrder]);
 
@@ -99,31 +104,31 @@ export function PaymentDialog({
     <Dialog open={open} onOpenChange={handleClose}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Registrar Pago</DialogTitle>
+          <DialogTitle>{t("payments.registerPayment")}</DialogTitle>
         </DialogHeader>
 
         {result ? (
           <div className="flex flex-col items-center gap-4 py-6">
             <CheckCircle className="h-12 w-12 text-green-500" />
-            <h3 className="text-lg font-semibold">Pago registrado</h3>
+            <h3 className="text-lg font-semibold">{t("payments.paymentSuccess")}</h3>
             <p className="text-sm text-muted-foreground text-center">
               {result.fully_paid
-                ? `Orden #${result.order_number} completamente pagada`
-                : `Pago parcial. Faltan ${formatCurrency(result.remaining)}`}
+                ? `${t("payments.orderNumber")} #${result.order_number} ${lang === "vi" ? "đã thanh toán đầy đủ" : "fully paid"}`
+                : `${lang === "vi" ? "Đã thanh toán một phần. Còn thiếu:" : "Partial payment. Remaining:"} ${formatCurrency(result.remaining)}`}
             </p>
-            <Button onClick={() => handleClose(false)}>Cerrar</Button>
+            <Button onClick={() => handleClose(false)}>{t("common.cancel")}</Button>
           </div>
         ) : (
           <>
             <div className="space-y-4">
               {/* Order selector */}
               <div className="space-y-2">
-                <Label>Orden</Label>
+                <Label>{t("payments.orderNumber")}</Label>
                 {preselectedOrderId ? (
                   <div className="flex items-center h-9 rounded-md border border-input bg-muted/50 px-3 text-sm">
                     {selectedOrder
-                      ? `#${selectedOrder.order_number} — Mesa ${selectedOrder.table_number ?? "—"} — ${formatCurrency(selectedOrder.remaining)}`
-                      : `Orden ${preselectedOrderId.slice(0, 8)}...`}
+                      ? `#${selectedOrder.order_number} — ${t("tables.title")} ${selectedOrder.table_number ?? "—"} — ${formatCurrency(selectedOrder.remaining)}`
+                      : `${t("payments.orderNumber")} ${preselectedOrderId.slice(0, 8)}...`}
                   </div>
                 ) : (
                   <Select
@@ -131,12 +136,12 @@ export function PaymentDialog({
                     onValueChange={setSelectedOrderId}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Seleccionar orden" />
+                      <SelectValue placeholder={t("payments.selectOrder")} />
                     </SelectTrigger>
                     <SelectContent>
                       {orders.map((order: any) => (
                         <SelectItem key={order.id} value={order.id}>
-                          #{order.order_number} — Mesa{" "}
+                          #{order.order_number} — {t("tables.title")}{" "}
                           {order.table_number ?? "—"} —{" "}
                           {formatCurrency(order.remaining)}
                         </SelectItem>
@@ -150,25 +155,25 @@ export function PaymentDialog({
               {selectedOrder && (
                 <div className="rounded-lg border bg-muted/50 p-3 space-y-1 text-sm">
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Orden:</span>
+                    <span className="text-muted-foreground">{t("payments.orderNumber")}:</span>
                     <span>#{selectedOrder.order_number}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Cliente:</span>
-                    <span>{selectedOrder.customer_name || "—"}</span>
+                    <span className="text-muted-foreground">{t("payments.client")}:</span>
+                    <span>{selectedOrder.customer_name || t("pos.customerPOS")}</span>
                   </div>
                   <div className="flex justify-between">
-                    <span className="text-muted-foreground">Total:</span>
+                    <span className="text-muted-foreground">{t("payments.total")}:</span>
                     <span>{formatCurrency(selectedOrder.total)}</span>
                   </div>
                   {selectedOrder.total_paid > 0 && (
                     <div className="flex justify-between">
-                      <span className="text-muted-foreground">Pagado:</span>
+                      <span className="text-muted-foreground">{lang === "vi" ? "Đã thanh toán" : "Paid"}:</span>
                       <span>{formatCurrency(selectedOrder.total_paid)}</span>
                     </div>
                   )}
                   <div className="flex justify-between font-bold">
-                    <span>Pendiente:</span>
+                    <span>{lang === "vi" ? "Chưa thanh toán" : "Pending"}:</span>
                     <span>{formatCurrency(selectedOrder.remaining)}</span>
                   </div>
                 </div>
@@ -176,18 +181,18 @@ export function PaymentDialog({
 
               {/* Payment method */}
               <div className="space-y-2">
-                <Label>Metodo de Pago</Label>
+                <Label>{t("payments.method")}</Label>
                 <Select value={method} onValueChange={setMethod}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Seleccionar metodo" />
+                    <SelectValue placeholder={lang === "vi" ? "Chọn phương thức..." : "Select method..."} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="cash">Efectivo</SelectItem>
-                    <SelectItem value="card">Tarjeta</SelectItem>
-                    <SelectItem value="yape">Yape</SelectItem>
-                    <SelectItem value="plin">Plin</SelectItem>
-                    <SelectItem value="transfer">Transferencia</SelectItem>
-                    <SelectItem value="other">Otro</SelectItem>
+                    <SelectItem value="cash">{t("payments.cash")}</SelectItem>
+                    <SelectItem value="card">{t("payments.card")}</SelectItem>
+                    <SelectItem value="yape">{t("payments.yape")}</SelectItem>
+                    <SelectItem value="plin">{t("payments.plin")}</SelectItem>
+                    <SelectItem value="transfer">{t("payments.transfer")}</SelectItem>
+                    <SelectItem value="other">{t("payments.other")}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -195,25 +200,25 @@ export function PaymentDialog({
               {/* Amount and tip */}
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
-                  <Label htmlFor="pay-amount">Monto (S/)</Label>
+                  <Label htmlFor="pay-amount">{t("payments.amount")} ({currency === "VND" ? (lang === "vi" ? "đ" : "VND") : currency})</Label>
                   <Input
                     id="pay-amount"
                     type="number"
-                    step="0.01"
-                    min="0.01"
-                    placeholder="0.00"
+                    step={currency === "VND" ? "1" : "0.01"}
+                    min={currency === "VND" ? "1" : "0.01"}
+                    placeholder={currency === "VND" ? "0" : "0.00"}
                     value={amount}
                     onChange={(e) => setAmount(e.target.value)}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label htmlFor="pay-tip">Propina (S/)</Label>
+                  <Label htmlFor="pay-tip">{lang === "vi" ? "Tiền Tip" : "Tip"} ({currency === "VND" ? (lang === "vi" ? "đ" : "VND") : currency})</Label>
                   <Input
                     id="pay-tip"
                     type="number"
-                    step="0.01"
+                    step={currency === "VND" ? "1" : "0.01"}
                     min="0"
-                    placeholder="0.00"
+                    placeholder={currency === "VND" ? "0" : "0.00"}
                     value={tip}
                     onChange={(e) => setTip(e.target.value)}
                   />
@@ -223,16 +228,16 @@ export function PaymentDialog({
               {/* Cash change calculator */}
               {showChange && (
                 <p className="text-sm font-medium text-green-600">
-                  Vuelto: S/ {(changeAmount / 100).toFixed(2)}
+                  {lang === "vi" ? "Tiền thối" : "Change"}: {formatCurrency(changeAmount)}
                 </p>
               )}
 
               {/* Reference */}
               <div className="space-y-2">
-                <Label htmlFor="pay-reference">Referencia</Label>
+                <Label htmlFor="pay-reference">{lang === "vi" ? "Tham chiếu" : "Reference"}</Label>
                 <Input
                   id="pay-reference"
-                  placeholder="Numero de operacion, etc."
+                  placeholder={lang === "vi" ? "Mã giao dịch, v.v..." : "Transaction number, etc."}
                   value={reference}
                   onChange={(e) => setReference(e.target.value)}
                 />
@@ -241,7 +246,7 @@ export function PaymentDialog({
 
             <DialogFooter>
               <Button variant="outline" onClick={() => handleClose(false)}>
-                Cancelar
+                {t("common.cancel")}
               </Button>
               <Button
                 onClick={handleCreate}
@@ -249,7 +254,7 @@ export function PaymentDialog({
                   createPayment.isPending || !selectedOrderId || !amount
                 }
               >
-                {createPayment.isPending ? "Registrando..." : "Registrar Pago"}
+                {createPayment.isPending ? t("common.saving") : t("payments.registerPayment")}
               </Button>
             </DialogFooter>
           </>

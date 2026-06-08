@@ -13,6 +13,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { getTimeDiff, getTimeUrgency } from "./kitchen-context";
+import { useTranslation } from "@/stores/lang-store";
 
 const VISIBLE_ITEMS_LIMIT = 4;
 
@@ -27,6 +28,7 @@ function ItemRow({
   isUpdatingItem: boolean;
   onItemReady: (itemId: string) => void;
 }) {
+  const { t, lang } = useTranslation();
   const isItemReady = item.status === "ready";
   return (
     <div
@@ -57,7 +59,7 @@ function ItemRow({
             disabled={isUpdatingItem}
             onClick={() => onItemReady(item.id)}
           >
-            Listo
+            {lang === "vi" ? "Xong" : "Ready"}
           </button>
         )
       )}
@@ -105,6 +107,7 @@ export function KitchenOrderCard({
   isUpdatingItem: boolean;
   isNew?: boolean;
 }) {
+  const { t, lang } = useTranslation();
   const [expanded, setExpanded] = useState(false);
   const orderNum = order.orderNumber || order.order_number || order.id;
   const tableName = order.tableName || order.table_name || "";
@@ -161,7 +164,7 @@ export function KitchenOrderCard({
           <button
             className="text-white/70 hover:text-white p-2 rounded-lg transition-colors"
             onClick={() => onPrint(order)}
-            title="Imprimir Ticket"
+            title={lang === "vi" ? "In hóa đơn" : "Print Ticket"}
           >
             <Printer className="h-5 w-5" />
           </button>
@@ -188,12 +191,12 @@ export function KitchenOrderCard({
             {expanded ? (
               <>
                 <ChevronUp className="h-3.5 w-3.5" />
-                Mostrar menos
+                {lang === "vi" ? "Ẩn bớt" : "Show less"}
               </>
             ) : (
               <>
                 <ChevronDown className="h-3.5 w-3.5" />
-                y {hiddenCount} mas...
+                {lang === "vi" ? `và ${hiddenCount} món khác...` : `and ${hiddenCount} more...`}
               </>
             )}
           </button>
@@ -215,7 +218,7 @@ export function KitchenOrderCard({
             disabled={isAdvancing}
             onClick={() => onAdvance(order.id, "pending")}
           >
-            Preparar
+            {t("kitchen.markPreparing")}
             <ArrowRight className="h-5 w-5 ml-2" />
           </Button>
         )}
@@ -226,7 +229,7 @@ export function KitchenOrderCard({
             onClick={() => onAdvance(order.id, "preparing")}
           >
             <CheckCircle className="h-5 w-5 mr-2" />
-            Listo
+            {t("kitchen.markReady")}
           </Button>
         )}
         {columnStatus === "ready" && (
@@ -237,7 +240,7 @@ export function KitchenOrderCard({
             onClick={() => onAdvance(order.id, "ready")}
           >
             <UtensilsCrossed className="h-5 w-5 mr-2" />
-            Entregado
+            {t("kitchen.markServed")}
           </Button>
         )}
       </div>

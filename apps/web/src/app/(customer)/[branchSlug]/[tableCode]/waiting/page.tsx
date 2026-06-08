@@ -9,6 +9,7 @@ import { Loader2, Clock, CheckCircle2, XCircle } from "lucide-react";
 import { useCustomerStore } from "@/stores/customer-store";
 import { useWebSocket } from "@/hooks/use-websocket";
 import type { WsMessage } from "@restai/types";
+import { useTranslation } from "@/stores/lang-store";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -20,6 +21,7 @@ export default function WaitingPage({
   "use no memo";
   const { branchSlug, tableCode } = use(params);
   const router = useRouter();
+  const { t } = useTranslation();
   const sessionId = useCustomerStore((s) => s.sessionId);
   const token = useCustomerStore((s) => s.token);
   const [status, setStatus] = useState<"pending" | "active" | "rejected">("pending");
@@ -39,9 +41,9 @@ export default function WaitingPage({
         }
       }
     } catch {
-      setError("Error al verificar el estado");
+      setError(t("customer.errorVerifyingStatus"));
     }
-  }, [sessionId, branchSlug, tableCode, router]);
+  }, [sessionId, branchSlug, tableCode, router, t]);
 
   useWebSocket(
     sessionId ? [`session:${sessionId}`] : [],
@@ -65,9 +67,9 @@ export default function WaitingPage({
   if (!sessionId) {
     return (
       <div className="p-4 mt-8 text-center">
-        <p className="text-muted-foreground mb-4">No se encontro la sesion</p>
+        <p className="text-muted-foreground mb-4">{t("customer.noSessionFound")}</p>
         <Button variant="outline" onClick={() => router.push(`/${branchSlug}/${tableCode}`)}>
-          Volver al inicio
+          {t("customer.backToStart")}
         </Button>
       </div>
     );
@@ -79,12 +81,12 @@ export default function WaitingPage({
         <Card>
           <CardContent className="py-12 text-center">
             <XCircle className="h-16 w-16 text-destructive mx-auto mb-4" />
-            <h2 className="text-xl font-bold mb-2">Solicitud rechazada</h2>
+            <h2 className="text-xl font-bold mb-2">{t("customer.requestRejected")}</h2>
             <p className="text-muted-foreground mb-6">
-              Tu solicitud para ordenar fue rechazada. Consulta con el personal del restaurante.
+              {t("customer.requestRejectedDesc")}
             </p>
             <Button onClick={() => router.push(`/${branchSlug}/${tableCode}`)}>
-              Intentar de nuevo
+              {t("customer.tryAgain")}
             </Button>
           </CardContent>
         </Card>
@@ -100,12 +102,12 @@ export default function WaitingPage({
             <Clock className="h-20 w-20 text-primary/20" />
             <Loader2 className="h-10 w-10 text-primary animate-spin absolute top-5 left-5" />
           </div>
-          <h2 className="text-xl font-bold mb-2">Esperando confirmacion</h2>
+          <h2 className="text-xl font-bold mb-2">{t("customer.waitingConfirmation")}</h2>
           <p className="text-muted-foreground mb-2">
-            Un mozo confirmara tu mesa en breve...
+            {t("customer.waitingConfirmationDesc")}
           </p>
           <p className="text-xs text-muted-foreground">
-            Mesa {tableCode}
+            {t("connections.table")} {tableCode}
           </p>
         </CardContent>
       </Card>

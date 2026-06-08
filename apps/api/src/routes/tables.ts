@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, isNull, desc } from "drizzle-orm";
+import { eq, and, isNull, desc, inArray, sql } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import {
   createTableSchema,
@@ -18,6 +18,7 @@ import { generateQrCode } from "../lib/id.js";
 import { signCustomerToken } from "../lib/jwt.js";
 import { wsManager } from "../ws/manager.js";
 import * as sessionService from "../services/session.service.js";
+import { t } from "../lib/i18n.js";
 
 const tables = new Hono<AppEnv>();
 
@@ -41,16 +42,108 @@ tables.get("/", requirePermission("tables:read"), async (c) => {
     conditions.push(eq(schema.tables.space_id, spaceId));
   }
 
-  const result = await db
+  const tables = await db
     .select()
     .from(schema.tables)
-    .where(and(...conditions));
+    .where(and(...conditions))
+    .orderBy(schema.tables.number);
 
   const [branch] = await db
     .select({ slug: schema.branches.slug })
     .from(schema.branches)
     .where(eq(schema.branches.id, tenant.branchId))
     .limit(1);
+
+  // Get all active sessions for this branch
+  const activeSessions = await db
+    .select()
+    .from(schema.tableSessions)
+    .where(
+      and(
+        eq(schema.tableSessions.branch_id, tenant.branchId),
+        eq(schema.tableSessions.status, "active"),
+      ),
+    );
+
+  const sessionIds = activeSessions.map(s => s.id);
+  
+  let ordersList: any[] = [];
+  let orderItemsList: any[] = [];
+  
+  if (sessionIds.length > 0) {
+    ordersList = await db
+      .select({
+        id: schema.orders.id,
+        table_session_id: schema.orders.table_session_id,
+        total: schema.orders.total,
+      })
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.branch_id, tenant.branchId),
+          inArray(schema.orders.table_session_id, sessionIds),
+          sql`orders.status != 'cancelled'`
+        ),
+      );
+
+    const orderIds = ordersList.map(o => o.id);
+    if (orderIds.length > 0) {
+      orderItemsList = await db
+        .select({
+          order_id: schema.orderItems.order_id,
+          name: schema.orderItems.name,
+          quantity: schema.orderItems.quantity,
+        })
+        .from(schema.orderItems)
+        .where(inArray(schema.orderItems.order_id, orderIds));
+    }
+  }
+
+  // Map orders to sessions
+  const sessionOrdersMap = new Map<string, any[]>();
+  for (const o of ordersList) {
+    if (!sessionOrdersMap.has(o.table_session_id)) sessionOrdersMap.set(o.table_session_id, []);
+    sessionOrdersMap.get(o.table_session_id)!.push(o);
+  }
+
+  // Map order items to orders
+  const orderItemsMap = new Map<string, any[]>();
+  for (const item of orderItemsList) {
+    if (!orderItemsMap.has(item.order_id)) orderItemsMap.set(item.order_id, []);
+    orderItemsMap.get(item.order_id)!.push(item);
+  }
+
+  // Map table sessions to tables
+  const tableSessionMap = new Map<string, any>();
+  for (const session of activeSessions) {
+    const orders = sessionOrdersMap.get(session.id) || [];
+    const total = orders.reduce((sum, o) => sum + o.total, 0);
+    
+    // Aggregate item summaries
+    const itemsSummaryMap = new Map<string, number>();
+    for (const o of orders) {
+      const items = orderItemsMap.get(o.id) || [];
+      for (const item of items) {
+        itemsSummaryMap.set(item.name, (itemsSummaryMap.get(item.name) || 0) + item.quantity);
+      }
+    }
+    const itemSummary = Array.from(itemsSummaryMap.entries())
+      .map(([name, qty]) => `${qty}x ${name}`)
+      .join(", ");
+
+    tableSessionMap.set(session.table_id, {
+      id: session.id,
+      customerName: session.customer_name,
+      startedAt: session.started_at,
+      total,
+      itemSummary,
+    });
+  }
+
+  const result = tables.map((t) => ({
+    ...t,
+    activeSession: tableSessionMap.get(t.id) || null,
+  }));
 
   return c.json({ success: true, data: { tables: result, branchSlug: branch?.slug || "" } });
 });
@@ -120,7 +213,7 @@ tables.patch(
 
     if (!updated) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Mesa no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "table_not_found") } },
         404,
       );
     }
@@ -153,7 +246,7 @@ tables.patch(
 
     if (!updated) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Mesa no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "table_not_found") } },
         404,
       );
     }
@@ -183,7 +276,7 @@ tables.delete(
 
     if (!deleted) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Mesa no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "table_not_found") } },
         404,
       );
     }
@@ -217,7 +310,7 @@ tables.patch(
 
     if (!table) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Mesa no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "table_not_found") } },
         404,
       );
     }
@@ -230,7 +323,7 @@ tables.patch(
           success: false,
           error: {
             code: "BAD_REQUEST",
-            message: `No se puede cambiar de "${table.status}" a "${status}"`,
+            message: t(c, "invalid_status_transition", { from: table.status, to: status }),
           },
         },
         400,
@@ -284,7 +377,7 @@ tables.post(
 
     if (!table) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Mesa no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "table_not_found") } },
         404,
       );
     }
@@ -414,7 +507,7 @@ tables.get(
 
     if (!session) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Sesión no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "active_session_not_found") } },
         404,
       );
     }
@@ -454,7 +547,7 @@ tables.patch(
     } catch (e: any) {
       if (e.message === "PENDING_SESSION_NOT_FOUND") {
         return c.json(
-          { success: false, error: { code: "NOT_FOUND", message: "Sesion pendiente no encontrada" } },
+          { success: false, error: { code: "NOT_FOUND", message: t(c, "pending_session_not_found") } },
           404,
         );
       }
@@ -494,7 +587,7 @@ tables.patch(
     } catch (e: any) {
       if (e.message === "PENDING_SESSION_NOT_FOUND") {
         return c.json(
-          { success: false, error: { code: "NOT_FOUND", message: "Sesion pendiente no encontrada" } },
+          { success: false, error: { code: "NOT_FOUND", message: t(c, "pending_session_not_found") } },
           404,
         );
       }
@@ -529,12 +622,133 @@ tables.patch(
     } catch (e: any) {
       if (e.message === "ACTIVE_SESSION_NOT_FOUND") {
         return c.json(
-          { success: false, error: { code: "NOT_FOUND", message: "Sesion activa no encontrada" } },
+          { success: false, error: { code: "NOT_FOUND", message: t(c, "active_session_not_found") } },
           404,
         );
       }
       throw e;
     }
+  },
+);
+
+// GET /:id/active-session - Get active session for table with orders and items
+tables.get(
+  "/:id/active-session",
+  requirePermission("tables:read"),
+  zValidator("param", idParamSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const tenant = c.get("tenant") as any;
+
+    const [session] = await db
+      .select({
+        id: schema.tableSessions.id,
+        table_id: schema.tableSessions.table_id,
+        customer_name: schema.tableSessions.customer_name,
+        customer_phone: schema.tableSessions.customer_phone,
+        status: schema.tableSessions.status,
+        started_at: schema.tableSessions.started_at,
+      })
+      .from(schema.tableSessions)
+      .where(
+        and(
+          eq(schema.tableSessions.table_id, id),
+          eq(schema.tableSessions.status, "active"),
+          eq(schema.tableSessions.branch_id, tenant.branchId),
+        ),
+      )
+      .limit(1);
+
+    if (!session) {
+      return c.json({ success: true, data: null });
+    }
+
+    // Fetch orders for this active session
+    const orders = await db
+      .select({
+        id: schema.orders.id,
+        order_number: schema.orders.order_number,
+        total: schema.orders.total,
+        status: schema.orders.status,
+        created_at: schema.orders.created_at,
+      })
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.table_session_id, session.id),
+          eq(schema.orders.branch_id, tenant.branchId),
+          sql`orders.status != 'cancelled'`
+        ),
+      );
+
+    // Fetch order items for each order
+    const orderIds = orders.map(o => o.id);
+    let items: any[] = [];
+    if (orderIds.length > 0) {
+      items = await db
+        .select({
+          id: schema.orderItems.id,
+          order_id: schema.orderItems.order_id,
+          menu_item_id: schema.orderItems.menu_item_id,
+          name: schema.orderItems.name,
+          unit_price: schema.orderItems.unit_price,
+          quantity: schema.orderItems.quantity,
+          notes: schema.orderItems.notes,
+        })
+        .from(schema.orderItems)
+        .where(inArray(schema.orderItems.order_id, orderIds));
+
+      // Fetch modifier options for each order item
+      const itemIds = items.map(it => it.id);
+      if (itemIds.length > 0) {
+        const modifiers = await db
+          .select({
+            order_item_id: schema.orderItemModifiers.order_item_id,
+            modifier_id: schema.orderItemModifiers.modifier_id,
+            name: schema.modifiers.name,
+            price: schema.modifiers.price,
+          })
+          .from(schema.orderItemModifiers)
+          .innerJoin(schema.modifiers, eq(schema.orderItemModifiers.modifier_id, schema.modifiers.id))
+          .where(inArray(schema.orderItemModifiers.order_item_id, itemIds));
+
+        // Group modifiers by order_item_id
+        const modMap = new Map<string, any[]>();
+        for (const mod of modifiers) {
+          if (!modMap.has(mod.order_item_id)) modMap.set(mod.order_item_id, []);
+          modMap.get(mod.order_item_id)!.push({
+            modifierId: mod.modifier_id,
+            name: mod.name,
+            price: mod.price,
+          });
+        }
+
+        // Map modifiers back to items
+        for (const item of items) {
+          item.modifiers = modMap.get(item.id) || [];
+        }
+      }
+    }
+
+    // Attach items to orders
+    const itemsByOrderId = new Map<string, any[]>();
+    for (const item of items) {
+      if (!itemsByOrderId.has(item.order_id)) itemsByOrderId.set(item.order_id, []);
+      itemsByOrderId.get(item.order_id)!.push(item);
+    }
+
+    const ordersWithItems = orders.map(o => ({
+      ...o,
+      items: itemsByOrderId.get(o.id) || [],
+    }));
+
+    return c.json({
+      success: true,
+      data: {
+        session,
+        orders: ordersWithItems,
+      },
+    });
   },
 );
 
@@ -561,7 +775,7 @@ tables.get(
     } catch (e: any) {
       if (e.message === "TABLE_NOT_FOUND") {
         return c.json(
-          { success: false, error: { code: "NOT_FOUND", message: "Mesa no encontrada" } },
+          { success: false, error: { code: "NOT_FOUND", message: t(c, "table_not_found") } },
           404,
         );
       }
@@ -648,7 +862,7 @@ tables.post(
 
     if (!table) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Mesa no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "table_not_found") } },
         404,
       );
     }
@@ -673,7 +887,7 @@ tables.post(
       return c.json(
         {
           success: false,
-          error: { code: "BAD_REQUEST", message: "El usuario no pertenece a esta organización/sucursal" },
+          error: { code: "BAD_REQUEST", message: t(c, "user_not_org") },
         },
         400,
       );
@@ -693,7 +907,7 @@ tables.post(
 
     if (existing) {
       return c.json(
-        { success: false, error: { code: "CONFLICT", message: "El usuario ya esta asignado a esta mesa" } },
+        { success: false, error: { code: "CONFLICT", message: t(c, "user_already_table") } },
         409,
       );
     }
@@ -734,7 +948,7 @@ tables.delete(
 
     if (!deleted) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Asignacion no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "assignment_not_found") } },
         404,
       );
     }

@@ -16,6 +16,7 @@ import { Printer } from "lucide-react";
 import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
 import { usePrintReceipt } from "@/components/print-ticket";
 import { apiFetch } from "@/lib/fetcher";
+import { useTranslation } from "@/stores/lang-store";
 
 interface ReceiptDialogProps {
   open: boolean;
@@ -24,6 +25,7 @@ interface ReceiptDialogProps {
 }
 
 export function ReceiptDialog({ open, onOpenChange, payment }: ReceiptDialogProps) {
+  const { t, lang } = useTranslation();
   const [docType, setDocType] = useState<"boleta_simple" | "boleta_electronica" | "factura">("boleta_simple");
   const [docNumber, setDocNumber] = useState("");
   const [docHolderName, setDocHolderName] = useState("");
@@ -101,25 +103,25 @@ export function ReceiptDialog({ open, onOpenChange, payment }: ReceiptDialogProp
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Imprimir Comprobante</DialogTitle>
+          <DialogTitle>{t("payments.viewReceipt")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Tipo de Documento</Label>
+            <Label>{lang === "vi" ? "Loại hóa đơn" : "Document Type"}</Label>
             <Select value={docType} onValueChange={handleDocTypeChange}>
               <SelectTrigger>
-                <SelectValue placeholder="Seleccionar tipo" />
+                <SelectValue placeholder={lang === "vi" ? "Chọn loại..." : "Select type..."} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="boleta_simple">Boleta Simple</SelectItem>
-                <SelectItem value="boleta_electronica">Boleta Electronica</SelectItem>
-                <SelectItem value="factura">Factura</SelectItem>
+                <SelectItem value="boleta_simple">{t("payments.receipt")}</SelectItem>
+                <SelectItem value="boleta_electronica">{lang === "vi" ? "Hóa đơn điện tử (DNI)" : "Electronic Receipt (DNI)"}</SelectItem>
+                <SelectItem value="factura">{lang === "vi" ? "Hóa đơn VAT (RUC)" : "VAT Invoice (RUC)"}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           {docType === "boleta_electronica" && (
             <div className="space-y-2">
-              <Label htmlFor="receiptDni">DNI</Label>
+              <Label htmlFor="receiptDni">{lang === "vi" ? "Mã định danh (DNI)" : "ID Number (DNI)"}</Label>
               <Input
                 id="receiptDni"
                 placeholder="12345678"
@@ -128,14 +130,16 @@ export function ReceiptDialog({ open, onOpenChange, payment }: ReceiptDialogProp
                 onChange={(e) => setDocNumber(e.target.value.replace(/\D/g, "").slice(0, 8))}
               />
               {docNumber.length > 0 && docNumber.length !== 8 && (
-                <p className="text-xs text-destructive">El DNI debe tener 8 digitos</p>
+                <p className="text-xs text-destructive">
+                  {lang === "vi" ? "Mã DNI phải gồm 8 chữ số" : "DNI must be 8 digits"}
+                </p>
               )}
             </div>
           )}
           {docType === "factura" && (
             <>
               <div className="space-y-2">
-                <Label htmlFor="receiptRuc">RUC</Label>
+                <Label htmlFor="receiptRuc">{lang === "vi" ? "Mã số thuế (RUC)" : "Tax Registry (RUC)"}</Label>
                 <Input
                   id="receiptRuc"
                   placeholder="20123456789"
@@ -144,14 +148,16 @@ export function ReceiptDialog({ open, onOpenChange, payment }: ReceiptDialogProp
                   onChange={(e) => setDocNumber(e.target.value.replace(/\D/g, "").slice(0, 11))}
                 />
                 {docNumber.length > 0 && docNumber.length !== 11 && (
-                  <p className="text-xs text-destructive">El RUC debe tener 11 digitos</p>
+                  <p className="text-xs text-destructive">
+                    {lang === "vi" ? "Mã số thuế RUC phải gồm 11 chữ số" : "RUC must be 11 digits"}
+                  </p>
                 )}
               </div>
               <div className="space-y-2">
-                <Label htmlFor="receiptRazonSocial">Razon Social</Label>
+                <Label htmlFor="receiptRazonSocial">{lang === "vi" ? "Tên công ty" : "Company Name"}</Label>
                 <Input
                   id="receiptRazonSocial"
-                  placeholder="Nombre de la empresa"
+                  placeholder={lang === "vi" ? "Tên đầy đủ của công ty..." : "Full company name..."}
                   value={docHolderName}
                   onChange={(e) => setDocHolderName(e.target.value)}
                 />
@@ -161,14 +167,14 @@ export function ReceiptDialog({ open, onOpenChange, payment }: ReceiptDialogProp
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={handlePrint}
             disabled={printing || !isFormValid()}
           >
             <Printer className="h-4 w-4 mr-2" />
-            {printing ? "Imprimiendo..." : "Imprimir"}
+            {printing ? (lang === "vi" ? "Đang in..." : "Printing...") : t("payments.viewReceipt")}
           </Button>
         </DialogFooter>
       </DialogContent>

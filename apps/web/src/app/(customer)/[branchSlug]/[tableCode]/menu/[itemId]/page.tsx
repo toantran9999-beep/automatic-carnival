@@ -16,6 +16,7 @@ import {
   UtensilsCrossed,
   ChevronDown,
 } from "lucide-react";
+import { useTranslation } from "@/stores/lang-store";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -129,6 +130,7 @@ function ModifierGroupsAccordion({
   openGroups: Record<string, boolean>;
   setOpenGroups: Dispatch<SetStateAction<Record<string, boolean>>>;
 }) {
+  const { t } = useTranslation();
   if (modifierGroups.length === 0) return null;
 
   return (
@@ -158,12 +160,12 @@ function ModifierGroupsAccordion({
                 <h2 className="text-sm font-semibold">{group.name}</h2>
                 {group.is_required && (
                   <span className="text-[10px] font-semibold text-red-400 bg-red-400/10 px-1.5 py-0.5 rounded-full">
-                    Requerido
+                    {t("customer.required")}
                   </span>
                 )}
                 {selected.length > 0 && (
                   <span className="text-[10px] font-semibold text-foreground/70 bg-foreground/10 px-1.5 py-0.5 rounded-full">
-                    {selected.length} sel.
+                    {selected.length} {t("customer.sel")}
                   </span>
                 )}
               </div>
@@ -294,6 +296,7 @@ export default function ProductDetailPage({
   "use no memo";
   const { branchSlug, tableCode, itemId } = use(params);
   const router = useRouter();
+  const { t } = useTranslation();
   const { addItem, items, updateQuantity } = useCartStore();
   const {
     menuData,
@@ -319,18 +322,18 @@ export default function ProductDetailPage({
       .then((res) => res.json())
       .then((result) => {
         if (!result.success) {
-          setError(result.error?.message || "Error al cargar el menu");
+          setError(result.error?.message || t("customer.errorLoadingMenu"));
           return;
         }
         setMenuData(result.data);
       })
       .catch(() => {
-        setError("Error inesperado");
+        setError(t("customer.unexpectedError"));
       })
       .finally(() => {
         setLoading(false);
       });
-  }, [branchSlug, tableCode, setLoading, setError, setMenuData]);
+  }, [branchSlug, tableCode, setLoading, setError, setMenuData, t]);
 
   const loadModifiers = useCallback(() => {
     if (!menuData) return;
@@ -369,7 +372,7 @@ export default function ProductDetailPage({
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-        <p className="text-sm text-muted-foreground">Cargando producto...</p>
+        <p className="text-sm text-muted-foreground">{t("customer.loadingProduct")}</p>
       </div>
     );
   }
@@ -379,10 +382,10 @@ export default function ProductDetailPage({
       <div className="p-6 mt-12 text-center">
         <p className="text-destructive font-medium mb-2">Error</p>
         <p className="text-sm text-muted-foreground mb-4">
-          {error || "Error al cargar producto"}
+          {error || t("customer.errorLoadingProduct")}
         </p>
         <Button variant="outline" onClick={() => router.back()}>
-          Volver
+          {t("customer.back")}
         </Button>
       </div>
     );
@@ -394,9 +397,9 @@ export default function ProductDetailPage({
     return (
       <div className="p-6 mt-12 text-center">
         <UtensilsCrossed className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-        <p className="font-medium mb-2">Producto no encontrado</p>
+        <p className="font-medium mb-2">{t("customer.productNotFound")}</p>
         <p className="text-sm text-muted-foreground mb-4">
-          Este producto no existe o ya no esta disponible.
+          {t("customer.productNotFoundDesc")}
         </p>
         <Button
           variant="outline"
@@ -404,7 +407,7 @@ export default function ProductDetailPage({
             router.push(`/${branchSlug}/${tableCode}/menu`)
           }
         >
-          Volver al menu
+          {t("customer.backToMenu")}
         </Button>
       </div>
     );
@@ -420,7 +423,9 @@ export default function ProductDetailPage({
         const sel = selectedModifiers[group.id] || [];
         if (sel.length < (group.min_selections || 1)) {
           alert(
-            `Selecciona al menos ${group.min_selections || 1} opcion en "${group.name}"`,
+            t("customer.selectMinOptions")
+              .replace("{min}", String(group.min_selections || 1))
+              .replace("{name}", group.name)
           );
           return;
         }
@@ -466,7 +471,7 @@ export default function ProductDetailPage({
         ) : (
           <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-muted">
             <UtensilsCrossed className="h-16 w-16 text-muted-foreground/30" />
-            <p className="text-sm text-muted-foreground/50">Sin imagen</p>
+            <p className="text-sm text-muted-foreground/50">{t("customer.noImage")}</p>
             <div className="absolute inset-0 bg-gradient-to-t from-background via-background/60 to-transparent" />
           </div>
         )}
@@ -518,9 +523,7 @@ export default function ProductDetailPage({
             <div className="flex items-center gap-2.5 bg-secondary/50 rounded-xl px-4 py-3">
               <ShoppingCart className="h-4 w-4 text-muted-foreground" />
               <p className="text-sm text-muted-foreground">
-                Ya tienes{" "}
-                <span className="font-semibold text-foreground">{cartQty}</span>{" "}
-                en tu carrito
+                {t("customer.alreadyInCart").replace("{qty}", String(cartQty))}
               </p>
             </div>
           )}
@@ -563,7 +566,7 @@ export default function ProductDetailPage({
                 : "bg-muted text-muted-foreground cursor-not-allowed",
             )}
           >
-            <span>Agregar</span>
+            <span>{t("customer.addToCart")}</span>
             <span className="font-bold">{formatCurrency(totalPrice)}</span>
           </button>
         </div>

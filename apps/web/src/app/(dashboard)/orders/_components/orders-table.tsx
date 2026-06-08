@@ -5,21 +5,22 @@ import { Badge } from "@restai/ui/components/badge";
 import { Button } from "@restai/ui/components/button";
 import { ChevronLeft, ChevronRight, DollarSign, Printer } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
+import { useTranslation } from "@/stores/lang-store";
 
-const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
-  pending: { label: "Pendiente", variant: "outline" },
-  confirmed: { label: "Confirmado", variant: "secondary" },
-  preparing: { label: "Preparando", variant: "default" },
-  ready: { label: "Listo", variant: "default" },
-  served: { label: "Servido", variant: "secondary" },
-  completed: { label: "Completado", variant: "secondary" },
-  cancelled: { label: "Cancelado", variant: "destructive" },
+const statusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline" }> = {
+  pending: { variant: "outline" },
+  confirmed: { variant: "secondary" },
+  preparing: { variant: "default" },
+  ready: { variant: "default" },
+  served: { variant: "secondary" },
+  completed: { variant: "secondary" },
+  cancelled: { variant: "destructive" },
 };
 
-const paymentStatusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
-  paid: { label: "Pagado", variant: "default", className: "bg-green-600 hover:bg-green-600" },
-  partial: { label: "Parcial", variant: "default", className: "bg-amber-500 hover:bg-amber-500" },
-  unpaid: { label: "Sin pagar", variant: "outline" },
+const paymentStatusConfig: Record<string, { variant: "default" | "secondary" | "destructive" | "outline"; className?: string }> = {
+  paid: { variant: "default", className: "bg-green-600 hover:bg-green-600" },
+  partial: { variant: "default", className: "bg-amber-500 hover:bg-amber-500" },
+  unpaid: { variant: "outline" },
 };
 
 function Skeleton({ className }: { className?: string }) {
@@ -77,10 +78,12 @@ export function OrdersTable({
   onPrintReceipt,
   onCharge,
 }: OrdersTableProps) {
+  const { t } = useTranslation();
+
   const filteredOrders = orders.filter((order: any) => {
     const orderNum = order.order_number || "";
     const customer = order.customer_name || "";
-    const tableNum = order.table_number != null ? `Mesa ${order.table_number}` : "";
+    const tableNum = order.table_number != null ? t("orders.tableNum").replace("{num}", String(order.table_number)) : "";
     return (
       orderNum.toLowerCase().includes(search.toLowerCase()) ||
       customer.toLowerCase().includes(search.toLowerCase()) ||
@@ -97,31 +100,31 @@ export function OrdersTable({
               <thead>
                 <tr className="border-b bg-muted/50">
                   <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                    Orden
+                    {t("orders.headerOrder")}
                   </th>
                   <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                    Mesa
+                    {t("orders.headerTable")}
                   </th>
                   <th className="text-left p-3 text-sm font-medium text-muted-foreground hidden sm:table-cell">
-                    Cliente
+                    {t("orders.headerCustomer")}
                   </th>
                   <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                    Estado
+                    {t("common.status")}
                   </th>
                   <th className="text-left p-3 text-sm font-medium text-muted-foreground hidden sm:table-cell">
-                    Pago
+                    {t("orders.headerPayment")}
                   </th>
                   <th className="text-left p-3 text-sm font-medium text-muted-foreground hidden md:table-cell">
-                    Items
+                    {t("orders.headerItems")}
                   </th>
                   <th className="text-right p-3 text-sm font-medium text-muted-foreground">
-                    Total
+                    {t("common.total")}
                   </th>
                   <th className="text-right p-3 text-sm font-medium text-muted-foreground hidden lg:table-cell">
-                    Hora
+                    {t("orders.headerTime")}
                   </th>
                   <th className="text-center p-3 text-sm font-medium text-muted-foreground hidden md:table-cell">
-                    Accion
+                    {t("common.actions")}
                   </th>
                 </tr>
               </thead>
@@ -143,23 +146,24 @@ export function OrdersTable({
                 ) : filteredOrders.length === 0 ? (
                   <tr>
                     <td colSpan={9} className="p-8 text-center text-sm text-muted-foreground">
-                      No se encontraron ordenes
+                      {t("orders.noOrdersFound")}
                     </td>
                   </tr>
                 ) : (
                   filteredOrders.map((order: any) => {
                     const config = statusConfig[order.status] || {
-                      label: order.status,
                       variant: "outline" as const,
                     };
+                    const statusLabel = t("orders.status_" + order.status, order.status);
                     const nextStatus = getNextStatus(order.status);
                     const orderNum = order.order_number || order.id;
-                    const table = order.table_number != null ? `Mesa ${order.table_number}` : "-";
+                    const table = order.table_number != null ? t("orders.tableNum").replace("{num}", String(order.table_number)) : "-";
                     const customer = order.customer_name || "";
                     const itemCount = order.item_count ?? 0;
                     const createdAt = order.created_at || "";
                     const paymentStatus = order.payment_status || "unpaid";
                     const payConfig = paymentStatusConfig[paymentStatus] || paymentStatusConfig.unpaid;
+                    const paymentLabel = t("payments.status_" + paymentStatus, paymentStatus);
                     const isUpdatingThisOrder = updateStatusPending && updatingOrderId === order.id;
                     const isUpdatingCurrentStep =
                       isUpdatingThisOrder &&
@@ -176,11 +180,11 @@ export function OrdersTable({
                         <td className="p-3 text-sm">{table}</td>
                         <td className="p-3 text-sm hidden sm:table-cell">{customer}</td>
                         <td className="p-3">
-                          <Badge variant={config.variant}>{config.label}</Badge>
+                          <Badge variant={config.variant}>{statusLabel}</Badge>
                         </td>
                         <td className="p-3 hidden sm:table-cell">
                           <Badge variant={payConfig.variant} className={payConfig.className}>
-                            {payConfig.label}
+                            {paymentLabel}
                           </Badge>
                           {paymentStatus === "partial" && order.total_paid != null && (
                             <span className="text-[10px] text-muted-foreground ml-1">
@@ -189,7 +193,7 @@ export function OrdersTable({
                           )}
                         </td>
                         <td className="p-3 text-sm text-muted-foreground hidden md:table-cell">
-                          {itemCount} items
+                          {itemCount} {t("orders.itemsCount")}
                         </td>
                         <td className="p-3 text-sm font-medium text-right">
                           {formatCurrency(order.total ?? 0)}
@@ -208,9 +212,9 @@ export function OrdersTable({
                                 onClick={() => onUpdateStatus(order.id, nextStatus)}
                               >
                                 {isUpdatingCurrentStep ? (
-                                  <InlineActionLoading label="Actualizando..." />
+                                  <InlineActionLoading label={t("orders.updating")} />
                                 ) : (
-                                  statusConfig[nextStatus]?.label || nextStatus
+                                  t("orders.status_" + nextStatus, nextStatus)
                                 )}
                               </Button>
                             )}
@@ -223,11 +227,11 @@ export function OrdersTable({
                                 onClick={() => onCharge(order)}
                               >
                                 {isOpeningCharge ? (
-                                  <InlineActionLoading label="Abriendo..." />
+                                  <InlineActionLoading label={t("orders.opening")} />
                                 ) : (
                                   <>
                                     <DollarSign className="h-3 w-3 mr-1" />
-                                    Cobrar
+                                    {t("orders.charge")}
                                   </>
                                 )}
                               </Button>
@@ -237,7 +241,7 @@ export function OrdersTable({
                               size="sm"
                               className="h-8 w-8 p-0"
                               onClick={() => onPrintReceipt(order)}
-                              title="Imprimir Boleta"
+                              title={t("orders.printReceipt")}
                             >
                               <Printer className="h-4 w-4" />
                             </Button>
@@ -255,7 +259,7 @@ export function OrdersTable({
 
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {pagination.total} ordenes en total
+          {t("orders.totalOrders").replace("{total}", String(pagination.total))}
         </p>
         {pagination.totalPages > 1 && (
           <div className="flex items-center gap-2">
@@ -266,10 +270,12 @@ export function OrdersTable({
               onClick={() => onPageChange(Math.max(1, page - 1))}
             >
               <ChevronLeft className="h-4 w-4" />
-              Anterior
+              {t("orders.prev")}
             </Button>
             <span className="text-sm text-muted-foreground">
-              Pagina {pagination.page} de {pagination.totalPages}
+              {t("orders.pageOf")
+                .replace("{page}", String(pagination.page))
+                .replace("{totalPages}", String(pagination.totalPages))}
             </span>
             <Button
               variant="outline"
@@ -277,7 +283,7 @@ export function OrdersTable({
               disabled={page >= pagination.totalPages}
               onClick={() => onPageChange(page + 1)}
             >
-              Siguiente
+              {t("orders.next")}
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>

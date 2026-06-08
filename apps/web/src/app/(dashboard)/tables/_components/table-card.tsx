@@ -15,8 +15,8 @@ import {
   Circle,
   BellRing,
 } from "lucide-react";
-import { cn } from "@/lib/utils";
-import { statusOptions } from "./constants";
+import { cn, formatCurrency } from "@/lib/utils";
+import { useTranslation } from "@/stores/lang-store";
 
 interface TableServiceRequestIndicator {
   type: "request_bill" | "call_waiter";
@@ -33,47 +33,40 @@ interface TableCardProps {
   onAssign: (table: any) => void;
   onDelete: (table: any) => void;
   onStatusChange: (tableId: string, status: string) => void;
+  onCardClick?: (table: any) => void;
 }
 
-const STATUS: Record<
+const STATUS_METADATA: Record<
   string,
   {
-    label: string;
     bg: string;
     text: string;
     number: string;
-    actionLabel?: string;
     actionTarget?: string;
     actionBg: string;
   }
 > = {
   available: {
-    label: "Libre",
     bg: "bg-emerald-50 dark:bg-emerald-950/30",
     text: "text-emerald-700 dark:text-emerald-300",
     number: "text-emerald-900 dark:text-emerald-100",
-    actionLabel: "Ocupar",
     actionTarget: "occupied",
     actionBg: "bg-blue-600 hover:bg-blue-700 text-white",
   },
   occupied: {
-    label: "Ocupada",
     bg: "bg-blue-50 dark:bg-blue-950/30",
     text: "text-blue-700 dark:text-blue-300",
     number: "text-blue-900 dark:text-blue-100",
-    actionLabel: "Liberar",
     actionTarget: "available",
     actionBg: "bg-emerald-600 hover:bg-emerald-700 text-white",
   },
   reserved: {
-    label: "Reservada",
     bg: "bg-amber-50 dark:bg-amber-950/30",
     text: "text-amber-700 dark:text-amber-300",
     number: "text-amber-900 dark:text-amber-100",
     actionBg: "",
   },
   maintenance: {
-    label: "Mant.",
     bg: "bg-red-50 dark:bg-red-950/30",
     text: "text-red-700 dark:text-red-300",
     number: "text-red-900 dark:text-red-100",
@@ -91,34 +84,55 @@ export function TableCard({
   onAssign,
   onDelete,
   onStatusChange,
+  onCardClick,
 }: TableCardProps) {
-  const s = STATUS[table.status] || STATUS.available;
+  const { t, lang } = useTranslation();
+  const meta = STATUS_METADATA[table.status] || STATUS_METADATA.available;
   const hasServiceRequest = !!serviceRequest;
+
   const requestAccent =
     serviceRequest?.type === "request_bill"
       ? "ring-2 ring-blue-500/70"
       : "ring-2 ring-orange-500/70";
+
   const requestLabel =
     serviceRequest?.type === "request_bill"
-      ? "Solicita cuenta"
-      : "Solicita mozo";
+      ? t("customer.requestBill")
+      : t("customer.callingStaff");
+
+  const statusLabel = t(`tables.${table.status === "available" ? "free" : table.status}`);
+
+  const actionLabel =
+    meta.actionTarget === "occupied"
+      ? t("tables.occupy")
+      : meta.actionTarget === "available"
+      ? t("tables.freeTable")
+      : "";
+
+  const statusOptions = [
+    { value: "available", label: t("tables.free") },
+    { value: "occupied", label: t("tables.occupied") },
+    { value: "reserved", label: t("tables.reserved") },
+    { value: "maintenance", label: t("tables.maintenance") },
+  ];
 
   return (
     <div
+      onClick={() => onCardClick?.(table)}
       className={cn(
-        "rounded-2xl p-4 flex flex-col gap-3 transition-shadow duration-200 hover:shadow-lg",
-        s.bg,
+        "rounded-2xl p-4 flex flex-col gap-3 transition-shadow duration-200 hover:shadow-lg cursor-pointer select-none",
+        meta.bg,
         hasServiceRequest && requestAccent
       )}
     >
       {/* Header: number + status */}
       <div className="flex items-center justify-between">
-        <p className={cn("text-[2.5rem] font-black leading-none tracking-tight tabular-nums", s.number)}>
+        <p className={cn("text-[2.5rem] font-black leading-none tracking-tight tabular-nums", meta.number)}>
           {table.number}
         </p>
         <div className="flex flex-col items-end gap-1">
-          <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/60 dark:bg-white/10", s.text)}>
-            {s.label}
+          <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/60 dark:bg-white/10", meta.text)}>
+            {statusLabel}
           </span>
           {serviceRequest && (
             <span
@@ -137,58 +151,79 @@ export function TableCard({
       </div>
 
       {/* Capacity */}
-      <p className="text-xs text-muted-foreground -mt-1">
-        {table.capacity} {table.capacity === 1 ? "persona" : "personas"}
+      <p className="text-xs text-muted-foreground -mt-1 font-medium">
+        {table.capacity} {table.capacity === 1 ? t("tables.person") : t("tables.people")}
       </p>
 
+      {/* Active Session Info */}
+      {table.activeSession && (
+        <div className="mt-1 p-2 rounded-lg bg-background/60 dark:bg-background/25 border text-xs space-y-1 animate-in fade-in duration-200">
+          <div className="flex justify-between font-semibold">
+            <span className="truncate text-muted-foreground">
+              {lang === "vi" ? "Khách" : "Guest"}: {table.activeSession.customerName}
+            </span>
+            <span className="text-primary tabular-nums shrink-0">
+              {formatCurrency(table.activeSession.total)}
+            </span>
+          </div>
+          {table.activeSession.itemSummary && (
+            <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed italic border-t pt-1 mt-1">
+              {table.activeSession.itemSummary}
+            </p>
+          )}
+        </div>
+      )}
+
       {/* Actions row */}
-      <div className="flex items-center gap-1 mt-auto">
+      <div className="flex items-center gap-1 mt-auto" onClick={(e) => e.stopPropagation()}>
         <IconBtn icon={<QrCode className="h-3.5 w-3.5" />} title="QR" onClick={() => onQr(table)} />
-        <IconBtn icon={<History className="h-3.5 w-3.5" />} title="Historial" onClick={() => onHistory(table)} />
+        <IconBtn icon={<History className="h-3.5 w-3.5" />} title={t("tables.history")} onClick={() => onHistory(table)} />
         {waiterAssignmentEnabled && (
-          <IconBtn icon={<UserPlus className="h-3.5 w-3.5" />} title="Asignar" onClick={() => onAssign(table)} />
+          <IconBtn icon={<UserPlus className="h-3.5 w-3.5" />} title={t("tables.assign")} onClick={() => onAssign(table)} />
         )}
 
         <div className="flex-1" />
 
-        {s.actionLabel && s.actionTarget && (
+        {actionLabel && meta.actionTarget && (
           <button
             type="button"
             disabled={statusChangePending}
-            onClick={() => onStatusChange(table.id, s.actionTarget!)}
+            onClick={() => onStatusChange(table.id, meta.actionTarget!)}
             className={cn(
               "text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50",
-              s.actionBg
+              meta.actionBg
             )}
           >
-            {s.actionLabel}
+            {actionLabel}
           </button>
         )}
 
         <IconBtn
           icon={<Trash2 className="h-3.5 w-3.5" />}
-          title="Eliminar"
+          title={t("common.delete")}
           onClick={() => onDelete(table)}
           destructive
         />
       </div>
 
       {/* Status selector */}
-      <Select value={table.status} onValueChange={(v) => onStatusChange(table.id, v)}>
-        <SelectTrigger className="h-7 text-xs bg-white/50 dark:bg-white/5 border-0 shadow-none">
-          <SelectValue />
-        </SelectTrigger>
-        <SelectContent>
-          {statusOptions.map((opt) => (
-            <SelectItem key={opt.value} value={opt.value}>
-              <span className="flex items-center gap-2">
-                <Circle className={cn("h-2 w-2 fill-current", STATUS[opt.value]?.text)} />
-                {opt.label}
-              </span>
-            </SelectItem>
-          ))}
-        </SelectContent>
-      </Select>
+      <div onClick={(e) => e.stopPropagation()}>
+        <Select value={table.status} onValueChange={(v) => onStatusChange(table.id, v)}>
+          <SelectTrigger className="h-7 text-xs bg-white/50 dark:bg-white/5 border-0 shadow-none">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {statusOptions.map((opt) => (
+              <SelectItem key={opt.value} value={opt.value}>
+                <span className="flex items-center gap-2">
+                  <Circle className={cn("h-2 w-2 fill-current", STATUS_METADATA[opt.value]?.text)} />
+                  {opt.label}
+                </span>
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
     </div>
   );
 }

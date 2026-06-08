@@ -17,6 +17,7 @@ import { Button } from "@restai/ui/components/button";
 import { formatCurrency } from "@/lib/utils";
 import { useDashboardStats, useRecentOrders } from "@/hooks/use-dashboard";
 import { useTables } from "@/hooks/use-tables";
+import { useTranslation } from "@/stores/lang-store";
 
 const statusColors: Record<string, string> = {
   pending: "bg-yellow-100 text-yellow-800",
@@ -27,15 +28,6 @@ const statusColors: Record<string, string> = {
   completed: "bg-gray-100 text-gray-800",
 };
 
-const statusLabels: Record<string, string> = {
-  pending: "Pendiente",
-  preparing: "Preparando",
-  ready: "Listo",
-  served: "Servido",
-  confirmed: "Confirmado",
-  completed: "Completado",
-};
-
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className ?? ""}`} />;
 }
@@ -44,30 +36,31 @@ export default function DashboardPage() {
   const { data: dashboardStats, isLoading: statsLoading, error: statsError, refetch: refetchStats } = useDashboardStats();
   const { data: recentOrders, isLoading: ordersLoading, error: ordersError, refetch: refetchOrders } = useRecentOrders();
   const { data: tables, isLoading: tablesLoading } = useTables();
+  const { t } = useTranslation();
 
   const stats = dashboardStats
     ? [
         {
-          title: "Ordenes Hoy",
+          title: t("dashboard.ordersToday"),
           value: dashboardStats.ordersToday ?? 0,
           icon: ClipboardList,
           description: dashboardStats.ordersChange ?? "",
         },
         {
-          title: "Ingresos Hoy",
+          title: t("dashboard.revenueToday"),
           value: dashboardStats.revenueToday ?? 0,
           icon: DollarSign,
           description: dashboardStats.revenueChange ?? "",
           isCurrency: true,
         },
         {
-          title: "Ordenes Activas",
+          title: t("dashboard.activeOrders"),
           value: dashboardStats.activeOrders ?? 0,
           icon: TrendingUp,
           description: dashboardStats.activeOrdersDetail ?? "",
         },
         {
-          title: "Mesas Ocupadas",
+          title: t("dashboard.occupiedTables"),
           value: dashboardStats.tablesOccupied ?? "0/0",
           icon: Grid3X3,
           description: dashboardStats.tablesDetail ?? "",
@@ -81,19 +74,19 @@ export default function DashboardPage() {
   return (
     <div className="space-y-6">
       <div>
-        <h1 className="text-2xl font-bold">Dashboard</h1>
+        <h1 className="text-2xl font-bold">{t("dashboard.title")}</h1>
         <p className="text-muted-foreground">
-          Resumen del dia de tu restaurante
+          {t("dashboard.subtitle")}
         </p>
       </div>
 
       {/* Stats Cards */}
       {statsError ? (
         <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/5 flex items-center justify-between">
-          <p className="text-sm text-destructive">Error al cargar estadisticas: {(statsError as Error).message}</p>
+          <p className="text-sm text-destructive">{t("dashboard.errorStats")}: {(statsError as Error).message}</p>
           <Button variant="outline" size="sm" onClick={() => refetchStats()}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Reintentar
+            {t("dashboard.retry")}
           </Button>
         </div>
       ) : (
@@ -138,15 +131,15 @@ export default function DashboardPage() {
         {/* Recent Orders */}
         <Card>
           <CardHeader>
-            <CardTitle>Ordenes Recientes</CardTitle>
+            <CardTitle>{t("dashboard.recentOrders")}</CardTitle>
           </CardHeader>
           <CardContent>
             {ordersError ? (
               <div className="text-center py-4">
-                <p className="text-sm text-destructive mb-2">Error al cargar ordenes</p>
+                <p className="text-sm text-destructive mb-2">{t("dashboard.errorOrders")}</p>
                 <Button variant="outline" size="sm" onClick={() => refetchOrders()}>
                   <RefreshCw className="h-4 w-4 mr-2" />
-                  Reintentar
+                  {t("dashboard.retry")}
                 </Button>
               </div>
             ) : ordersLoading ? (
@@ -168,7 +161,7 @@ export default function DashboardPage() {
               </div>
             ) : orders.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
-                No hay ordenes recientes
+                {t("dashboard.noRecentOrders")}
               </p>
             ) : (
               <div className="space-y-3">
@@ -191,7 +184,7 @@ export default function DashboardPage() {
                       <span
                         className={`text-xs px-2 py-1 rounded-full font-medium ${statusColors[order.status] || "bg-gray-100 text-gray-800"}`}
                       >
-                        {statusLabels[order.status] || order.status}
+                        {t(`dashboard.status_${order.status}`, order.status)}
                       </span>
                       <span className="text-sm font-medium">
                         {formatCurrency(order.total ?? 0)}
@@ -207,7 +200,7 @@ export default function DashboardPage() {
         {/* Table Activity */}
         <Card>
           <CardHeader>
-            <CardTitle>Actividad de Mesas</CardTitle>
+            <CardTitle>{t("dashboard.tableActivity")}</CardTitle>
           </CardHeader>
           <CardContent>
             {tablesLoading ? (
@@ -218,7 +211,7 @@ export default function DashboardPage() {
               </div>
             ) : tableList.length === 0 ? (
               <p className="text-sm text-muted-foreground text-center py-4">
-                No hay mesas configuradas
+                {t("dashboard.noTables")}
               </p>
             ) : (
               <div className="grid grid-cols-4 gap-3">
@@ -237,7 +230,7 @@ export default function DashboardPage() {
                         {table.number ?? table.table_number}
                       </span>
                       <span className="text-[10px]">
-                        {occupied ? "Ocupada" : "Libre"}
+                        {occupied ? t("dashboard.occupied") : t("dashboard.free")}
                       </span>
                     </div>
                   );

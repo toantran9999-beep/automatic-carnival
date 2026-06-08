@@ -6,6 +6,7 @@ import { eq } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import { authMiddleware } from "../middleware/auth.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { t } from "../lib/i18n.js";
 
 const orgs = new Hono<AppEnv>();
 
@@ -42,7 +43,7 @@ orgs.get(
     // Non-super admin can only access their own org
     if (user.role !== "super_admin" && user.org !== id) {
       return c.json(
-        { success: false, error: { code: "FORBIDDEN", message: "Sin acceso a esta organización" } },
+        { success: false, error: { code: "FORBIDDEN", message: t(c, "forbidden_org_access") } },
         403,
       );
     }
@@ -55,7 +56,7 @@ orgs.get(
 
     if (!org) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Organización no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "org_not_found") } },
         404,
       );
     }
@@ -84,7 +85,7 @@ orgs.patch(
 
     if (user.role !== "super_admin" && user.org !== id) {
       return c.json(
-        { success: false, error: { code: "FORBIDDEN", message: "Sin acceso a esta organización" } },
+        { success: false, error: { code: "FORBIDDEN", message: t(c, "forbidden_org_access") } },
         403,
       );
     }
@@ -97,7 +98,7 @@ orgs.patch(
 
     if (!updated) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Organización no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "org_not_found") } },
         404,
       );
     }

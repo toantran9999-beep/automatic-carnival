@@ -20,6 +20,7 @@ import {
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { SearchInput } from "@/components/search-input";
+import { useTranslation } from "@/stores/lang-store";
 import { CategoryDialog } from "./category-dialog";
 import { ProductDialog } from "./product-dialog";
 import { ImageUploadButton } from "./image-upload-button";
@@ -46,6 +47,7 @@ export function ProductsPanel({
   const updateItem = useUpdateMenuItem();
   const deleteItem = useDeleteMenuItem();
   const deleteCat = useDeleteCategory();
+  const { t } = useTranslation();
 
   const [catDialogOpen, setCatDialogOpen] = useState(false);
   const [editingCategory, setEditingCategory] = useState<any>(null);
@@ -84,8 +86,8 @@ export function ProductsPanel({
 
   const activeCategoryName =
     selectedCategoryId === "all"
-      ? "Todos los productos"
-      : categoryList.find((c: any) => c.id === selectedCategoryId)?.name ?? "Productos";
+      ? t("common.all")
+      : categoryList.find((c: any) => c.id === selectedCategoryId)?.name ?? t("menu.products");
 
   const handleToggleAvailability = (item: any) => {
     updateItem.mutate(
@@ -96,7 +98,7 @@ export function ProductsPanel({
       {
         onSuccess: () =>
           toast.success(
-            `${item.name} ${!(item.isAvailable ?? item.is_available) ? "disponible" : "no disponible"}`
+            `${item.name} ${!(item.isAvailable ?? item.is_available) ? t("menu.active") : t("menu.inactive")}`
           ),
       }
     );
@@ -111,18 +113,18 @@ export function ProductsPanel({
     try {
       if (confirmDelete.type === "category") {
         await deleteCat.mutateAsync(confirmDelete.id);
-        toast.success("Categoria eliminada");
+        toast.success(t("menu.deleteSuccess"));
         if (selectedCategoryId === confirmDelete.id) {
           setSelectedCategoryId("all");
         }
       } else {
         await deleteItem.mutateAsync(confirmDelete.id);
-        toast.success("Producto eliminado");
+        toast.success(t("menu.deleteSuccess"));
       }
     } catch (err: any) {
-      toast.error(err.message || "Error al eliminar");
+      toast.error(err.message || t("menu.deleteError"));
     }
-    setConfirmDelete(null);
+    confirmDelete && setConfirmDelete(null);
   };
 
   if (isLoading) {
@@ -150,7 +152,7 @@ export function ProductsPanel({
       <div className="text-center py-12 border border-dashed border-border rounded-lg">
         <UtensilsCrossed className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
         <p className="text-sm text-muted-foreground mb-4">
-          No hay categorias en el menu
+          {t("menu.noItems")}
         </p>
         <Button
           variant="outline"
@@ -160,7 +162,7 @@ export function ProductsPanel({
           }}
         >
           <Plus className="h-4 w-4 mr-2" />
-          Crear primera categoria
+          {t("menu.addCategory")}
         </Button>
         {catDialogOpen && (
           <CategoryDialog
@@ -190,7 +192,7 @@ export function ProductsPanel({
                 : "hover:bg-muted text-foreground"
             }`}
           >
-            <span className="truncate">Todos</span>
+            <span className="truncate">{t("common.all")}</span>
             <span
               className={`text-xs tabular-nums ${
                 selectedCategoryId === "all"
@@ -280,7 +282,7 @@ export function ProductsPanel({
             className="w-full flex items-center gap-2 rounded-md px-3 py-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted transition-colors"
           >
             <Plus className="h-3.5 w-3.5" />
-            Nueva categoria
+            {t("menu.addCategory")}
           </button>
         </div>
       </div>
@@ -292,8 +294,7 @@ export function ProductsPanel({
           <div className="flex-1 min-w-0">
             <h2 className="text-lg font-semibold truncate">{activeCategoryName}</h2>
             <p className="text-sm text-muted-foreground">
-              {visibleItems.length} producto{visibleItems.length !== 1 ? "s" : ""}
-              {search ? ` encontrado${visibleItems.length !== 1 ? "s" : ""}` : ""}
+              {visibleItems.length} {t("menu.products")}
             </p>
           </div>
           <Button
@@ -304,7 +305,7 @@ export function ProductsPanel({
             }}
           >
             <Plus className="h-4 w-4 mr-1" />
-            Producto
+            {t("menu.products")}
           </Button>
         </div>
 
@@ -312,7 +313,7 @@ export function ProductsPanel({
         <SearchInput
           value={search}
           onChange={setSearch}
-          placeholder="Buscar en esta categoria..."
+          placeholder={t("menu.searchPlaceholder")}
         />
 
         {/* Products grid */}
@@ -320,7 +321,7 @@ export function ProductsPanel({
           <div className="text-center py-12 border border-dashed border-border rounded-lg">
             <UtensilsCrossed className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
             <p className="text-sm text-muted-foreground mb-3">
-              {search ? "No se encontraron productos" : "Sin productos en esta categoria"}
+              {t("menu.noItems")}
             </p>
             {!search && (
               <Button
@@ -332,7 +333,7 @@ export function ProductsPanel({
                 }}
               >
                 <Plus className="h-4 w-4 mr-1" />
-                Agregar producto
+                {t("menu.addProduct")}
               </Button>
             )}
           </div>
@@ -366,7 +367,7 @@ export function ProductsPanel({
                         variant="secondary"
                         className="absolute top-2 left-2 text-[9px]"
                       >
-                        No disp.
+                        {t("menu.inactive")}
                       </Badge>
                     )}
                     {/* Actions overlay */}
@@ -376,8 +377,8 @@ export function ProductsPanel({
                         onClick={() => handleToggleAvailability(item)}
                         title={
                           available
-                            ? "Marcar no disponible"
-                            : "Marcar disponible"
+                            ? t("menu.inactive")
+                            : t("menu.active")
                         }
                       >
                         {available ? (
@@ -480,8 +481,8 @@ export function ProductsPanel({
           onOpenChange={(v) => {
             if (!v) setConfirmDelete(null);
           }}
-          title={`Eliminar ${confirmDelete.type === "category" ? "categoria" : "producto"}`}
-          description={`Estas seguro que deseas eliminar "${confirmDelete.name}"? Esta accion no se puede deshacer.`}
+          title={t("menu.confirmDeleteTitle")}
+          description={t("menu.confirmDeleteDesc")}
           onConfirm={handleConfirmDelete}
           loading={deleteCat.isPending || deleteItem.isPending}
         />

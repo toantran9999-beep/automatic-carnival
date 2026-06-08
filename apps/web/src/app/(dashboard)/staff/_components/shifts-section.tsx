@@ -4,6 +4,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@restai/ui/components/
 import { Button } from "@restai/ui/components/button";
 import { Clock, LogOut } from "lucide-react";
 import { formatDate } from "@/lib/utils";
+import { useTranslation } from "@/stores/lang-store";
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className ?? ""}`} />;
@@ -25,13 +26,14 @@ export function ShiftsSection({
   endShiftPending,
 }: ShiftsSectionProps) {
   const activeShifts = shifts.filter((s: any) => !s.end_time);
+  const { t } = useTranslation();
 
   return (
     <Card>
       <CardHeader>
         <CardTitle className="flex items-center gap-2">
           <Clock className="h-5 w-5" />
-          Turnos Activos
+          {t("staff.shiftsActive")}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -46,7 +48,7 @@ export function ShiftsSection({
           </div>
         ) : activeShifts.length === 0 ? (
           <p className="text-sm text-muted-foreground text-center py-4">
-            No hay turnos activos
+            {t("staff.noActiveShifts")}
           </p>
         ) : (
           <div className="space-y-3">
@@ -58,7 +60,7 @@ export function ShiftsSection({
                 <div>
                   <p className="font-medium text-sm">{shift.user_name}</p>
                   <p className="text-xs text-muted-foreground">
-                    Inicio: {formatDate(shift.start_time)}
+                    {t("staff.start")}: {formatDate(shift.start_time)}
                   </p>
                 </div>
                 {shift.user_id === currentUserId && (
@@ -69,7 +71,7 @@ export function ShiftsSection({
                     disabled={endShiftPending}
                   >
                     <LogOut className="h-3 w-3 mr-1" />
-                    Salir
+                    {t("staff.end")}
                   </Button>
                 )}
               </div>

@@ -9,20 +9,22 @@ import { cn } from "@/lib/utils";
 import { useSessions, useApproveSession, useRejectSession, useEndSession, useMyAssignedTables } from "@/hooks/use-tables";
 import { useBranchSettings } from "@/hooks/use-settings";
 import { useAuthStore } from "@/stores/auth-store";
+import { useTranslation } from "@/stores/lang-store";
 
-function formatDate(dateStr: string) {
+function formatDate(dateStr: string, lang: string) {
   const d = new Date(dateStr);
-  return d.toLocaleDateString("es-PE", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
+  return d.toLocaleDateString(lang === "vi" ? "vi-VN" : "en-US", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" });
 }
 
-const statusConfig: Record<string, { label: string; color: string; icon: any }> = {
-  pending: { label: "Pendiente", color: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20", icon: Clock },
-  active: { label: "Activa", color: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/20", icon: UserCheck },
-  completed: { label: "Completada", color: "bg-muted text-muted-foreground border-border", icon: Check },
-  rejected: { label: "Rechazada", color: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/20", icon: UserX },
+const statusConfig: Record<string, { key: string; color: string; icon: any }> = {
+  pending: { key: "connections.pending", color: "bg-amber-500/15 text-amber-700 dark:text-amber-400 border-amber-500/20", icon: Clock },
+  active: { key: "connections.active", color: "bg-green-500/15 text-green-700 dark:text-green-400 border-green-500/20", icon: UserCheck },
+  completed: { key: "connections.completed", color: "bg-muted text-muted-foreground border-border", icon: Check },
+  rejected: { key: "connections.rejected", color: "bg-red-500/15 text-red-700 dark:text-red-400 border-red-500/20", icon: UserX },
 };
 
 export default function ConnectionsPage() {
+  const { t, lang } = useTranslation();
   const [tab, setTab] = useState("pending");
   const [mutatingId, setMutatingId] = useState<string | null>(null);
   const { data: sessions, isLoading, refetch } = useSessions(tab === "all" ? undefined : tab);
@@ -47,25 +49,31 @@ export default function ConnectionsPage() {
     return all.filter((s: any) => assignedTableIds.has(s.table_id));
   }, [sessions, waiterAssignmentEnabled, isAdminOrManager, myAssignedTables]);
 
+  const getEmptyMessage = () => {
+    if (tab === "pending") return t("connections.noPendingSessions");
+    if (tab === "active") return t("connections.noActiveSessions");
+    return t("connections.noSessions");
+  };
+
   return (
     <div className="space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold">Conexiones</h1>
-          <p className="text-muted-foreground">Gestiona las sesiones de clientes</p>
+          <h1 className="text-2xl font-bold">{t("connections.title")}</h1>
+          <p className="text-muted-foreground">{t("connections.subtitle")}</p>
         </div>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
           <RefreshCw className="h-4 w-4 mr-2" />
-          Actualizar
+          {t("connections.refresh")}
         </Button>
       </div>
 
       <Tabs value={tab} onValueChange={setTab}>
         <TabsList>
-          <TabsTrigger value="pending">Pendientes</TabsTrigger>
-          <TabsTrigger value="active">Activas</TabsTrigger>
-          <TabsTrigger value="completed">Historial</TabsTrigger>
-          <TabsTrigger value="all">Todas</TabsTrigger>
+          <TabsTrigger value="pending">{t("connections.pending")}</TabsTrigger>
+          <TabsTrigger value="active">{t("connections.active")}</TabsTrigger>
+          <TabsTrigger value="completed">{t("connections.history")}</TabsTrigger>
+          <TabsTrigger value="all">{t("connections.all")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value={tab}>
@@ -79,7 +87,7 @@ export default function ConnectionsPage() {
             <Card>
               <CardContent className="flex flex-col items-center justify-center py-12">
                 <Wifi className="h-12 w-12 text-muted-foreground mb-4" />
-                <p className="text-muted-foreground">No hay sesiones {tab === "pending" ? "pendientes" : tab === "active" ? "activas" : ""}</p>
+                <p className="text-muted-foreground">{getEmptyMessage()}</p>
               </CardContent>
             </Card>
           ) : (
@@ -98,15 +106,15 @@ export default function ConnectionsPage() {
                           <div>
                             <p className="font-medium">{session.customer_name}</p>
                             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                              <span>Mesa {session.table_number}</span>
+                              <span>{t("connections.table")} {session.table_number}</span>
                               {session.customer_phone && <span>· {session.customer_phone}</span>}
-                              <span>· {session.started_at ? formatDate(session.started_at) : ""}</span>
+                              <span>· {session.started_at ? formatDate(session.started_at, lang) : ""}</span>
                             </div>
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
                           <span className={cn("text-xs px-2.5 py-1 rounded-full font-medium border", config.color)}>
-                            {config.label}
+                            {t(config.key)}
                           </span>
                           {session.status === "pending" && (
                             <div className="flex gap-1 ml-2">
@@ -121,7 +129,7 @@ export default function ConnectionsPage() {
                                 approveSession.mutate(session.id, { onSettled: () => setMutatingId(null) });
                               }}>
                                 {mutatingId === session.id && approveSession.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <Check className="h-4 w-4 mr-1" />}
-                                Aceptar
+                                {t("connections.approve")}
                               </Button>
                             </div>
                           )}
@@ -131,7 +139,7 @@ export default function ConnectionsPage() {
                               endSession.mutate(session.id, { onSettled: () => setMutatingId(null) });
                             }}>
                               {mutatingId === session.id && endSession.isPending ? <Loader2 className="h-4 w-4 mr-1 animate-spin" /> : <X className="h-4 w-4 mr-1" />}
-                              Terminar
+                              {t("connections.end")}
                             </Button>
                           )}
                         </div>

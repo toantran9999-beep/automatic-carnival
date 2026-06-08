@@ -24,6 +24,7 @@ interface CreateOrderParams {
   customerId?: string | null;
   couponCode?: string | null;
   redemptionId?: string | null;
+  lang?: "vi" | "en";
 }
 
 interface CreateOrderResult {
@@ -47,6 +48,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     customerId,
     couponCode,
     redemptionId,
+    lang,
   } = params;
 
   // Get menu items for price calculation
@@ -129,7 +131,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     .where(eq(schema.branches.id, branchId))
     .limit(1);
 
-  const taxRate = branch?.tax_rate || 1800;
+  const taxRate = branch?.tax_rate ?? 1000;
   const orderNumber = generateOrderNumber();
 
   // Create order + items + coupon redemption in a transaction
@@ -146,6 +148,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
         orderItems: orderItemsData,
         subtotal,
         customerId: customerId || null,
+        lang,
       }, tx);
       discount = couponResult.discount;
       couponId = couponResult.couponId;
@@ -160,10 +163,9 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
 
     discount += redemptionDiscount;
 
-    // IGV se calcula sobre la base imponible (subtotal - descuento)
-    const taxableBase = subtotal - discount;
-    const tax = Math.round((taxableBase * taxRate) / 10000);
-    const total = taxableBase + tax;
+    // VAT is inclusive. Subtotal is the sum of tax-inclusive item prices.
+    const total = subtotal - discount;
+    const tax = Math.round(total - (total / (1 + (taxRate / 10000))));
 
     const [order] = await tx
       .insert(schema.orders)
@@ -262,12 +264,13 @@ interface ApplyCouponParams {
   orderItems: Array<{ menu_item_id: string; unit_price: number; quantity: number; total: number }>;
   subtotal: number;
   customerId: string | null;
+  lang?: "vi" | "en";
 }
 
 type TxOrDb = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 async function applyCoupon(params: ApplyCouponParams, tx: TxOrDb): Promise<{ discount: number; couponId: string }> {
-  const { couponCode, organizationId, orderItems, subtotal, customerId } = params;
+  const { couponCode, organizationId, orderItems, subtotal, customerId, lang = "vi" } = params;
 
   const [coupon] = await tx
     .select()
@@ -282,12 +285,16 @@ async function applyCoupon(params: ApplyCouponParams, tx: TxOrDb): Promise<{ dis
     .limit(1);
 
   if (!coupon) {
-    throw new OrderValidationError("Cupón no encontrado o inactivo");
+    throw new OrderValidationError(
+      lang === "vi" ? "Mã giảm giá không tồn tại hoặc đã ngừng hoạt động" : "Coupon not found or inactive"
+    );
   }
 
   // Validate usage limits
   if (coupon.max_uses_total && coupon.current_uses >= coupon.max_uses_total) {
-    throw new OrderValidationError("El cupón ha alcanzado el límite de usos");
+    throw new OrderValidationError(
+      lang === "vi" ? "Mã giảm giá đã đạt giới hạn sử dụng" : "Coupon has reached its usage limit"
+    );
   }
 
   // Validate per-customer usage limit
@@ -302,23 +309,39 @@ async function applyCoupon(params: ApplyCouponParams, tx: TxOrDb): Promise<{ dis
         ),
       );
     if (count >= coupon.max_uses_per_customer) {
-      throw new OrderValidationError("Ya usaste este cupón el máximo de veces permitido");
+      throw new OrderValidationError(
+        lang === "vi"
+          ? "Bạn đã sử dụng mã giảm giá này đạt số lần tối đa cho phép"
+          : "You have already used this coupon the maximum number of times"
+      );
     }
   }
 
   // Validate date range
   const now = new Date();
   if (coupon.starts_at && now < coupon.starts_at) {
-    throw new OrderValidationError("El cupón aún no está vigente");
+    throw new OrderValidationError(
+      lang === "vi" ? "Mã giảm giá chưa đến thời gian áp dụng" : "Coupon is not yet active"
+    );
   }
   if (coupon.expires_at && now > coupon.expires_at) {
-    throw new OrderValidationError("El cupón ha expirado");
+    throw new OrderValidationError(
+      lang === "vi" ? "Mã giảm giá đã hết hạn" : "Coupon has expired"
+    );
   }
 
   // Validate min order amount
   if (coupon.min_order_amount && subtotal < coupon.min_order_amount) {
+    const formattedMin = new Intl.NumberFormat(lang === "vi" ? "vi-VN" : "en-US", {
+      style: "currency",
+      currency: "VND",
+      minimumFractionDigits: 0,
+    }).format(coupon.min_order_amount / 100);
+
     throw new OrderValidationError(
-      `El pedido mínimo para este cupón es S/ ${(coupon.min_order_amount / 100).toFixed(2)}`,
+      lang === "vi"
+        ? `Đơn hàng tối thiểu để áp dụng mã giảm giá này là ${formattedMin}`
+        : `Minimum order amount for this coupon is ${formattedMin}`
     );
   }
 

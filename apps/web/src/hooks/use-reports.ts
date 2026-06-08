@@ -13,6 +13,13 @@ export interface PaymentMethodShare {
   value: number;
 }
 
+export interface BranchSalesShare {
+  branchId: string;
+  name: string;
+  orders: number;
+  revenue: number;
+}
+
 export interface SalesReportData {
   totalOrders: number;
   totalRevenue: number;
@@ -20,6 +27,7 @@ export interface SalesReportData {
   totalDiscount: number;
   days: SalesReportDay[];
   paymentMethods: PaymentMethodShare[];
+  branches?: BranchSalesShare[];
 }
 
 export interface TopItemReport {
@@ -28,28 +36,30 @@ export interface TopItemReport {
   totalRevenue: number;
 }
 
-export function useSalesReport(startDate?: string, endDate?: string) {
+export function useSalesReport(startDate?: string, endDate?: string, allBranches?: boolean) {
   const params = new URLSearchParams();
   if (startDate) params.set("startDate", startDate);
   if (endDate) params.set("endDate", endDate);
+  if (allBranches) params.set("allBranches", "true");
   const qs = params.toString();
 
   return useQuery<SalesReportData>({
-    queryKey: ["reports", "sales", startDate, endDate],
+    queryKey: ["reports", "sales", startDate, endDate, allBranches],
     queryFn: () => apiFetch<SalesReportData>(`/api/reports/sales${qs ? `?${qs}` : ""}`),
     enabled: !!startDate && !!endDate,
   });
 }
 
-export function useTopItems(startDate?: string, endDate?: string, limit?: number) {
+export function useTopItems(startDate?: string, endDate?: string, limit?: number, allBranches?: boolean) {
   const params = new URLSearchParams();
   if (startDate) params.set("startDate", startDate);
   if (endDate) params.set("endDate", endDate);
   if (limit) params.set("limit", String(limit));
+  if (allBranches) params.set("allBranches", "true");
   const qs = params.toString();
 
   return useQuery<TopItemReport[]>({
-    queryKey: ["reports", "top-items", startDate, endDate, limit],
+    queryKey: ["reports", "top-items", startDate, endDate, limit, allBranches],
     queryFn: () =>
       apiFetch<TopItemReport[]>(`/api/reports/top-items${qs ? `?${qs}` : ""}`),
     enabled: !!startDate && !!endDate,

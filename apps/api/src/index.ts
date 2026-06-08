@@ -33,7 +33,7 @@ const server = Bun.serve({
   },
 });
 
-logger.info("RestAI API running", { port, url: `http://localhost:${port}` });
+logger.info("TODA POS API running", { port, url: `http://localhost:${port}` });
 
 // Graceful shutdown
 async function shutdown(signal: string) {

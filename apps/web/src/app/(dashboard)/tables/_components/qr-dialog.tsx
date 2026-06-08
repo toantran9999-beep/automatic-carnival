@@ -10,6 +10,7 @@ import {
 } from "@restai/ui/components/dialog";
 import { Download } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
+import { useTranslation } from "@/stores/lang-store";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://app.hosteleria.me";
 
@@ -20,6 +21,7 @@ interface QrDialogProps {
 }
 
 export function QrDialog({ table, branchSlug, onClose }: QrDialogProps) {
+  const { t } = useTranslation();
   const qrUrl = table ? `${APP_URL}/${branchSlug}/${table.qr_code}` : "";
 
   const handleDownloadQR = () => {
@@ -36,7 +38,7 @@ export function QrDialog({ table, branchSlug, onClose }: QrDialogProps) {
     img.onload = () => {
       ctx?.drawImage(img, 0, 0, 400, 400);
       const a = document.createElement("a");
-      a.download = `mesa-${table.number}-qr.png`;
+      a.download = `${t("tables.title").toLowerCase()}-${table.number}-qr.png`;
       a.href = canvas.toDataURL("image/png");
       a.click();
     };
@@ -49,7 +51,7 @@ export function QrDialog({ table, branchSlug, onClose }: QrDialogProps) {
     <Dialog open={!!table} onOpenChange={(open) => !open && onClose()}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Codigo QR - Mesa {table?.number}</DialogTitle>
+          <DialogTitle>{t("tables.qrModalTitle")} - {t("tables.title")} {table?.number}</DialogTitle>
         </DialogHeader>
         {table && (
           <div className="flex flex-col items-center gap-4 py-4">
@@ -63,17 +65,17 @@ export function QrDialog({ table, branchSlug, onClose }: QrDialogProps) {
               {qrUrl}
             </p>
             <p className="text-xs text-muted-foreground">
-              Codigo: {table.qr_code}
+              {t("menu.sku") || "Code"}: {table.qr_code}
             </p>
           </div>
         )}
         <DialogFooter>
           <Button variant="outline" onClick={onClose}>
-            Cerrar
+            {t("common.cancel")}
           </Button>
           <Button onClick={handleDownloadQR}>
             <Download className="h-4 w-4 mr-2" />
-            Descargar PNG
+            {t("tables.downloadQR")}
           </Button>
         </DialogFooter>
       </DialogContent>

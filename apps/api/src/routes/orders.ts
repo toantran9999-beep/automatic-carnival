@@ -14,9 +14,11 @@ import { ORDER_STATUS_TRANSITIONS, ORDER_ITEM_STATUS_TRANSITIONS } from "@restai
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
 import { z } from "zod";
 import { createOrder, handleOrderCompletion, OrderValidationError } from "../services/order.service.js";
+import { signCustomerToken } from "../lib/jwt.js";
 
 const orders = new Hono<AppEnv>();
 
@@ -92,8 +94,8 @@ orders.post(
     const tenant = c.get("tenant") as any;
     const user = c.get("user") as any;
 
-    // Determine table_session_id for customer
-    let tableSessionId: string | null = null;
+    // Determine table_session_id
+    let tableSessionId: string | null = body.tableSessionId || null;
     if (user.role === "customer") {
       const [session] = await db
         .select({ id: schema.tableSessions.id })
@@ -106,6 +108,67 @@ orders.post(
         )
         .limit(1);
       tableSessionId = session?.id || null;
+    } else if (body.tableId && !tableSessionId) {
+      // Find table first to get its number
+      const [table] = await db
+        .select({ number: schema.tables.number })
+        .from(schema.tables)
+        .where(
+          and(
+            eq(schema.tables.id, body.tableId),
+            eq(schema.tables.branch_id, tenant.branchId),
+          ),
+        )
+        .limit(1);
+
+      if (table) {
+        const [session] = await db
+          .select({ id: schema.tableSessions.id })
+          .from(schema.tableSessions)
+          .where(
+            and(
+              eq(schema.tableSessions.table_id, body.tableId),
+              eq(schema.tableSessions.status, "active"),
+            ),
+          )
+          .limit(1);
+        if (session) {
+          tableSessionId = session.id;
+        } else {
+          const customerToken = await signCustomerToken({
+            sub: crypto.randomUUID(),
+            org: tenant.organizationId,
+            branch: tenant.branchId,
+            table: body.tableId,
+          });
+
+          const [newSession] = await db
+            .insert(schema.tableSessions)
+            .values({
+              organization_id: tenant.organizationId,
+              branch_id: tenant.branchId,
+              table_id: body.tableId,
+              status: "active",
+              customer_name: body.customerName || "POS Staff",
+              token: customerToken,
+            })
+            .returning();
+
+          tableSessionId = newSession.id;
+        }
+
+        // Always ensure table is marked occupied and broadcast
+        await db
+          .update(schema.tables)
+          .set({ status: "occupied" })
+          .where(eq(schema.tables.id, body.tableId));
+
+        await wsManager.publish(`branch:${tenant.branchId}`, {
+          type: "table:status",
+          payload: { tableId: body.tableId, number: table.number, status: "occupied" },
+          timestamp: Date.now(),
+        });
+      }
     }
 
     let result;
@@ -177,7 +240,7 @@ orders.get(
 
     if (!order) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Orden no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
         404,
       );
     }
@@ -215,7 +278,7 @@ orders.patch(
 
     if (!order) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Orden no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
         404,
       );
     }
@@ -225,7 +288,10 @@ orders.patch(
       return c.json(
         {
           success: false,
-          error: { code: "BAD_REQUEST", message: `No se puede cambiar de "${order.status}" a "${status}"` },
+          error: {
+            code: "BAD_REQUEST",
+            message: t(c, "invalid_status_transition", { from: order.status, to: status }),
+          },
         },
         400,
       );
@@ -296,7 +362,7 @@ orders.patch(
 
     if (!order) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Orden no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
         404,
       );
     }
@@ -314,7 +380,7 @@ orders.patch(
 
     if (!item) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Item no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "item_not_found") } },
         404,
       );
     }
@@ -324,7 +390,10 @@ orders.patch(
       return c.json(
         {
           success: false,
-          error: { code: "BAD_REQUEST", message: `No se puede cambiar de "${item.status}" a "${status}"` },
+          error: {
+            code: "BAD_REQUEST",
+            message: t(c, "invalid_status_transition", { from: item.status, to: status }),
+          },
         },
         400,
       );

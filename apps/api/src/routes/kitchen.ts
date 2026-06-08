@@ -9,6 +9,7 @@ import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { wsManager } from "../ws/manager.js";
+import { t } from "../lib/i18n.js";
 
 const kitchen = new Hono<AppEnv>();
 
@@ -67,7 +68,7 @@ kitchen.patch(
 
     if (!item) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Item no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "item_not_found") } },
         404,
       );
     }
@@ -86,7 +87,7 @@ kitchen.patch(
 
     if (!order || order.branch_id !== tenant.branchId) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Orden no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
         404,
       );
     }
@@ -96,7 +97,7 @@ kitchen.patch(
       return c.json(
         {
           success: false,
-          error: { code: "BAD_REQUEST", message: `No se puede cambiar de "${item.status}" a "${status}"` },
+          error: { code: "BAD_REQUEST", message: t(c, "invalid_status_transition", { from: item.status, to: status }) },
         },
         400,
       );

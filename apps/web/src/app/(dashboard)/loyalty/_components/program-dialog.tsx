@@ -13,6 +13,8 @@ import {
 } from "@restai/ui/components/dialog";
 import { useCreateProgram, useUpdateProgram } from "@/hooks/use-loyalty";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
+import { formatCurrency } from "@/lib/utils";
 
 export function ProgramDialog({
   open,
@@ -23,12 +25,13 @@ export function ProgramDialog({
   onOpenChange: (open: boolean) => void;
   editData?: any;
 }) {
+  const { t, lang } = useTranslation();
   const createProgram = useCreateProgram();
   const updateProgram = useUpdateProgram();
   const isEdit = !!editData;
 
   const [form, setForm] = useState({
-    name: editData?.name || "Programa de Puntos",
+    name: editData?.name || (lang === "vi" ? "Chương trình tích điểm" : "Points Program"),
     pointsPerCurrencyUnit: editData?.points_per_currency_unit || 1,
     currencyPerPoint: editData?.currency_per_point || 100,
   });
@@ -48,14 +51,14 @@ export function ProgramDialog({
     mutation.mutate(data, {
       onSuccess: () => {
         onOpenChange(false);
-        toast.success(isEdit ? "Programa actualizado" : "Programa creado exitosamente");
+        toast.success(isEdit ? (lang === "vi" ? "Đã cập nhật chương trình" : "Program updated") : (lang === "vi" ? "Tạo chương trình thành công" : "Program created successfully"));
       },
-      onError: (err) => toast.error(`Error: ${(err as Error).message}`),
+      onError: (err) => toast.error(`${t("common.error")}: ${(err as Error).message}`),
     });
   }
 
   // Points simulator
-  const exampleSpend = 50;
+  const exampleSpend = form.pointsPerCurrencyUnit > 0 && form.currencyPerPoint > 1000 ? 50000 : 50;
   const pointsEarned = exampleSpend * form.pointsPerCurrencyUnit;
   const pointValue = form.currencyPerPoint / 100;
 
@@ -63,15 +66,19 @@ export function ProgramDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Editar Programa" : "Crear Programa de Fidelizacion"}</DialogTitle>
+          <DialogTitle>
+            {isEdit
+              ? (lang === "vi" ? "Sửa chương trình" : "Edit Program")
+              : (lang === "vi" ? "Tạo chương trình tích điểm" : "Create Points Program")}
+          </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="prog-name">Nombre del programa</Label>
+            <Label htmlFor="prog-name">{lang === "vi" ? "Tên chương trình" : "Program Name"}</Label>
             <Input id="prog-name" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="prog-ppu">Puntos por sol gastado</Label>
+            <Label htmlFor="prog-ppu">{lang === "vi" ? "Điểm cho mỗi đơn vị chi tiêu" : "Points per unit spent"}</Label>
             <Input
               id="prog-ppu"
               type="number"
@@ -79,10 +86,12 @@ export function ProgramDialog({
               value={form.pointsPerCurrencyUnit}
               onChange={(e) => setForm((p) => ({ ...p, pointsPerCurrencyUnit: parseInt(e.target.value) || 1 }))}
             />
-            <p className="text-xs text-muted-foreground">Cuantos puntos gana el cliente por cada S/ 1.00 gastado</p>
+            <p className="text-xs text-muted-foreground">
+              {lang === "vi" ? `Số điểm khách hàng nhận được cho mỗi ${formatCurrency(100)} chi tiêu` : `How many points the customer earns for each ${formatCurrency(100)} spent`}
+            </p>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="prog-cpp">Valor por punto (centimos)</Label>
+            <Label htmlFor="prog-cpp">{lang === "vi" ? "Giá trị quy đổi (xu/cent)" : "Point value (cents)"}</Label>
             <Input
               id="prog-cpp"
               type="number"
@@ -90,26 +99,38 @@ export function ProgramDialog({
               value={form.currencyPerPoint}
               onChange={(e) => setForm((p) => ({ ...p, currencyPerPoint: parseInt(e.target.value) || 100 }))}
             />
-            <p className="text-xs text-muted-foreground">Valor en centimos de cada punto al canjear (100 = S/ 1.00)</p>
+            <p className="text-xs text-muted-foreground">
+              {lang === "vi" ? `Giá trị quy đổi điểm sang tiền tệ (100 điểm = ${formatCurrency(100 * form.currencyPerPoint)})` : `Value of each point when redeeming (100 pts = ${formatCurrency(100 * form.currencyPerPoint)})`}
+            </p>
           </div>
 
           {/* Simulator */}
           <div className="rounded-lg border border-border bg-muted/30 p-4 space-y-2">
-            <p className="text-sm font-medium text-foreground">Vista previa</p>
+            <p className="text-sm font-medium text-foreground">{lang === "vi" ? "Bản xem trước" : "Preview"}</p>
             <p className="text-xs text-muted-foreground">
-              Si tu cliente gasta <span className="font-bold text-foreground">S/ {exampleSpend}.00</span>, gana{" "}
-              <span className="font-bold text-primary">{pointsEarned} puntos</span>.
+              {lang === "vi" ? (
+                <>Nếu khách chi tiêu <span className="font-bold text-foreground">{formatCurrency(exampleSpend * 100)}</span>, nhận <span className="font-bold text-primary">{pointsEarned} điểm</span>.</>
+              ) : (
+                <>If your customer spends <span className="font-bold text-foreground">{formatCurrency(exampleSpend * 100)}</span>, they earn <span className="font-bold text-primary">{pointsEarned} points</span>.</>
+              )}
             </p>
             <p className="text-xs text-muted-foreground">
-              Con <span className="font-bold text-foreground">100 puntos</span> acumulados, puede canjear{" "}
-              <span className="font-bold text-primary">S/ {(100 * pointValue).toFixed(2)}</span> en descuentos.
+              {lang === "vi" ? (
+                <>Với <span className="font-bold text-foreground">100 điểm</span> tích lũy, có thể đổi <span className="font-bold text-primary">{formatCurrency(100 * form.currencyPerPoint)}</span> giảm giá.</>
+              ) : (
+                <>With <span className="font-bold text-foreground">100 points</span>, they can redeem <span className="font-bold text-primary">{formatCurrency(100 * form.currencyPerPoint)}</span> in discounts.</>
+              )}
             </p>
           </div>
 
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
             <Button type="submit" disabled={createProgram.isPending || updateProgram.isPending}>
-              {(createProgram.isPending || updateProgram.isPending) ? "Guardando..." : isEdit ? "Guardar Cambios" : "Crear Programa"}
+              {(createProgram.isPending || updateProgram.isPending)
+                ? t("common.saving")
+                : isEdit
+                ? (lang === "vi" ? "Lưu thay đổi" : "Save Changes")
+                : (lang === "vi" ? "Tạo chương trình" : "Create Program")}
             </Button>
           </DialogFooter>
         </form>

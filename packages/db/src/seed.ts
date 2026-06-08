@@ -1,28 +1,62 @@
 import { db, schema } from "./index";
 import { hash } from "@node-rs/argon2";
-import { eq } from "drizzle-orm";
+import { sql } from "drizzle-orm";
+
+function vnd(amount: number) {
+  return amount * 100;
+}
 
 async function seed() {
-  console.log("🌱 Seeding database...");
+  console.log("🌱 Cleaning up database...");
 
-  const [existingOrg] = await db
-    .select({ id: schema.organizations.id })
-    .from(schema.organizations)
-    .where(eq(schema.organizations.slug, "demo"))
-    .limit(1);
+  // Truncate all tables to start with a completely clean slate
+  await db.execute(sql`
+    TRUNCATE TABLE 
+      coupon_assignments, 
+      coupon_redemptions, 
+      coupons, 
+      customer_loyalty, 
+      customers, 
+      inventory_categories, 
+      inventory_items, 
+      inventory_movements, 
+      invoices, 
+      loyalty_programs, 
+      loyalty_tiers, 
+      loyalty_transactions, 
+      menu_categories, 
+      menu_item_modifier_groups, 
+      menu_items, 
+      modifier_groups, 
+      modifiers, 
+      order_item_modifiers, 
+      order_items, 
+      orders, 
+      payments, 
+      recipe_ingredients, 
+      refresh_tokens, 
+      reward_redemptions, 
+      rewards, 
+      shifts, 
+      spaces, 
+      table_assignments, 
+      table_sessions, 
+      tables,
+      user_branches,
+      users,
+      branches,
+      organizations
+    CASCADE;
+  `);
 
-  if (existingOrg) {
-    console.log("ℹ️ Seed ya fue ejecutado anteriormente (slug: demo).");
-    console.log("   No se realizaron cambios para evitar duplicados.");
-    process.exit(0);
-  }
+  console.log("🌱 Seeding clean database with TODA POS core accounts...");
 
   // 1. Create organization
   const [org] = await db
     .insert(schema.organizations)
     .values({
-      name: "Restaurante Demo",
-      slug: "demo",
+      name: "TODA POS",
+      slug: "toda",
       plan: "pro",
       settings: { theme: "default" },
     })
@@ -35,13 +69,13 @@ async function seed() {
     .insert(schema.branches)
     .values({
       organization_id: org.id,
-      name: "Sede Principal",
-      slug: "principal",
-      address: "Av. Javier Prado 1234, San Isidro, Lima",
-      phone: "+51 1 234 5678",
-      timezone: "America/Lima",
-      currency: "PEN",
-      tax_rate: 1800, // 18% IGV
+      name: "Chi Nhánh Chính",
+      slug: "chi-nhanh-chinh",
+      address: "123 Đường Ba Tháng Hai, Quận 10, TP. Hồ Chí Minh",
+      phone: "+84 28 1234 5678",
+      timezone: "Asia/Ho_Chi_Minh",
+      currency: "VND",
+      tax_rate: 1000, // 10% VAT
       settings: {},
     })
     .returning();
@@ -55,9 +89,9 @@ async function seed() {
     .insert(schema.users)
     .values({
       organization_id: org.id,
-      email: "admin@restai.pe",
+      email: "admin@toda.local",
       password_hash: passwordHash,
-      name: "Admin Demo",
+      name: "Quản Trị Viên",
       role: "org_admin",
     })
     .returning();
@@ -72,10 +106,10 @@ async function seed() {
 
   // 4. Create staff users
   const staffData = [
-    { email: "gerente@restai.pe", name: "Maria Garcia", role: "branch_manager" as const, password: "gerente123" },
-    { email: "cajero@restai.pe", name: "Carlos Lopez", role: "cashier" as const, password: "cajero1234" },
-    { email: "mesero@restai.pe", name: "Juan Perez", role: "waiter" as const, password: "mesero1234" },
-    { email: "cocina@restai.pe", name: "Rosa Martinez", role: "kitchen" as const, password: "cocina1234" },
+    { email: "quanly@toda.local", name: "Quản Lý Cửa Hàng", role: "branch_manager" as const, password: "quanly123" },
+    { email: "thungan@toda.local", name: "Thu Ngân", role: "cashier" as const, password: "thungan123" },
+    { email: "phucvu@toda.local", name: "Nhân Viên Phục Vụ", role: "waiter" as const, password: "phucvu123" },
+    { email: "bep@toda.local", name: "Nhân Viên Bếp", role: "kitchen" as const, password: "bep12345" },
   ];
 
   for (const s of staffData) {
@@ -99,18 +133,54 @@ async function seed() {
     console.log(`✅ Staff: ${s.email} (${s.role}, password: ${s.password})`);
   }
 
-  // 5. Create menu categories
+  // 5. Create spaces and tables for POS dine-in flow
+  const spaceData = [
+    { name: "Tầng trệt", description: "Khu vực chính", floor_number: 1, sort_order: 1 },
+    { name: "Lầu 1", description: "Khu vực gia đình", floor_number: 2, sort_order: 2 },
+    { name: "Ngoài trời", description: "Khu vực thoáng", floor_number: 1, sort_order: 3 },
+  ];
+
+  const createdSpaces = [];
+  for (const space of spaceData) {
+    const [created] = await db
+      .insert(schema.spaces)
+      .values({
+        branch_id: branch.id,
+        organization_id: org.id,
+        ...space,
+      })
+      .returning();
+    createdSpaces.push(created);
+  }
+
+  for (let i = 1; i <= 15; i++) {
+    const space = i <= 6 ? createdSpaces[0] : i <= 12 ? createdSpaces[1] : createdSpaces[2];
+    await db.insert(schema.tables).values({
+      branch_id: branch.id,
+      organization_id: org.id,
+      space_id: space.id,
+      number: i,
+      capacity: i <= 4 ? 2 : i <= 12 ? 4 : 6,
+      qr_code: `toda-${branch.slug}-ban-${i}`,
+      status: "available",
+      position_x: ((i - 1) % 5) * 140,
+      position_y: Math.floor((i - 1) / 5) * 110,
+    });
+  }
+
+  console.log(`✅ ${createdSpaces.length} khu vực và 15 bàn đã tạo`);
+
+  // 6. Create menu categories and items
   const categories = [
-    { name: "Entradas", description: "Para compartir", sort_order: 1 },
-    { name: "Platos de Fondo", description: "Nuestras especialidades", sort_order: 2 },
-    { name: "Ceviches", description: "Frescos del día", sort_order: 3 },
-    { name: "Bebidas", description: "Refrescantes", sort_order: 4 },
-    { name: "Postres", description: "Para endulzar", sort_order: 5 },
+    { name: "Món chính", description: "Các món bán chạy", sort_order: 1 },
+    { name: "Món ăn nhẹ", description: "Khai vị và ăn kèm", sort_order: 2 },
+    { name: "Đồ uống", description: "Trà, nước ép và đồ uống lạnh", sort_order: 3 },
+    { name: "Combo", description: "Combo nhanh cho POS", sort_order: 4 },
   ];
 
   const createdCategories = [];
   for (const cat of categories) {
-    const [c] = await db
+    const [created] = await db
       .insert(schema.menuCategories)
       .values({
         branch_id: branch.id,
@@ -118,118 +188,211 @@ async function seed() {
         ...cat,
       })
       .returning();
-    createdCategories.push(c);
+    createdCategories.push(created);
   }
 
-  console.log(`✅ ${createdCategories.length} categorías creadas`);
-
-  // 6. Create menu items (prices in cents - Soles)
   const menuItems = [
-    // Entradas
-    { categoryIdx: 0, name: "Tequeños de Lomo Saltado", price: 2500, prep: 10, desc: "6 unidades con salsa criolla" },
-    { categoryIdx: 0, name: "Papa a la Huancaína", price: 1800, prep: 8, desc: "Clásica receta peruana" },
-    { categoryIdx: 0, name: "Causa Limeña", price: 2200, prep: 10, desc: "Rellena de pollo" },
-    // Platos de Fondo
-    { categoryIdx: 1, name: "Lomo Saltado", price: 3800, prep: 20, desc: "Con papas fritas y arroz" },
-    { categoryIdx: 1, name: "Ají de Gallina", price: 3200, prep: 18, desc: "Cremoso y tradicional" },
-    { categoryIdx: 1, name: "Arroz con Mariscos", price: 4200, prep: 25, desc: "Mixto de mariscos" },
-    { categoryIdx: 1, name: "Seco de Res", price: 3500, prep: 20, desc: "Con frejoles y arroz" },
-    // Ceviches
-    { categoryIdx: 2, name: "Ceviche Clásico", price: 3500, prep: 12, desc: "Pescado fresco del día" },
-    { categoryIdx: 2, name: "Ceviche Mixto", price: 4500, prep: 15, desc: "Pescado, pulpo, camarón y calamar" },
-    { categoryIdx: 2, name: "Tiradito Nikkei", price: 3800, prep: 10, desc: "En salsa de maracuyá" },
-    // Bebidas
-    { categoryIdx: 3, name: "Chicha Morada", price: 800, prep: 2, desc: "Vaso grande" },
-    { categoryIdx: 3, name: "Inca Kola 500ml", price: 600, prep: 1, desc: "" },
-    { categoryIdx: 3, name: "Limonada Frozen", price: 1200, prep: 5, desc: "Con hierbabuena" },
-    { categoryIdx: 3, name: "Pisco Sour", price: 2500, prep: 5, desc: "Clásico peruano" },
-    // Postres
-    { categoryIdx: 4, name: "Suspiro a la Limeña", price: 1500, prep: 5, desc: "Dulce tradición" },
-    { categoryIdx: 4, name: "Picarones", price: 1800, prep: 10, desc: "Con miel de chancaca" },
-    { categoryIdx: 4, name: "Tres Leches", price: 1600, prep: 5, desc: "Suave y esponjoso" },
+    {
+      categoryIdx: 0,
+      name: "Cơm gà xối mỡ",
+      price: vnd(45000),
+      prep: 12,
+      desc: "Cơm gà giòn, dưa leo, nước mắm gừng",
+    },
+    {
+      categoryIdx: 0,
+      name: "Bún bò Huế",
+      price: vnd(55000),
+      prep: 10,
+      desc: "Bún bò cay nhẹ, giò heo, chả cua",
+    },
+    {
+      categoryIdx: 0,
+      name: "Phở bò tái",
+      price: vnd(52000),
+      prep: 8,
+      desc: "Nước dùng bò, bánh phở, rau thơm",
+    },
+    {
+      categoryIdx: 0,
+      name: "Mì xào hải sản",
+      price: vnd(69000),
+      prep: 14,
+      desc: "Mì trứng xào tôm, mực, rau củ",
+    },
+    {
+      categoryIdx: 1,
+      name: "Chả giò hải sản",
+      price: vnd(39000),
+      prep: 9,
+      desc: "4 cuốn, ăn kèm rau sống",
+    },
+    {
+      categoryIdx: 1,
+      name: "Khoai tây chiên",
+      price: vnd(32000),
+      prep: 6,
+      desc: "Khoai giòn, sốt tương cà",
+    },
+    {
+      categoryIdx: 1,
+      name: "Gỏi cuốn tôm thịt",
+      price: vnd(42000),
+      prep: 7,
+      desc: "3 cuốn, nước chấm đậu phộng",
+    },
+    {
+      categoryIdx: 2,
+      name: "Trà tắc",
+      price: vnd(18000),
+      prep: 2,
+      desc: "Trà tắc mát lạnh",
+      imageUrl: "/images/products/tra-tac.png",
+    },
+    {
+      categoryIdx: 2,
+      name: "Trà chanh",
+      price: vnd(18000),
+      prep: 2,
+      desc: "Trà chanh ít ngọt",
+      imageUrl: "/images/products/tra-chanh.png",
+    },
+    {
+      categoryIdx: 2,
+      name: "Matcha đá xay",
+      price: vnd(39000),
+      prep: 4,
+      desc: "Matcha đá xay kem sữa",
+      imageUrl: "/images/products/matcha-da-xay.png",
+    },
+    {
+      categoryIdx: 3,
+      name: "Combo cơm gà + trà tắc",
+      price: vnd(59000),
+      prep: 12,
+      desc: "Một cơm gà xối mỡ và một trà tắc",
+    },
+    {
+      categoryIdx: 3,
+      name: "Combo phở + trà chanh",
+      price: vnd(65000),
+      prep: 10,
+      desc: "Một phở bò tái và một trà chanh",
+    },
   ];
 
-  for (const item of menuItems) {
-    await db.insert(schema.menuItems).values({
-      category_id: createdCategories[item.categoryIdx].id,
-      branch_id: branch.id,
-      organization_id: org.id,
-      name: item.name,
-      description: item.desc || null,
-      price: item.price,
-      preparation_time_min: item.prep,
-    });
+  const createdMenuItems = [];
+  for (const [index, item] of menuItems.entries()) {
+    const [created] = await db
+      .insert(schema.menuItems)
+      .values({
+        category_id: createdCategories[item.categoryIdx].id,
+        branch_id: branch.id,
+        organization_id: org.id,
+        name: item.name,
+        description: item.desc,
+        price: item.price,
+        image_url: item.imageUrl || null,
+        preparation_time_min: item.prep,
+        sort_order: index + 1,
+      })
+      .returning();
+    createdMenuItems.push(created);
   }
 
-  console.log(`✅ ${menuItems.length} items de menú creados`);
+  console.log(`✅ ${createdCategories.length} danh mục và ${createdMenuItems.length} món đã tạo`);
 
-  // 7. Create tables
-  for (let i = 1; i <= 12; i++) {
-    await db.insert(schema.tables).values({
-      branch_id: branch.id,
-      organization_id: org.id,
-      number: i,
-      capacity: i <= 4 ? 2 : i <= 8 ? 4 : 6,
-      qr_code: `demo-principal-T${i}-${Date.now().toString(36)}${i}`,
-      status: "available",
-    });
-  }
-
-  console.log("✅ 12 mesas creadas");
-
-  // 8. Create loyalty program
-  const [program] = await db
-    .insert(schema.loyaltyPrograms)
+  // 7. Create simple modifier groups for common POS options
+  const [sugarGroup] = await db
+    .insert(schema.modifierGroups)
     .values({
+      branch_id: branch.id,
       organization_id: org.id,
-      name: "Puntos RestAI",
-      points_per_currency_unit: 1,
-      currency_per_point: 100,
+      name: "Mức đường",
+      min_selections: 0,
+      max_selections: 1,
+      is_required: false,
     })
     .returning();
 
-  await db.insert(schema.loyaltyTiers).values([
-    { program_id: program.id, name: "Bronce", min_points: 0, multiplier: 100, benefits: {} },
-    { program_id: program.id, name: "Plata", min_points: 500, multiplier: 150, benefits: { freeDelivery: true } },
-    { program_id: program.id, name: "Oro", min_points: 2000, multiplier: 200, benefits: { freeDelivery: true, prioritySeating: true } },
+  await db.insert(schema.modifiers).values([
+    { group_id: sugarGroup.id, name: "Không đường", price: 0 },
+    { group_id: sugarGroup.id, name: "Ít đường", price: 0 },
+    { group_id: sugarGroup.id, name: "Nhiều đường", price: 0 },
   ]);
 
-  console.log("✅ Programa de fidelización creado con 3 tiers");
-
-  // 9. Create some inventory categories and items
-  const [invCat] = await db
-    .insert(schema.inventoryCategories)
-    .values({ branch_id: branch.id, organization_id: org.id, name: "Insumos Principales" })
-    .returning();
-
-  const inventoryItemsData = [
-    { name: "Pescado fresco", unit: "kg", current_stock: "25.000", min_stock: "5.000", cost_per_unit: 3500 },
-    { name: "Papas", unit: "kg", current_stock: "50.000", min_stock: "10.000", cost_per_unit: 300 },
-    { name: "Arroz", unit: "kg", current_stock: "40.000", min_stock: "8.000", cost_per_unit: 400 },
-    { name: "Limones", unit: "kg", current_stock: "15.000", min_stock: "3.000", cost_per_unit: 500 },
-    { name: "Cebolla roja", unit: "kg", current_stock: "20.000", min_stock: "5.000", cost_per_unit: 250 },
-    { name: "Ají amarillo", unit: "kg", current_stock: "8.000", min_stock: "2.000", cost_per_unit: 800 },
-    { name: "Pisco", unit: "lt", current_stock: "12.000", min_stock: "3.000", cost_per_unit: 4500 },
-  ];
-
-  for (const item of inventoryItemsData) {
-    await db.insert(schema.inventoryItems).values({
-      branch_id: branch.id,
-      organization_id: org.id,
-      category_id: invCat.id,
-      ...item,
+  const drinkItems = createdMenuItems.filter((item) =>
+    ["Trà tắc", "Trà chanh", "Matcha đá xay"].includes(item.name),
+  );
+  for (const item of drinkItems) {
+    await db.insert(schema.menuItemModifierGroups).values({
+      item_id: item.id,
+      group_id: sugarGroup.id,
     });
   }
 
-  console.log(`✅ ${inventoryItemsData.length} items de inventario creados`);
+  // 8. Create inventory sample data
+  const [invCat] = await db
+    .insert(schema.inventoryCategories)
+    .values({
+      branch_id: branch.id,
+      organization_id: org.id,
+      name: "Nguyên liệu chính",
+    })
+    .returning();
 
-  console.log("\n🎉 Seed completado!");
-  console.log("\n📋 Credenciales de acceso:");
-  console.log("   Admin:    admin@restai.pe / admin12345");
-  console.log("   Gerente:  gerente@restai.pe / gerente123");
-  console.log("   Cajero:   cajero@restai.pe / cajero1234");
-  console.log("   Mesero:   mesero@restai.pe / mesero1234");
-  console.log("   Cocina:   cocina@restai.pe / cocina1234");
+  await db.insert(schema.inventoryItems).values([
+    {
+      branch_id: branch.id,
+      organization_id: org.id,
+      category_id: invCat.id,
+      name: "Gạo",
+      unit: "kg",
+      current_stock: "50.000",
+      min_stock: "10.000",
+      cost_per_unit: vnd(18000),
+    },
+    {
+      branch_id: branch.id,
+      organization_id: org.id,
+      category_id: invCat.id,
+      name: "Thịt gà",
+      unit: "kg",
+      current_stock: "25.000",
+      min_stock: "5.000",
+      cost_per_unit: vnd(65000),
+    },
+    {
+      branch_id: branch.id,
+      organization_id: org.id,
+      category_id: invCat.id,
+      name: "Bánh phở",
+      unit: "kg",
+      current_stock: "20.000",
+      min_stock: "5.000",
+      cost_per_unit: vnd(22000),
+    },
+    {
+      branch_id: branch.id,
+      organization_id: org.id,
+      category_id: invCat.id,
+      name: "Trà",
+      unit: "kg",
+      current_stock: "5.000",
+      min_stock: "1.000",
+      cost_per_unit: vnd(120000),
+    },
+  ]);
+
+  console.log("✅ Dữ liệu kho mẫu đã tạo");
+
+  console.log("\n🎉 Seed TODA POS hoàn tất!");
+  console.log("\n📋 Tài khoản đăng nhập:");
+  console.log("   Admin:    admin@toda.local / admin12345");
+  console.log("   Quản lý:  quanly@toda.local / quanly123");
+  console.log("   Thu ngân: thungan@toda.local / thungan123");
+  console.log("   Phục vụ:  phucvu@toda.local / phucvu123");
+  console.log("   Bếp:      bep@toda.local / bep12345");
 
   process.exit(0);
 }

@@ -19,7 +19,7 @@ export default function CustomerLayout({
         <div className="flex items-center justify-between max-w-lg mx-auto">
           <div className="w-8" />
           <h1 className="text-lg font-semibold tracking-wide text-foreground truncate">
-            {branchName || "RestAI"}
+            {branchName || "TODA POS"}
           </h1>
           {token && branchSlug && tableCode ? (
             <Link

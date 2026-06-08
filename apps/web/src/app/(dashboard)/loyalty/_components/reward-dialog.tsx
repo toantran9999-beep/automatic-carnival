@@ -14,6 +14,7 @@ import {
 } from "@restai/ui/components/dialog";
 import { useCreateReward, useUpdateReward } from "@/hooks/use-loyalty";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
 
 const defaultForm = {
   name: "",
@@ -44,6 +45,7 @@ export function RewardDialog({
 }) {
   const createReward = useCreateReward();
   const updateReward = useUpdateReward();
+  const { t } = useTranslation();
   const isEdit = !!editData;
   const [form, setForm] = useState(defaultForm);
 
@@ -77,7 +79,7 @@ export function RewardDialog({
         {
           onSuccess: () => {
             onOpenChange(false);
-            toast.success("Recompensa actualizada");
+            toast.success(t("loyalty.rewardUpdated"));
           },
           onError: (err) => toast.error(`Error: ${(err as Error).message}`),
         },
@@ -96,7 +98,7 @@ export function RewardDialog({
           onSuccess: () => {
             setForm(defaultForm);
             onOpenChange(false);
-            toast.success("Recompensa creada exitosamente");
+            toast.success(t("loyalty.rewardCreated"));
           },
           onError: (err) => toast.error(`Error: ${(err as Error).message}`),
         },
@@ -110,44 +112,44 @@ export function RewardDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{isEdit ? "Editar Recompensa" : "Crear Recompensa"}</DialogTitle>
+          <DialogTitle>{isEdit ? t("loyalty.editReward") : t("loyalty.createReward")}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="rwd-name">Nombre *</Label>
+            <Label htmlFor="rwd-name">{t("loyalty.rewardName")} *</Label>
             <Input id="rwd-name" value={form.name} onChange={(e) => setForm((p) => ({ ...p, name: e.target.value }))} required />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rwd-desc">Descripcion</Label>
+            <Label htmlFor="rwd-desc">{t("loyalty.rewardDescription")}</Label>
             <Input id="rwd-desc" value={form.description} onChange={(e) => setForm((p) => ({ ...p, description: e.target.value }))} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rwd-cost">Costo en puntos</Label>
+            <Label htmlFor="rwd-cost">{t("loyalty.pointsCost")}</Label>
             <Input id="rwd-cost" type="number" min={1} value={form.pointsCost} onChange={(e) => setForm((p) => ({ ...p, pointsCost: parseInt(e.target.value) || 1 }))} />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rwd-dtype">Tipo de descuento</Label>
+            <Label htmlFor="rwd-dtype">{t("loyalty.discountType")}</Label>
             <Select value={form.discountType} onValueChange={(v) => setForm((p) => ({ ...p, discountType: v as "percentage" | "fixed" }))}>
               <SelectTrigger>
-                <SelectValue placeholder="Tipo de descuento" />
+                <SelectValue placeholder={t("loyalty.discountType")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="percentage">Porcentaje (%)</SelectItem>
-                <SelectItem value="fixed">Monto fijo (centimos)</SelectItem>
+                <SelectItem value="percentage">{t("loyalty.percentage")}</SelectItem>
+                <SelectItem value="fixed">{t("loyalty.fixed")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="rwd-dval">Valor del descuento</Label>
+            <Label htmlFor="rwd-dval">{t("loyalty.discountValue")}</Label>
             <Input id="rwd-dval" type="number" min={1} value={form.discountValue} onChange={(e) => setForm((p) => ({ ...p, discountValue: parseInt(e.target.value) || 1 }))} />
             <p className="text-xs text-muted-foreground">
-              {form.discountType === "percentage" ? "Porcentaje de descuento (ej. 10 = 10%)" : "Monto en centimos (ej. 500 = S/ 5.00)"}
+              {form.discountType === "percentage" ? t("loyalty.discountValueHelpPercentage") : t("loyalty.discountValueHelpFixed")}
             </p>
           </div>
           <DialogFooter>
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancelar</Button>
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
             <Button type="submit" disabled={isPending || !form.name}>
-              {isPending ? (isEdit ? "Guardando..." : "Creando...") : (isEdit ? "Guardar" : "Crear Recompensa")}
+              {isPending ? t("common.saving") : isEdit ? t("common.save") : t("loyalty.createReward")}
             </Button>
           </DialogFooter>
         </form>

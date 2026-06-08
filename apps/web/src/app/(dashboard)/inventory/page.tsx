@@ -23,8 +23,10 @@ import { MovementsTab } from "./_components/movements-tab";
 import { CreateMovementDialog } from "./_components/movement-dialog";
 import { RecipesTab } from "./_components/recipes-tab";
 import { CreateRecipeDialog } from "./_components/recipe-dialog";
+import { useTranslation } from "@/stores/lang-store";
 
 export default function InventoryPage() {
+  const { t, lang } = useTranslation();
   const [activeTab, setActiveTab] = useState("stock");
   const [search, setSearch] = useState("");
   const [newItemOpen, setNewItemOpen] = useState(false);
@@ -51,20 +53,20 @@ export default function InventoryPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Inventario</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("inventory.title")}</h1>
           <p className="text-muted-foreground">
-            Control de stock y recetas
+            {lang === "vi" ? "Kiểm soát tồn kho và công thức định lượng" : "Stock control and recipes"}
           </p>
         </div>
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-16">
             <Package className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-lg font-medium mb-2">Inventario desactivado</p>
+            <p className="text-lg font-medium mb-2 text-center">{t("inventory.notEnabled")}</p>
             <p className="text-sm text-muted-foreground text-center max-w-md mb-4">
-              El control de inventario no esta activado para esta sede. Puedes activarlo desde la configuracion de la sede.
+              {t("inventory.enableInSettings")}
             </p>
             <Button variant="outline" onClick={() => window.location.href = "/settings"}>
-              Ir a Configuracion
+              {t("inventory.goToSettings")}
             </Button>
           </CardContent>
         </Card>
@@ -76,15 +78,15 @@ export default function InventoryPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold text-foreground">Inventario</h1>
+          <h1 className="text-2xl font-bold text-foreground">{t("inventory.title")}</h1>
         </div>
         <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10 flex items-center justify-between">
           <p className="text-sm text-destructive">
-            Error al cargar inventario: {(error as Error).message}
+            {t("common.error")}: {(error as Error).message}
           </p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Reintentar
+            {t("common.retry")}
           </Button>
         </div>
       </div>
@@ -99,7 +101,8 @@ export default function InventoryPage() {
           <div>
             <p className="text-sm font-medium text-destructive">
               {alerts.length}{" "}
-              {alerts.length === 1 ? "item" : "items"} bajo stock minimo
+              {alerts.length === 1 ? t("inventory.items").toLowerCase() : t("inventory.items").toLowerCase()}{" "}
+              {lang === "vi" ? "dưới mức tối thiểu" : "below minimum stock"}
             </p>
             <p className="text-xs text-destructive/80">
               {alerts.map((a: any) => a.name).join(", ")}
@@ -109,11 +112,11 @@ export default function InventoryPage() {
       )}
 
       <PageHeader
-        title="Inventario"
+        title={t("inventory.title")}
         description={
           isLoading
-            ? "Cargando..."
-            : `${items.length} items en total`
+            ? t("common.loading")
+            : `${items.length} ${t("inventory.items").toLowerCase()}`
         }
       />
 
@@ -121,15 +124,15 @@ export default function InventoryPage() {
         <TabsList>
           <TabsTrigger value="stock">
             <Package className="h-4 w-4 mr-1" />
-            Items
+            {t("inventory.items")}
           </TabsTrigger>
           <TabsTrigger value="movements">
             <ArrowUpDown className="h-4 w-4 mr-1" />
-            Movimientos
+            {t("inventory.movements")}
           </TabsTrigger>
           <TabsTrigger value="recipes">
             <ChefHat className="h-4 w-4 mr-1" />
-            Recetas
+            {t("inventory.recipes")}
           </TabsTrigger>
         </TabsList>
 

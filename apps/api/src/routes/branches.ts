@@ -7,6 +7,7 @@ import { createBranchSchema, updateBranchSchema, idParamSchema } from "@restai/v
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { t } from "../lib/i18n.js";
 
 const branches = new Hono<AppEnv>();
 
@@ -48,7 +49,7 @@ branches.post(
 
     if (existing.length > 0) {
       return c.json(
-        { success: false, error: { code: "CONFLICT", message: "El slug de sucursal ya existe" } },
+        { success: false, error: { code: "CONFLICT", message: t(c, "branch_slug_exists") } },
         409,
       );
     }
@@ -93,7 +94,7 @@ branches.get(
 
     if (!branch) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Sucursal no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "branch_not_found") } },
         404,
       );
     }
@@ -135,7 +136,7 @@ branches.patch(
 
     if (!updated) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Sucursal no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "branch_not_found") } },
         404,
       );
     }

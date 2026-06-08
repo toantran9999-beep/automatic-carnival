@@ -10,11 +10,13 @@ import { Label } from "@restai/ui/components/label";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
 import Link from "next/link";
+import { useTranslation } from "@/stores/lang-store";
 
 export default function RegisterPage() {
   const { register: registerUser } = useAuth();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const { t } = useTranslation();
 
   const {
     register,
@@ -43,7 +45,7 @@ export default function RegisterPage() {
       setLoading(true);
       await registerUser(data);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al registrarse");
+      setError(err instanceof Error ? err.message : t("register.error"));
     } finally {
       setLoading(false);
     }
@@ -55,9 +57,9 @@ export default function RegisterPage() {
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
           <span className="text-2xl font-bold text-primary-foreground">R</span>
         </div>
-        <CardTitle className="text-2xl">Crear Cuenta</CardTitle>
+        <CardTitle className="text-2xl">{t("register.title")}</CardTitle>
         <CardDescription>
-          Registra tu restaurante en RestAI
+          {t("register.subtitle")}
         </CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit(onSubmit)}>
@@ -68,10 +70,10 @@ export default function RegisterPage() {
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="organizationName">Nombre del restaurante</Label>
+            <Label htmlFor="organizationName">{t("register.orgNameLabel")}</Label>
             <Input
               id="organizationName"
-              placeholder="Mi Restaurante"
+              placeholder={t("register.orgNamePlaceholder")}
               {...register("organizationName")}
               onChange={(e) => onOrgNameChange(e.target.value)}
             />
@@ -82,10 +84,10 @@ export default function RegisterPage() {
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="slug">Identificador (URL)</Label>
+            <Label htmlFor="slug">{t("register.slugLabel")}</Label>
             <Input
               id="slug"
-              placeholder="mi-restaurante"
+              placeholder={t("register.slugPlaceholder")}
               {...register("slug")}
             />
             {errors.slug && (
@@ -93,10 +95,10 @@ export default function RegisterPage() {
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="name">Tu nombre</Label>
+            <Label htmlFor="name">{t("register.nameLabel")}</Label>
             <Input
               id="name"
-              placeholder="Juan Perez"
+              placeholder={t("register.namePlaceholder")}
               {...register("name")}
             />
             {errors.name && (
@@ -104,11 +106,11 @@ export default function RegisterPage() {
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t("register.emailLabel")}</Label>
             <Input
               id="email"
               type="email"
-              placeholder="tu@email.com"
+              placeholder={t("register.emailPlaceholder")}
               {...register("email")}
             />
             {errors.email && (
@@ -116,11 +118,11 @@ export default function RegisterPage() {
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Contrasena</Label>
+            <Label htmlFor="password">{t("register.passwordLabel")}</Label>
             <Input
               id="password"
               type="password"
-              placeholder="********"
+              placeholder={t("register.passwordPlaceholder")}
               {...register("password")}
             />
             {errors.password && (
@@ -132,12 +134,12 @@ export default function RegisterPage() {
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Creando cuenta..." : "Crear Cuenta"}
+            {loading ? t("register.loading") : t("register.button")}
           </Button>
           <p className="text-sm text-muted-foreground">
-            Ya tienes cuenta?{" "}
+            {t("register.hasAccount")}{" "}
             <Link href="/login" className="text-primary hover:underline">
-              Inicia sesion
+              {t("register.signIn")}
             </Link>
           </p>
         </CardFooter>

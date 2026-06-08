@@ -26,6 +26,8 @@ services:
       timeout: 5s
       retries: 5
 
+  # One-off: applies SQL migrations from packages/db/drizzle, then exits.
+  # To seed demo data run:  docker compose run --rm migrate bun run src/seed.ts
   migrate:
     build:
       context: .
@@ -51,7 +53,8 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_SECRET: ${JWT_SECRET}
       JWT_REFRESH_SECRET: ${JWT_REFRESH_SECRET}
-      CORS_ORIGINS: ${CORS_ORIGINS:-https://app.hosteleria.me}
+      # Must match the web origin exactly (scheme + host).
+      CORS_ORIGINS: https://${WEB_DOMAIN}
       LOG_LEVEL: ${LOG_LEVEL:-info}
       R2_ACCOUNT_ID: ${R2_ACCOUNT_ID:-}
       R2_ACCESS_KEY_ID: ${R2_ACCESS_KEY_ID:-}
@@ -65,8 +68,8 @@ services:
         condition: service_healthy
       migrate:
         condition: service_completed_successfully
-    ports:
-      - "3001:3001"
+    expose:
+      - "3001"
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:3001/health"]
       interval: 10s
@@ -78,13 +81,38 @@ services:
     build:
       context: .
       dockerfile: Dockerfile.web
+      args:
+        # Baked into the client bundle at build time — rebuild web if these change.
+        NEXT_PUBLIC_API_URL: https://${API_DOMAIN}
+        NEXT_PUBLIC_WS_URL: wss://${API_DOMAIN}
     restart: unless-stopped
-    ports:
-      - "3100:3000"
+    expose:
+      - "3000"
     depends_on:
       api:
         condition: service_healthy
 
+  # Reverse proxy + automatic HTTPS (Let's Encrypt). Works with nip.io domains.
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    environment:
+      WEB_DOMAIN: ${WEB_DOMAIN}
+      API_DOMAIN: ${API_DOMAIN}
+      ACME_EMAIL: ${ACME_EMAIL:-}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddydata:/data
+      - caddyconfig:/config
+    depends_on:
+      - web
+      - api
+
 volumes:
   pgdata:
   redisdata:
+  caddydata:
+  caddyconfig:

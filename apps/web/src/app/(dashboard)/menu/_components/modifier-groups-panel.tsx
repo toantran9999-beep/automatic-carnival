@@ -16,6 +16,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useModifierGroups, useDeleteModifierGroup } from "@/hooks/use-menu";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
+import { useTranslation } from "@/stores/lang-store";
 import { ModifierGroupDialog } from "./modifier-group-dialog";
 
 function Skeleton({ className }: { className?: string }) {
@@ -27,6 +28,7 @@ function Skeleton({ className }: { className?: string }) {
 export function ModifierGroupsPanel() {
   const { data: groups, isLoading } = useModifierGroups();
   const deleteGroup = useDeleteModifierGroup();
+  const { t } = useTranslation();
 
   const [editGroup, setEditGroup] = useState<any>(null);
   const [createOpen, setCreateOpen] = useState(false);
@@ -39,9 +41,9 @@ export function ModifierGroupsPanel() {
     if (!confirmDelete) return;
     try {
       await deleteGroup.mutateAsync(confirmDelete.id);
-      toast.success("Grupo eliminado");
+      toast.success(t("menu.deleteSuccess"));
     } catch (err: any) {
-      toast.error(err.message || "Error al eliminar");
+      toast.error(err.message || t("menu.deleteError"));
     }
     setConfirmDelete(null);
   };
@@ -60,12 +62,11 @@ export function ModifierGroupsPanel() {
     <div className="space-y-4">
       <div className="flex items-center justify-between">
         <p className="text-sm text-muted-foreground">
-          {groupList.length} grupo{groupList.length !== 1 ? "s" : ""} creado
-          {groupList.length !== 1 ? "s" : ""}
+          {groupList.length} {t("menu.modifierGroups")}
         </p>
         <Button size="sm" onClick={() => setCreateOpen(true)}>
           <Plus className="h-4 w-4 mr-2" />
-          Nuevo grupo
+          {t("menu.addModifierGroup")}
         </Button>
       </div>
 
@@ -73,15 +74,14 @@ export function ModifierGroupsPanel() {
         <div className="text-center py-12 border border-dashed border-border rounded-lg">
           <Settings2 className="h-8 w-8 mx-auto text-muted-foreground mb-3" />
           <p className="text-sm text-muted-foreground mb-3">
-            No hay grupos de modificadores
+            {t("menu.noGroups")}
           </p>
           <p className="text-xs text-muted-foreground mb-4">
-            Los modificadores permiten personalizar los productos (tamano,
-            extras, salsas, etc.)
+            {t("menu.createGroupDesc", "Create modifier group with options. E.g. Size, Sauce")}
           </p>
           <Button variant="outline" size="sm" onClick={() => setCreateOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Crear primer grupo
+            {t("menu.addModifierGroup")}
           </Button>
         </div>
       ) : (
@@ -111,8 +111,7 @@ export function ModifierGroupsPanel() {
                       <p className="text-sm font-medium">{group.name}</p>
                       <div className="flex items-center gap-2 mt-0.5">
                         <span className="text-[11px] text-muted-foreground">
-                          {modifiers.length} opcion
-                          {modifiers.length !== 1 ? "es" : ""}
+                          {modifiers.length} {t("menu.modifiers")}
                         </span>
                         <span className="text-[11px] text-muted-foreground">
                           Min: {group.min_selections} / Max:{" "}
@@ -123,7 +122,7 @@ export function ModifierGroupsPanel() {
                             variant="secondary"
                             className="text-[9px] px-1.5 py-0"
                           >
-                            Obligatorio
+                            {t("menu.required")}
                           </Badge>
                         )}
                       </div>
@@ -168,7 +167,7 @@ export function ModifierGroupsPanel() {
                           <span className="text-muted-foreground">
                             {mod.price > 0
                               ? `+${formatCurrency(mod.price)}`
-                              : "Gratis"}
+                              : t("menu.free", "Free")}
                           </span>
                         </div>
                       ))}
@@ -178,7 +177,7 @@ export function ModifierGroupsPanel() {
                 {isExpanded && modifiers.length === 0 && (
                   <div className="border-t border-border bg-muted/20 px-4 py-3">
                     <p className="text-xs text-muted-foreground text-center">
-                      Sin modificadores. Edita el grupo para agregar opciones.
+                      {t("menu.noGroups", "No groups found")}
                     </p>
                   </div>
                 )}
@@ -210,8 +209,8 @@ export function ModifierGroupsPanel() {
           onOpenChange={(v) => {
             if (!v) setConfirmDelete(null);
           }}
-          title="Eliminar grupo"
-          description={`Eliminar "${confirmDelete.name}" y todos sus modificadores? Los productos vinculados perderan este grupo.`}
+          title={t("menu.confirmDeleteTitle")}
+          description={t("menu.confirmDeleteDesc")}
           onConfirm={handleDelete}
           loading={deleteGroup.isPending}
         />

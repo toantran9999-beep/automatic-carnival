@@ -70,7 +70,10 @@ export function useCreateOrder() {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["tables"] });
+    },
   });
 }
 

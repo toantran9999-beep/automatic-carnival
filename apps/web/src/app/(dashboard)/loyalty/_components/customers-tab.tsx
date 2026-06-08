@@ -12,6 +12,7 @@ import { useLoyaltyCustomers, useDeleteCustomer } from "@/hooks/use-loyalty";
 import { SearchInput } from "@/components/search-input";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { CreateCustomerDialog } from "./customer-dialog";
+import { useTranslation } from "@/stores/lang-store";
 
 const tierConfig: Record<string, { label: string; color: string }> = {
   Bronce: {
@@ -37,6 +38,7 @@ function Skeleton({ className }: { className?: string }) {
 }
 
 export function CustomersTab() {
+  const { t, lang } = useTranslation();
   const [search, setSearch] = useState("");
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [page, setPage] = useState(1);
@@ -60,13 +62,22 @@ export function CustomersTab() {
   if (error) {
     return (
       <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/10 flex items-center justify-between">
-        <p className="text-sm text-destructive">Error al cargar clientes: {(error as Error).message}</p>
+        <p className="text-sm text-destructive">
+          {lang === "vi" ? "Lỗi tải danh sách khách hàng" : "Error loading members"}: {(error as Error).message}
+        </p>
         <Button variant="outline" size="sm" onClick={() => refetch()}>
-          <RefreshCw className="h-4 w-4 mr-2" />Reintentar
+          <RefreshCw className="h-4 w-4 mr-2" />{t("common.retry")}
         </Button>
       </div>
     );
   }
+
+  const tierNameTranslate: Record<string, string> = {
+    Bronce: lang === "vi" ? "Hạng Đồng" : "Bronze",
+    Plata: lang === "vi" ? "Hạng Bạc" : "Silver",
+    Oro: lang === "vi" ? "Hạng Vàng" : "Gold",
+    Platino: lang === "vi" ? "Hạng Bạch Kim" : "Platinum",
+  };
 
   return (
     <div className="space-y-4">
@@ -74,11 +85,11 @@ export function CustomersTab() {
         <SearchInput
           value={search}
           onChange={handleSearch}
-          placeholder="Buscar por nombre, email o telefono..."
+          placeholder={lang === "vi" ? "Tìm theo tên, email hoặc số điện thoại..." : "Search by name, email, or phone..."}
           className="flex-1"
         />
         <Button onClick={() => setShowCreate(true)}>
-          <Plus className="h-4 w-4 mr-2" />Registrar Cliente
+          <Plus className="h-4 w-4 mr-2" />{t("loyalty.addCustomer")}
         </Button>
       </div>
 
@@ -88,10 +99,10 @@ export function CustomersTab() {
             <table className="w-full">
               <thead>
                 <tr className="border-b border-border bg-muted/50">
-                  <th className="text-left p-3 text-sm font-medium text-muted-foreground">Cliente</th>
-                  <th className="text-left p-3 text-sm font-medium text-muted-foreground hidden sm:table-cell">Telefono</th>
-                  <th className="text-center p-3 text-sm font-medium text-muted-foreground">Tier</th>
-                  <th className="text-right p-3 text-sm font-medium text-muted-foreground">Puntos</th>
+                  <th className="text-left p-3 text-sm font-medium text-muted-foreground">{t("payments.client")}</th>
+                  <th className="text-left p-3 text-sm font-medium text-muted-foreground hidden sm:table-cell">{t("loyalty.phone")}</th>
+                  <th className="text-center p-3 text-sm font-medium text-muted-foreground">{lang === "vi" ? "Hạng" : "Tier"}</th>
+                  <th className="text-right p-3 text-sm font-medium text-muted-foreground">{t("loyalty.points")}</th>
                   <th className="w-10 p-3" />
                 </tr>
               </thead>
@@ -109,13 +120,16 @@ export function CustomersTab() {
                 ) : customers.length === 0 ? (
                   <tr>
                     <td colSpan={5} className="p-8 text-center text-sm text-muted-foreground">
-                      {debouncedSearch ? "No se encontraron clientes" : "No hay clientes registrados"}
+                      {debouncedSearch
+                        ? (lang === "vi" ? "Không tìm thấy khách hàng nào" : "No customers found")
+                        : (lang === "vi" ? "Chưa có khách hàng nào đăng ký" : "No customers registered")}
                     </td>
                   </tr>
                 ) : (
                   customers.map((customer: any) => {
                     const tierName = customer.tier_name || "Bronce";
                     const tier = tierConfig[tierName] || tierConfig.Bronce;
+                    const displayLabel = tierNameTranslate[tierName] || tierName;
                     return (
                       <tr key={customer.id} className="border-b border-border last:border-0 hover:bg-muted/50 transition-colors">
                         <td className="p-3">
@@ -126,7 +140,7 @@ export function CustomersTab() {
                         </td>
                         <td className="p-3 text-sm text-foreground hidden sm:table-cell">{customer.phone || "-"}</td>
                         <td className="p-3 text-center">
-                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${tier.color}`}>{tier.label}</span>
+                          <span className={`text-xs px-2 py-1 rounded-full font-medium ${tier.color}`}>{displayLabel}</span>
                         </td>
                         <td className="p-3 text-sm font-medium text-right text-foreground">{(customer.points_balance || 0).toLocaleString()}</td>
                         <td className="p-3">
@@ -152,7 +166,7 @@ export function CustomersTab() {
       {pagination.totalPages > 1 && (
         <div className="flex items-center justify-between">
           <p className="text-sm text-muted-foreground">
-            {pagination.total} clientes en total
+            {pagination.total} {lang === "vi" ? "khách hàng" : "customers"}
           </p>
           <div className="flex items-center gap-2">
             <Button
@@ -162,10 +176,10 @@ export function CustomersTab() {
               onClick={() => setPage(page - 1)}
             >
               <ChevronLeft className="h-4 w-4" />
-              Anterior
+              {lang === "vi" ? "Trước" : "Previous"}
             </Button>
             <span className="text-sm text-muted-foreground">
-              Pagina {pagination.page} de {pagination.totalPages}
+              {lang === "vi" ? `Trang ${pagination.page} / ${pagination.totalPages}` : `Page ${pagination.page} of ${pagination.totalPages}`}
             </span>
             <Button
               variant="outline"
@@ -173,7 +187,7 @@ export function CustomersTab() {
               disabled={page >= pagination.totalPages}
               onClick={() => setPage(page + 1)}
             >
-              Siguiente
+              {lang === "vi" ? "Sau" : "Next"}
               <ChevronRight className="h-4 w-4" />
             </Button>
           </div>
@@ -185,9 +199,13 @@ export function CustomersTab() {
       <ConfirmDialog
         open={!!deleteConfirm}
         onOpenChange={(v) => !v && setDeleteConfirm(null)}
-        title="Eliminar cliente"
-        description={`Se eliminara a "${deleteConfirm?.name}" y todos sus datos de loyalty (puntos, transacciones, cupones). Los pedidos existentes se conservaran. Esta accion no se puede deshacer.`}
-        confirmLabel="Eliminar"
+        title={lang === "vi" ? "Xóa khách hàng" : "Delete Customer"}
+        description={
+          lang === "vi"
+            ? `Sẽ xóa khách hàng "${deleteConfirm?.name}" và toàn bộ dữ liệu tích điểm (điểm tích lũy, giao dịch, mã giảm giá). Đơn hàng đã mua vẫn được giữ nguyên. Hành động này không thể hoàn tác.`
+            : `This will delete "${deleteConfirm?.name}" and all loyalty data (points, ledger, coupons). Existing orders will be preserved. This action cannot be undone.`
+        }
+        confirmLabel={t("common.delete")}
         onConfirm={() => {
           if (deleteConfirm) {
             deleteCustomer.mutate(deleteConfirm.id, {

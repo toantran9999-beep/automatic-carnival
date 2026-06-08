@@ -11,6 +11,7 @@ import { useCustomerStore } from "@/stores/customer-store";
 import { formatCurrency, cn } from "@/lib/utils";
 import { ShoppingCart, Plus, Minus, Loader2, UtensilsCrossed, Receipt, Bell, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -75,6 +76,7 @@ export default function CustomerMenuPage({
   "use no memo";
   const { branchSlug, tableCode } = use(params);
   const router = useRouter();
+  const { t } = useTranslation();
   const { addItem, getItemCount, items, updateQuantity } = useCartStore();
   const setSession = useCustomerStore((s) => s.setSession);
   const {
@@ -141,7 +143,7 @@ export default function CustomerMenuPage({
       .then((res) => res.json())
       .then((result) => {
         if (!result.success) {
-          setError(result.error?.message || "Error al cargar el menu");
+          setError(result.error?.message || t("customer.errorLoadingMenu"));
           setLoading(false);
           return;
         }
@@ -158,16 +160,18 @@ export default function CustomerMenuPage({
               branchSlug,
               tableCode,
               branchName: result.data.branch.name,
+              taxRate: result.data.branch.taxRate,
+              currency: result.data.branch.currency,
             });
           }
         }
         setLoading(false);
       })
       .catch(() => {
-        setError("Error inesperado");
+        setError(t("customer.unexpectedError"));
         setLoading(false);
       });
-  }, [branchSlug, tableCode, setSession, setLoading, setError, setMenuData, setActiveCategory]);
+  }, [branchSlug, tableCode, setSession, setLoading, setError, setMenuData, setActiveCategory, t]);
 
   // Validate session is still active on mount
   useEffect(() => {
@@ -194,17 +198,17 @@ export default function CustomerMenuPage({
 
       const result = await res.json();
       if (!res.ok || !result.success) {
-        throw new Error(result.error?.message || "No se pudo enviar la solicitud");
+        throw new Error(result.error?.message || t("customer.errorSendingRequest"));
       }
 
       setActionSent((prev) => ({ ...prev, [action]: true }));
       toast.success(
         action === "request_bill"
-          ? "Cuenta solicitada. El personal fue notificado."
-          : "Mozo solicitado. El personal fue notificado."
+          ? t("customer.billRequested")
+          : t("customer.waiterRequested")
       );
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Error al enviar solicitud");
+      toast.error(err instanceof Error ? err.message : t("customer.errorSendingRequest"));
     } finally {
       setActionLoading(null);
     }
@@ -243,7 +247,7 @@ export default function CustomerMenuPage({
     return (
       <div className="flex flex-col items-center justify-center min-h-[60vh] gap-3">
         <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Cargando menu...</p>
+        <p className="text-sm text-muted-foreground">{t("customer.loadingMenu")}</p>
       </div>
     );
   }
@@ -255,9 +259,9 @@ export default function CustomerMenuPage({
           <UtensilsCrossed className="h-8 w-8 text-destructive" />
         </div>
         <p className="text-destructive font-medium mb-2">Error</p>
-        <p className="text-sm text-muted-foreground mb-4">{error || "Error al cargar menu"}</p>
+        <p className="text-sm text-muted-foreground mb-4">{error || t("customer.errorLoadingMenu")}</p>
         <Button variant="outline" onClick={() => window.location.reload()}>
-          Reintentar
+          {t("common.retry")}
         </Button>
       </div>
     );
@@ -298,7 +302,7 @@ export default function CustomerMenuPage({
           >
             {itemsByCategory(category.id).length === 0 ? (
               <p className="text-sm text-muted-foreground py-12 text-center">
-                No hay productos disponibles en esta categoria
+                {t("customer.noProductsInCategory")}
               </p>
             ) : (
               <div className="grid grid-cols-2 gap-4">
@@ -368,12 +372,12 @@ export default function CustomerMenuPage({
                             type="button"
                             className="absolute bottom-2 right-2 w-12 h-12 flex flex-col items-center justify-center bg-black/60 backdrop-blur-sm rounded-lg border border-white/10 text-foreground hover:bg-black/70 transition-colors"
                             onClick={(e) => {
-                              e.stopPropagation();
-                              handleAddItem(item);
+                                e.stopPropagation();
+                                handleAddItem(item);
                             }}
                           >
                             <Plus className="h-4 w-4" />
-                            <span className="text-[9px] font-medium leading-none mt-0.5">Agregar</span>
+                            <span className="text-[9px] font-medium leading-none mt-0.5">{t("customer.add")}</span>
                           </button>
                         )}
                       </div>
@@ -431,10 +435,10 @@ export default function CustomerMenuPage({
             )}
             <span className="text-xs font-medium text-foreground">
               {actionLoading === "request_bill"
-                ? "Enviando..."
+                ? t("customer.sending")
                 : actionSent.request_bill
-                  ? "Cuenta Solicitada"
-                  : "Pedir la Cuenta"}
+                  ? t("customer.billRequestedLabel")
+                  : t("customer.requestBillLabel")}
             </span>
           </button>
           <button
@@ -455,10 +459,10 @@ export default function CustomerMenuPage({
             )}
             <span className="text-xs font-medium text-foreground">
               {actionLoading === "call_waiter"
-                ? "Enviando..."
+                ? t("customer.sending")
                 : actionSent.call_waiter
-                  ? "Mozo Solicitado"
-                  : "Llamar al Mozo"}
+                  ? t("customer.waiterRequestedLabel")
+                  : t("customer.callWaiterLabel")}
             </span>
           </button>
         </div>
@@ -475,7 +479,7 @@ export default function CustomerMenuPage({
                   {itemCount}
                 </Badge>
               </div>
-              <span className="font-semibold">Ver Carrito</span>
+              <span className="font-semibold">{t("customer.viewCart")}</span>
               <span className="font-bold">{formatCurrency(cartTotal)}</span>
             </Button>
           </div>

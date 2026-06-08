@@ -5,16 +5,7 @@ import { Badge } from "@restai/ui/components/badge";
 import { Button } from "@restai/ui/components/button";
 import { ArrowUpDown } from "lucide-react";
 import { formatDate } from "@/lib/utils";
-
-const movementTypeLabels: Record<
-  string,
-  { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
-> = {
-  purchase: { label: "Compra", variant: "default" },
-  consumption: { label: "Consumo", variant: "secondary" },
-  waste: { label: "Merma", variant: "destructive" },
-  adjustment: { label: "Ajuste", variant: "outline" },
-};
+import { useTranslation } from "@/stores/lang-store";
 
 export function MovementsTab({
   movements,
@@ -23,12 +14,24 @@ export function MovementsTab({
   movements: any[];
   onNewMovement: () => void;
 }) {
+  const { t, lang } = useTranslation();
+
+  const movementTypeLabels: Record<
+    string,
+    { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
+  > = {
+    purchase: { label: lang === "vi" ? "Nhập hàng" : "Purchase", variant: "default" },
+    consumption: { label: lang === "vi" ? "Tiêu hao" : "Consumption", variant: "secondary" },
+    waste: { label: lang === "vi" ? "Hao hụt" : "Waste", variant: "destructive" },
+    adjustment: { label: lang === "vi" ? "Điều chỉnh" : "Adjustment", variant: "outline" },
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex justify-end">
         <Button onClick={onNewMovement}>
           <ArrowUpDown className="h-4 w-4 mr-2" />
-          Nuevo Movimiento
+          {t("inventory.addMovement")}
         </Button>
       </div>
 
@@ -39,19 +42,19 @@ export function MovementsTab({
               <thead>
                 <tr className="border-b border-border bg-muted/50">
                   <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                    Tipo
+                    {t("inventory.movementType")}
                   </th>
                   <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                    Item
+                    {lang === "vi" ? "Nguyên liệu" : "Ingredient"}
                   </th>
                   <th className="text-right p-3 text-sm font-medium text-muted-foreground">
-                    Cantidad
+                    {t("common.quantity")}
                   </th>
                   <th className="text-left p-3 text-sm font-medium text-muted-foreground hidden sm:table-cell">
-                    Referencia
+                    {lang === "vi" ? "Tham chiếu / Lý do" : "Reference"}
                   </th>
                   <th className="text-right p-3 text-sm font-medium text-muted-foreground hidden md:table-cell">
-                    Fecha
+                    {t("common.date")}
                   </th>
                 </tr>
               </thead>
@@ -62,7 +65,7 @@ export function MovementsTab({
                       colSpan={5}
                       className="p-8 text-center text-sm text-muted-foreground"
                     >
-                      No hay movimientos registrados
+                      {lang === "vi" ? "Chưa ghi nhận giao dịch kho nào" : "No stock movements recorded"}
                     </td>
                   </tr>
                 ) : (

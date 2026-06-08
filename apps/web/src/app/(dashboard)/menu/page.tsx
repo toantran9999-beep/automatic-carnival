@@ -14,10 +14,12 @@ import {
   useModifierGroups,
 } from "@/hooks/use-menu";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/stores/lang-store";
 import { ProductsPanel } from "./_components/products-panel";
 import { ModifierGroupsPanel } from "./_components/modifier-groups-panel";
 
 export default function MenuPage() {
+  const { t } = useTranslation();
   const {
     data: categories,
     isLoading: categoriesLoading,
@@ -39,11 +41,11 @@ export default function MenuPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Menu</h1>
+          <h1 className="text-2xl font-bold">{t("nav.menu")}</h1>
         </div>
         <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/5 flex items-center justify-between">
           <p className="text-sm text-destructive">
-            Error al cargar el menu: {(error as Error).message}
+            {t("menu.loadError", "Error loading menu")}: {(error as Error).message}
           </p>
           <Button
             variant="outline"
@@ -54,7 +56,7 @@ export default function MenuPage() {
             }}
           >
             <RefreshCw className="h-4 w-4 mr-2" />
-            Reintentar
+            {t("common.retry")}
           </Button>
         </div>
       </div>
@@ -64,14 +66,14 @@ export default function MenuPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Menu"
-        description="Gestiona categorias, productos y modificadores"
+        title={t("nav.menu")}
+        description={t("menu.desc", "Manage categories, products, and modifiers")}
       />
 
       <Tabs defaultValue="products">
         <TabsList>
-          <TabsTrigger value="products">Productos</TabsTrigger>
-          <TabsTrigger value="modifiers">Modificadores</TabsTrigger>
+          <TabsTrigger value="products">{t("menu.products")}</TabsTrigger>
+          <TabsTrigger value="modifiers">{t("menu.modifierGroups")}</TabsTrigger>
         </TabsList>
         <TabsContent value="products">
           <ProductsPanel

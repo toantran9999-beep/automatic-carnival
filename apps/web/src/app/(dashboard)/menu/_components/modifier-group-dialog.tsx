@@ -22,6 +22,7 @@ import {
   useDeleteModifier,
 } from "@/hooks/use-menu";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
 
 export function ModifierGroupDialog({
   open,
@@ -38,6 +39,7 @@ export function ModifierGroupDialog({
   const addModifier = useAddModifier();
   const updateModifier = useUpdateModifier();
   const deleteModifier = useDeleteModifier();
+  const { t } = useTranslation();
 
   const [groupName, setGroupName] = useState(initial?.name ?? "");
   const [minSel, setMinSel] = useState(
@@ -82,9 +84,9 @@ export function ModifierGroupDialog({
   const handleDeleteExistingModifier = async (modId: string) => {
     try {
       await deleteModifier.mutateAsync(modId);
-      toast.success("Modificador eliminado");
+      toast.success(t("menu.deleteSuccess"));
     } catch (err: any) {
-      toast.error(err.message || "Error");
+      toast.error(err.message || t("common.error"));
     }
   };
 
@@ -114,11 +116,11 @@ export function ModifierGroupDialog({
           });
         }
 
-        toast.success("Grupo actualizado");
+        toast.success(t("menu.saveSuccess"));
       } else {
         const validMods = newModifiers.filter((m) => m.name.trim());
         if (validMods.length === 0) {
-          toast.error("Agrega al menos un modificador");
+          toast.error(t("menu.addModifierError", "Add at least one modifier option"));
           return;
         }
 
@@ -138,11 +140,11 @@ export function ModifierGroupDialog({
           });
         }
 
-        toast.success("Grupo creado");
+        toast.success(t("menu.saveSuccess"));
       }
       onOpenChange(false);
     } catch (err: any) {
-      toast.error(err.message || "Error al guardar grupo");
+      toast.error(err.message || t("menu.saveError"));
     }
   };
 
@@ -151,28 +153,28 @@ export function ModifierGroupDialog({
       <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {isEdit ? "Editar Grupo" : "Nuevo Grupo de Modificadores"}
+            {isEdit ? t("menu.editModifierGroup") : t("menu.addModifierGroup")}
           </DialogTitle>
           <DialogDescription>
             {isEdit
-              ? "Actualiza el grupo y gestiona sus modificadores"
-              : "Crea un grupo con sus opciones. Ej: Tamano, Extras, Salsas"}
+              ? t("menu.editGroupDesc", "Update group and manage options")
+              : t("menu.createGroupDesc", "Create modifier group with options. E.g. Size, Sauce")}
           </DialogDescription>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="grp-name">Nombre del grupo</Label>
+            <Label htmlFor="grp-name">{t("menu.name")}</Label>
             <Input
               id="grp-name"
               value={groupName}
               onChange={(e) => setGroupName(e.target.value)}
-              placeholder="Ej: Tamano, Extras"
+              placeholder="..."
               required
             />
           </div>
           <div className="grid grid-cols-3 gap-3">
             <div className="space-y-2">
-              <Label htmlFor="grp-min">Min</Label>
+              <Label htmlFor="grp-min">{t("menu.minSelect")}</Label>
               <Input
                 id="grp-min"
                 type="number"
@@ -182,7 +184,7 @@ export function ModifierGroupDialog({
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="grp-max">Max</Label>
+              <Label htmlFor="grp-max">{t("menu.maxSelect")}</Label>
               <Input
                 id="grp-max"
                 type="number"
@@ -199,7 +201,7 @@ export function ModifierGroupDialog({
                   onChange={(e) => setIsRequired(e.target.checked)}
                   className="rounded border-input accent-primary"
                 />
-                Obligatorio
+                {t("menu.required")}
               </label>
             </div>
           </div>
@@ -207,7 +209,7 @@ export function ModifierGroupDialog({
           {/* Existing modifiers (edit mode) */}
           {isEdit && existingModifiers.length > 0 && (
             <div className="space-y-2">
-              <Label>Modificadores existentes</Label>
+              <Label>{t("menu.modifiers")} ({t("common.actions") !== "Actions" ? "hiện có" : "existing"})</Label>
               <div className="space-y-1.5">
                 {existingModifiers.map((mod: any) => (
                   <div
@@ -239,7 +241,7 @@ export function ModifierGroupDialog({
           {/* New modifiers */}
           <div className="space-y-2">
             <Label>
-              {isEdit ? "Agregar modificadores" : "Modificadores"}
+              {isEdit ? t("menu.addModifier") : t("menu.modifiers")}
             </Label>
             <div className="space-y-2">
               {newModifiers.map((mod, idx) => (
@@ -249,7 +251,7 @@ export function ModifierGroupDialog({
                     onChange={(e) =>
                       handleModChange(idx, "name", e.target.value)
                     }
-                    placeholder="Nombre"
+                    placeholder={t("menu.name")}
                     className="flex-1"
                   />
                   <Input
@@ -282,7 +284,7 @@ export function ModifierGroupDialog({
               onClick={handleAddRow}
             >
               <Plus className="h-3 w-3 mr-1" />
-              Agregar opcion
+              {t("menu.addModifier")}
             </Button>
           </div>
 
@@ -293,14 +295,14 @@ export function ModifierGroupDialog({
               onClick={() => onOpenChange(false)}
               disabled={loading}
             >
-              Cancelar
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={loading}>
               {loading
-                ? "Guardando..."
+                ? t("menu.saving")
                 : isEdit
-                  ? "Actualizar"
-                  : "Crear grupo"}
+                  ? t("common.save")
+                  : t("settings.create")}
             </Button>
           </DialogFooter>
         </form>

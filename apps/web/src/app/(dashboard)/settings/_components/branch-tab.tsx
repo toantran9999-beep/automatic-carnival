@@ -9,34 +9,35 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { cn } from "@/lib/utils";
 import { useBranchSettings, useUpdateBranch } from "@/hooks/use-settings";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className ?? ""}`} />;
 }
 
 const TIMEZONES = [
-  "America/Lima",
-  "America/Bogota",
-  "America/Mexico_City",
-  "America/Buenos_Aires",
-  "America/Santiago",
-  "America/Sao_Paulo",
-  "America/New_York",
+  "Asia/Ho_Chi_Minh",
+  "Asia/Bangkok",
+  "Asia/Singapore",
+  "Asia/Tokyo",
+  "UTC",
 ];
 
 export function BranchTab() {
   const { data: branchData, isLoading: branchLoading } = useBranchSettings();
   const updateBranch = useUpdateBranch();
+  const { t } = useTranslation();
 
   const [branchForm, setBranchForm] = useState({
     name: "",
     address: "",
     phone: "",
-    taxRate: "18.00",
-    timezone: "America/Lima",
-    currency: "PEN",
+    taxRate: "10.00",
+    timezone: "Asia/Ho_Chi_Minh",
+    currency: "VND",
     inventoryEnabled: false,
     waiterTableAssignmentEnabled: false,
+    printMode: "combined" as "combined" | "per_item",
   });
 
   useEffect(() => {
@@ -45,11 +46,12 @@ export function BranchTab() {
         name: branchData.name || "",
         address: branchData.address || "",
         phone: branchData.phone || "",
-        taxRate: ((branchData.tax_rate || 1800) / 100).toFixed(2),
-        timezone: branchData.timezone || "America/Lima",
-        currency: branchData.currency || "PEN",
+        taxRate: ((branchData.tax_rate ?? 1000) / 100).toFixed(2),
+        timezone: branchData.timezone || "Asia/Ho_Chi_Minh",
+        currency: branchData.currency || "VND",
         inventoryEnabled: branchData.settings?.inventory_enabled ?? false,
         waiterTableAssignmentEnabled: branchData.settings?.waiter_table_assignment_enabled ?? false,
+        printMode: branchData.settings?.print_mode === "per_item" ? "per_item" : "combined",
       });
     }
   }, [branchData]);
@@ -66,19 +68,20 @@ export function BranchTab() {
         currency: branchForm.currency,
         inventoryEnabled: branchForm.inventoryEnabled,
         waiterTableAssignmentEnabled: branchForm.waiterTableAssignmentEnabled,
+        printMode: branchForm.printMode,
       });
-      toast.success("Sede actualizada correctamente");
+      toast.success(t("settings.branchSuccess"));
     } catch (err: any) {
-      toast.error(err.message || "Error al actualizar sede");
+      toast.error(err.message || t("settings.branchError"));
     }
   };
 
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Sede Actual</CardTitle>
+        <CardTitle>{t("settings.branchTitle")}</CardTitle>
         <CardDescription>
-          Configuracion de la sede seleccionada
+          {t("settings.branchDesc")}
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
@@ -92,7 +95,7 @@ export function BranchTab() {
           <>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label htmlFor="branchName">Nombre de la Sede</Label>
+                <Label htmlFor="branchName">{t("settings.branchNameLabel")}</Label>
                 <Input
                   id="branchName"
                   value={branchForm.name}
@@ -100,7 +103,7 @@ export function BranchTab() {
                 />
               </div>
               <div className="space-y-2">
-                <Label htmlFor="branchPhone">Telefono</Label>
+                <Label htmlFor="branchPhone">{t("settings.phoneLabel")}</Label>
                 <Input
                   id="branchPhone"
                   value={branchForm.phone}
@@ -109,7 +112,7 @@ export function BranchTab() {
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="branchAddress">Direccion</Label>
+              <Label htmlFor="branchAddress">{t("settings.addressLabel")}</Label>
               <Input
                 id="branchAddress"
                 value={branchForm.address}
@@ -118,10 +121,10 @@ export function BranchTab() {
             </div>
             <div className="grid gap-4 sm:grid-cols-2">
               <div className="space-y-2">
-                <Label>Zona Horaria</Label>
+                <Label>{t("settings.timezoneLabel")}</Label>
                 <Select value={branchForm.timezone} onValueChange={(v) => setBranchForm({ ...branchForm, timezone: v })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona zona horaria" />
+                    <SelectValue placeholder={t("settings.selectTimezone")} />
                   </SelectTrigger>
                   <SelectContent>
                     {TIMEZONES.map((tz) => (
@@ -131,21 +134,21 @@ export function BranchTab() {
                 </Select>
               </div>
               <div className="space-y-2">
-                <Label>Moneda</Label>
+                <Label>{t("settings.currencyLabel")}</Label>
                 <Select value={branchForm.currency} onValueChange={(v) => setBranchForm({ ...branchForm, currency: v })}>
                   <SelectTrigger>
-                    <SelectValue placeholder="Selecciona moneda" />
+                    <SelectValue placeholder={t("settings.selectCurrency")} />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="PEN">PEN (Soles)</SelectItem>
-                    <SelectItem value="USD">USD (Dolares)</SelectItem>
-                    <SelectItem value="EUR">EUR (Euros)</SelectItem>
+                    <SelectItem value="VND">VND (đ)</SelectItem>
+                    <SelectItem value="USD">USD ($)</SelectItem>
+                    <SelectItem value="EUR">EUR (€)</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="branchTaxRate">IGV (%)</Label>
+              <Label htmlFor="branchTaxRate">{t("settings.taxLabel")}</Label>
               <Input
                 id="branchTaxRate"
                 type="number"
@@ -156,14 +159,14 @@ export function BranchTab() {
                 onChange={(e) => setBranchForm({ ...branchForm, taxRate: e.target.value })}
               />
               <p className="text-xs text-muted-foreground">
-                Ingresa el porcentaje (ej: 18.00 para 18%)
+                {t("settings.taxHelp")}
               </p>
             </div>
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div>
-                <p className="text-sm font-medium">Control de Inventario</p>
+                <p className="text-sm font-medium">{t("settings.inventoryControl")}</p>
                 <p className="text-xs text-muted-foreground">
-                  Activa el seguimiento de stock y recetas
+                  {t("settings.inventoryHelp")}
                 </p>
               </div>
               <button
@@ -186,9 +189,9 @@ export function BranchTab() {
             </div>
             <div className="flex items-center justify-between rounded-lg border p-4">
               <div>
-                <p className="text-sm font-medium">Asignacion de mozos a mesas</p>
+                <p className="text-sm font-medium">{t("settings.waiterAssignment")}</p>
                 <p className="text-xs text-muted-foreground">
-                  Permite asignar mozos especificos a cada mesa
+                  {t("settings.waiterAssignmentHelp")}
                 </p>
               </div>
               <button
@@ -209,8 +212,26 @@ export function BranchTab() {
                 />
               </button>
             </div>
+            <div className="space-y-2 rounded-lg border p-4">
+              <Label>{t("settings.printModeLabel")}</Label>
+              <Select
+                value={branchForm.printMode}
+                onValueChange={(v) => setBranchForm({ ...branchForm, printMode: v as "combined" | "per_item" })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="combined">{t("settings.printModeCombined")}</SelectItem>
+                  <SelectItem value="per_item">{t("settings.printModePerItem")}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t("settings.printModeHelp")}
+              </p>
+            </div>
             <Button onClick={handleBranchSave} disabled={updateBranch.isPending}>
-              {updateBranch.isPending ? "Guardando..." : "Guardar Cambios"}
+              {updateBranch.isPending ? t("settings.saving") : t("settings.saveChanges")}
             </Button>
           </>
         )}

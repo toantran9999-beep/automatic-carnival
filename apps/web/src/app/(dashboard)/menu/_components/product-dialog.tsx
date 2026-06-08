@@ -22,6 +22,7 @@ import {
   useUnlinkModifierGroup,
 } from "@/hooks/use-menu";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
 import { ImageUploadButton } from "./image-upload-button";
 
 function Skeleton({ className }: { className?: string }) {
@@ -48,6 +49,7 @@ export function ProductDialog({
   const updateItem = useUpdateMenuItem();
   const linkGroup = useLinkModifierGroup();
   const unlinkGroup = useUnlinkModifierGroup();
+  const { t } = useTranslation();
 
   const { data: linkedGroups, isLoading: linkedLoading } =
     useItemModifierGroups(initial?.id ?? "");
@@ -55,7 +57,7 @@ export function ProductDialog({
   const [name, setName] = useState(initial?.name ?? "");
   const [description, setDescription] = useState(initial?.description ?? "");
   const [priceSoles, setPriceSoles] = useState(
-    initial ? (initial.price / 100).toFixed(2) : ""
+    initial ? (initial.price % 100 === 0 ? (initial.price / 100).toString() : (initial.price / 100).toFixed(2)) : ""
   );
   const [categoryId, setCategoryId] = useState(
     initial?.category_id ?? initial?.categoryId ?? categories[0]?.id ?? ""
@@ -80,12 +82,12 @@ export function ProductDialog({
 
     const priceInCents = Math.round(parseFloat(priceSoles) * 100);
     if (isNaN(priceInCents) || priceInCents < 0) {
-      toast.error("Precio invalido");
+      toast.error(t("menu.saveError"));
       return;
     }
 
     if (!categoryId) {
-      toast.error("Selecciona una categoria");
+      toast.error(t("menu.selectCategoryError", "Select a category"));
       return;
     }
 
@@ -101,14 +103,14 @@ export function ProductDialog({
     try {
       if (isEdit) {
         await updateItem.mutateAsync({ id: initial.id, ...payload });
-        toast.success("Producto actualizado");
+        toast.success(t("menu.saveSuccess"));
       } else {
         await createItem.mutateAsync(payload);
-        toast.success("Producto creado");
+        toast.success(t("menu.saveSuccess"));
       }
       onOpenChange(false);
     } catch (err: any) {
-      toast.error(err.message || "Error al guardar");
+      toast.error(err.message || t("menu.saveError"));
     }
   };
 
@@ -116,9 +118,9 @@ export function ProductDialog({
     if (!initial?.id) return;
     try {
       await linkGroup.mutateAsync({ itemId: initial.id, groupId });
-      toast.success("Grupo vinculado");
+      toast.success(t("menu.saveSuccess"));
     } catch (err: any) {
-      toast.error(err.message || "Error al vincular");
+      toast.error(err.message || t("menu.saveError"));
     }
   };
 
@@ -126,9 +128,9 @@ export function ProductDialog({
     if (!initial?.id) return;
     try {
       await unlinkGroup.mutateAsync({ itemId: initial.id, groupId });
-      toast.success("Grupo desvinculado");
+      toast.success(t("menu.saveSuccess"));
     } catch (err: any) {
-      toast.error(err.message || "Error al desvincular");
+      toast.error(err.message || t("menu.saveError"));
     }
   };
 
@@ -137,26 +139,26 @@ export function ProductDialog({
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle>
-            {isEdit ? "Editar Producto" : "Nuevo Producto"}
+            {isEdit ? t("menu.editProduct") : t("menu.addProduct")}
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2 col-span-2 sm:col-span-1">
-              <Label htmlFor="prod-name">Nombre</Label>
+              <Label htmlFor="prod-name">{t("menu.name")}</Label>
               <Input
                 id="prod-name"
                 value={name}
                 onChange={(e) => setName(e.target.value)}
-                placeholder="Ej: Ceviche clasico"
+                placeholder="..."
                 required
               />
             </div>
             <div className="space-y-2 col-span-2 sm:col-span-1">
-              <Label htmlFor="prod-cat">Categoria</Label>
+              <Label htmlFor="prod-cat">{t("menu.category")}</Label>
               <Select value={categoryId || "none"} onValueChange={(v) => setCategoryId(v === "none" ? "" : v)}>
                 <SelectTrigger disabled={categories.length === 0}>
-                  <SelectValue placeholder={categories.length === 0 ? "Crea una categoria primero" : "Selecciona categoria"} />
+                  <SelectValue placeholder={categories.length === 0 ? t("menu.createCategoryFirst", "Create a category first") : t("menu.selectCategory", "Select category")} />
                 </SelectTrigger>
                 <SelectContent>
                   {categories.map((c: any) => (
@@ -169,30 +171,30 @@ export function ProductDialog({
             </div>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="prod-desc">Descripcion</Label>
+            <Label htmlFor="prod-desc">{t("menu.description")}</Label>
             <Input
               id="prod-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
-              placeholder="Descripcion opcional"
+              placeholder="..."
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="prod-price">Precio (S/)</Label>
+              <Label htmlFor="prod-price">{t("menu.price")}</Label>
               <Input
                 id="prod-price"
                 type="number"
-                step="0.01"
+                step="any"
                 min="0"
                 value={priceSoles}
                 onChange={(e) => setPriceSoles(e.target.value)}
-                placeholder="0.00"
+                placeholder="0"
                 required
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="prod-prep">Tiempo prep. (min)</Label>
+              <Label htmlFor="prod-prep">{t("kitchen.preparingTime")} (min)</Label>
               <Input
                 id="prod-prep"
                 type="number"
@@ -204,7 +206,7 @@ export function ProductDialog({
             </div>
           </div>
           <div className="space-y-2">
-            <Label>Imagen</Label>
+            <Label>{t("menu.image")}</Label>
             <ImageUploadButton
               currentUrl={imageUrl || null}
               onUploaded={(url) => setImageUrl(url)}
@@ -216,10 +218,10 @@ export function ProductDialog({
             <div className="space-y-3 rounded-lg border border-border p-4 bg-muted/30">
               <div className="flex items-center justify-between">
                 <Label className="text-sm font-medium">
-                  Grupos de Modificadores
+                  {t("menu.modifierGroups")}
                 </Label>
                 <Badge variant="secondary" className="text-[10px]">
-                  {linkedGroupIds.length} vinculados
+                  {linkedGroupIds.length} {t("common.actions") !== "Actions" ? "đã liên kết" : "linked"}
                 </Badge>
               </div>
 
@@ -237,7 +239,7 @@ export function ProductDialog({
                         <Link2 className="h-3.5 w-3.5 text-primary" />
                         <span className="text-sm font-medium">{g.name}</span>
                         <span className="text-[10px] text-muted-foreground">
-                          ({g.modifiers?.length ?? 0} opciones)
+                          ({g.modifiers?.length ?? 0} {t("menu.modifiers")})
                         </span>
                       </div>
                       <button
@@ -253,7 +255,7 @@ export function ProductDialog({
                 </div>
               ) : (
                 <p className="text-xs text-muted-foreground text-center py-2">
-                  Sin grupos vinculados
+                  {t("menu.noGroups", "No groups found")}
                 </p>
               )}
 
@@ -261,12 +263,12 @@ export function ProductDialog({
               {unlinkedGroups.length > 0 && (
                 <Select key={linkKey} onValueChange={(v) => { handleLink(v); setLinkKey((k) => k + 1); }}>
                   <SelectTrigger>
-                    <SelectValue placeholder="+ Vincular grupo..." />
+                    <SelectValue placeholder={t("menu.linkGroup", "+ Link group...")} />
                   </SelectTrigger>
                   <SelectContent>
                     {unlinkedGroups.map((g: any) => (
                       <SelectItem key={g.id} value={g.id}>
-                        {g.name} ({g.modifiers?.length ?? 0} opciones)
+                        {g.name} ({g.modifiers?.length ?? 0} {t("menu.modifiers")})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -282,10 +284,10 @@ export function ProductDialog({
               onClick={() => onOpenChange(false)}
               disabled={loading}
             >
-              Cancelar
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={loading}>
-              {loading ? "Guardando..." : isEdit ? "Actualizar" : "Crear"}
+              {loading ? t("menu.saving") : isEdit ? t("common.save") : t("settings.create")}
             </Button>
           </DialogFooter>
         </form>

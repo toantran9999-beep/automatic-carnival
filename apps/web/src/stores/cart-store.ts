@@ -52,10 +52,11 @@ export const useCartStore = create<CartState>((set, get) => ({
     }, 0);
   },
   getTax: (taxRate) => {
-    return Math.round((get().getSubtotal() * taxRate) / 10000);
+    const total = get().getSubtotal();
+    return Math.round(total - (total / (1 + (taxRate / 10000))));
   },
   getTotal: (taxRate) => {
-    return get().getSubtotal() + get().getTax(taxRate);
+    return get().getSubtotal();
   },
   getItemCount: () => {
     return get().items.reduce((sum, item) => sum + item.quantity, 0);

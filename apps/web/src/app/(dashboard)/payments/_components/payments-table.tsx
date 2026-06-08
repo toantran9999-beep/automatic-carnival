@@ -13,15 +13,7 @@ import {
 } from "lucide-react";
 import { formatCurrency, formatDate, cn } from "@/lib/utils";
 import { SearchInput } from "@/components/search-input";
-
-const methodLabels: Record<string, string> = {
-  cash: "Efectivo",
-  card: "Tarjeta",
-  yape: "Yape",
-  plin: "Plin",
-  transfer: "Transferencia",
-  other: "Otro",
-};
+import { useTranslation } from "@/stores/lang-store";
 
 const methodIcons: Record<string, React.ReactNode> = {
   cash: <Banknote className="h-4 w-4" />,
@@ -59,6 +51,17 @@ export function PaymentsTable({
   onInvoice,
   onReceipt,
 }: PaymentsTableProps) {
+  const { t, lang } = useTranslation();
+
+  const methodLabels: Record<string, string> = {
+    cash: t("payments.cash"),
+    card: t("payments.card"),
+    yape: t("payments.yape"),
+    plin: t("payments.plin"),
+    transfer: t("payments.transfer"),
+    other: t("payments.other"),
+  };
+
   const filteredPayments = payments.filter((p: any) => {
     const matchesSearch =
       (p.order_number || "").toLowerCase().includes(search.toLowerCase()) ||
@@ -82,7 +85,7 @@ export function PaymentsTable({
                 : "bg-background text-muted-foreground border-border hover:bg-muted"
             )}
           >
-            {method === "all" ? "Todos" : methodLabels[method]}
+            {method === "all" ? t("common.all") : methodLabels[method]}
           </button>
         ))}
       </div>
@@ -91,7 +94,7 @@ export function PaymentsTable({
       <SearchInput
         value={search}
         onChange={onSearchChange}
-        placeholder="Buscar por orden o referencia..."
+        placeholder={t("payments.searchPlaceholder")}
       />
 
       {/* Payment list table */}
@@ -101,13 +104,13 @@ export function PaymentsTable({
             <table className="w-full">
               <thead>
                 <tr className="border-b bg-muted/50">
-                  <th className="text-left p-3 text-sm font-medium text-muted-foreground">Orden</th>
-                  <th className="text-left p-3 text-sm font-medium text-muted-foreground">Metodo</th>
-                  <th className="text-right p-3 text-sm font-medium text-muted-foreground">Monto</th>
-                  <th className="text-right p-3 text-sm font-medium text-muted-foreground hidden sm:table-cell">Propina</th>
-                  <th className="text-left p-3 text-sm font-medium text-muted-foreground hidden md:table-cell">Referencia</th>
-                  <th className="text-right p-3 text-sm font-medium text-muted-foreground hidden lg:table-cell">Fecha</th>
-                  <th className="text-center p-3 text-sm font-medium text-muted-foreground">Acciones</th>
+                  <th className="text-left p-3 text-sm font-medium text-muted-foreground">{t("payments.orderNumber")}</th>
+                  <th className="text-left p-3 text-sm font-medium text-muted-foreground">{t("payments.method")}</th>
+                  <th className="text-right p-3 text-sm font-medium text-muted-foreground">{t("payments.amount")}</th>
+                  <th className="text-right p-3 text-sm font-medium text-muted-foreground hidden sm:table-cell">{lang === "vi" ? "Tiền Tip" : "Tip"}</th>
+                  <th className="text-left p-3 text-sm font-medium text-muted-foreground hidden md:table-cell">{lang === "vi" ? "Tham chiếu" : "Reference"}</th>
+                  <th className="text-right p-3 text-sm font-medium text-muted-foreground hidden lg:table-cell">{t("common.date")}</th>
+                  <th className="text-center p-3 text-sm font-medium text-muted-foreground">{t("common.actions")}</th>
                 </tr>
               </thead>
               <tbody>
@@ -126,7 +129,9 @@ export function PaymentsTable({
                 ) : filteredPayments.length === 0 ? (
                   <tr>
                     <td colSpan={7} className="p-8 text-center text-sm text-muted-foreground">
-                      {search || methodFilter !== "all" ? "No se encontraron pagos" : "No hay pagos registrados"}
+                      {search || methodFilter !== "all"
+                        ? (lang === "vi" ? "Không tìm thấy giao dịch thanh toán nào" : "No payments found")
+                        : t("payments.noPayments")}
                     </td>
                   </tr>
                 ) : (
@@ -159,14 +164,14 @@ export function PaymentsTable({
                             onClick={() => onInvoice(payment)}
                           >
                             <FileText className="h-3 w-3 mr-1" />
-                            Comprobante
+                            {lang === "vi" ? "Hóa đơn" : "Invoice"}
                           </Button>
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-8 w-8 p-0"
                             onClick={() => onReceipt(payment)}
-                            title="Imprimir Boleta"
+                            title={lang === "vi" ? "In Hóa đơn" : "Print Receipt"}
                           >
                             <Printer className="h-4 w-4" />
                           </Button>

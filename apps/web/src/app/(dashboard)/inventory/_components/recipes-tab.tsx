@@ -7,6 +7,7 @@ import { Label } from "@restai/ui/components/label";
 import { Button } from "@restai/ui/components/button";
 import { Plus } from "lucide-react";
 import { useRecipe } from "@/hooks/use-inventory";
+import { useTranslation } from "@/stores/lang-store";
 
 export function RecipesTab({
   items,
@@ -15,28 +16,30 @@ export function RecipesTab({
   items: any[];
   onNewRecipe: () => void;
 }) {
+  const { t, lang } = useTranslation();
   const [recipeMenuItemId, setRecipeMenuItemId] = useState("");
   const { data: recipeData } = useRecipe(recipeMenuItemId);
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <p className="text-sm text-muted-foreground">
-          Configura las recetas para deducir inventario automaticamente cuando
-          se completa una orden.
+      <div className="flex justify-between items-center gap-4">
+        <p className="text-sm text-muted-foreground max-w-2xl">
+          {lang === "vi"
+            ? "Cấu hình công thức định lượng để tự động trừ kho khi đơn hàng hoàn thành."
+            : "Configure recipes to automatically deduct inventory when an order is completed."}
         </p>
-        <Button onClick={onNewRecipe}>
+        <Button onClick={onNewRecipe} className="shrink-0">
           <Plus className="h-4 w-4 mr-2" />
-          Nueva Receta
+          {lang === "vi" ? "Tạo công thức" : "New Recipe"}
         </Button>
       </div>
 
       <Card>
         <CardContent className="p-4 space-y-4">
           <div className="space-y-2">
-            <Label>Ver receta de un item del menu</Label>
+            <Label>{lang === "vi" ? "Xem công thức định lượng của món ăn" : "View recipe for a menu item"}</Label>
             <Input
-              placeholder="ID del item del menu (UUID)"
+              placeholder={lang === "vi" ? "ID của món ăn (UUID)" : "Menu item ID (UUID)"}
               value={recipeMenuItemId}
               onChange={(e) => setRecipeMenuItemId(e.target.value)}
             />
@@ -44,11 +47,11 @@ export function RecipesTab({
           {recipeMenuItemId && recipeData && (
             <div>
               <p className="text-sm font-medium text-foreground mb-2">
-                Ingredientes:
+                {lang === "vi" ? "Nguyên liệu:" : "Ingredients:"}
               </p>
               {(recipeData as any[]).length === 0 ? (
                 <p className="text-sm text-muted-foreground">
-                  Sin receta configurada
+                  {lang === "vi" ? "Chưa cấu hình công thức định lượng" : "No recipe configured"}
                 </p>
               ) : (
                 <div className="overflow-x-auto">
@@ -56,16 +59,16 @@ export function RecipesTab({
                     <thead>
                       <tr className="border-b border-border bg-muted/50">
                         <th className="text-left p-2 text-sm font-medium text-muted-foreground">
-                          Ingrediente
+                          {lang === "vi" ? "Nguyên liệu" : "Ingredient"}
                         </th>
                         <th className="text-right p-2 text-sm font-medium text-muted-foreground">
-                          Cantidad
+                          {t("common.quantity")}
                         </th>
                         <th className="text-center p-2 text-sm font-medium text-muted-foreground">
-                          Unidad
+                          {lang === "vi" ? "Đơn vị" : "Unit"}
                         </th>
                         <th className="text-right p-2 text-sm font-medium text-muted-foreground">
-                          Stock
+                          {t("inventory.stock")}
                         </th>
                       </tr>
                     </thead>

@@ -11,6 +11,7 @@ import { PageHeader } from "@/components/page-header";
 import { OrderFilters } from "./_components/order-filters";
 import { OrdersTable } from "./_components/orders-table";
 import { PaymentDialog } from "../payments/_components/payment-dialog";
+import { useTranslation } from "@/stores/lang-store";
 
 const PAGE_SIZE = 20;
 
@@ -19,6 +20,7 @@ export default function OrdersPage() {
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
   const [chargeOrderId, setChargeOrderId] = useState<string | null>(null);
+  const { t } = useTranslation();
 
   const { data, isLoading, error, refetch } = useOrders({ status: statusFilter, page, limit: PAGE_SIZE });
   const updateStatus = useUpdateOrderStatus();
@@ -77,12 +79,12 @@ export default function OrdersPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <PageHeader title="Ordenes" />
+        <PageHeader title={t("orders.title")} />
         <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/5 flex items-center justify-between">
-          <p className="text-sm text-destructive">Error al cargar ordenes: {(error as Error).message}</p>
+          <p className="text-sm text-destructive">{t("orders.errorLoad")}: {(error as Error).message}</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Reintentar
+            {t("orders.retry")}
           </Button>
         </div>
       </div>
@@ -92,8 +94,8 @@ export default function OrdersPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Ordenes"
-        description="Gestiona y rastrea todas las ordenes"
+        title={t("orders.title")}
+        description={t("orders.description")}
       />
 
       <OrderFilters
@@ -127,3 +129,4 @@ export default function OrdersPage() {
     </div>
   );
 }
+

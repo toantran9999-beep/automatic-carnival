@@ -1,6 +1,7 @@
 import type { ErrorHandler } from "hono";
 import { ZodError } from "zod";
 import { logger } from "../lib/logger.js";
+import { t, translations } from "../lib/i18n.js";
 
 export class AppError extends Error {
   constructor(
@@ -37,7 +38,7 @@ export const errorHandler: ErrorHandler = (err, c) => {
         success: false,
         error: {
           code: "VALIDATION_ERROR",
-          message: "Datos de entrada inválidos",
+          message: t(c, "invalid_input"),
           details,
         },
       },
@@ -47,10 +48,12 @@ export const errorHandler: ErrorHandler = (err, c) => {
 
   // AppError (custom business errors)
   if (err instanceof AppError) {
+    const isKey = err.message in translations.vi;
+    const msg = isKey ? t(c, err.message as any) : err.message;
     return c.json(
       {
         success: false,
-        error: { code: err.code, message: err.message },
+        error: { code: err.code, message: msg },
       },
       err.status as any,
     );
@@ -62,7 +65,7 @@ export const errorHandler: ErrorHandler = (err, c) => {
     return c.json(
       {
         success: false,
-        error: { code: err.message, message: err.message },
+        error: { code: err.message, message: t(c, err.message as any) },
       },
       knownStatus as any,
     );
@@ -70,14 +73,18 @@ export const errorHandler: ErrorHandler = (err, c) => {
 
   // Check for errors with a name we recognize
   if (err.name === "OrderValidationError") {
+    const isKey = err.message in translations.vi;
+    const msg = isKey ? t(c, err.message as any) : err.message;
     return c.json(
-      { success: false, error: { code: "VALIDATION_ERROR", message: err.message } },
+      { success: false, error: { code: "VALIDATION_ERROR", message: msg } },
       400,
     );
   }
   if (err.name === "InventoryItemNotFoundError") {
+    const isKey = err.message in translations.vi;
+    const msg = isKey ? t(c, err.message as any) : err.message;
     return c.json(
-      { success: false, error: { code: "NOT_FOUND", message: err.message } },
+      { success: false, error: { code: "NOT_FOUND", message: msg } },
       404,
     );
   }
@@ -91,7 +98,7 @@ export const errorHandler: ErrorHandler = (err, c) => {
       success: false,
       error: {
         code: "INTERNAL_ERROR",
-        message: status === 500 ? "Error interno del servidor" : err.message,
+        message: status === 500 ? t(c, "internal_server_error") : err.message,
       },
     },
     status,

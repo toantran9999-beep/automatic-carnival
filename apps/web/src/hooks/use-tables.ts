@@ -253,3 +253,11 @@ export function useMyAssignedTables() {
     queryFn: () => apiFetch<{ table_id: string; table_number: number }[]>("/api/tables/my-assignments"),
   });
 }
+
+export function useTableActiveSession(tableId: string | null) {
+  return useQuery({
+    queryKey: ["tables", tableId, "active-session"],
+    queryFn: () => apiFetch<{ session: any; orders: any[] }>(`/api/tables/${tableId}/active-session`),
+    enabled: !!tableId,
+  });
+}

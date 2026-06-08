@@ -6,25 +6,12 @@ import { cn } from "@/lib/utils";
 import { ColumnHeader } from "./column-header";
 import { KitchenOrderCard } from "./order-card";
 import { useKitchenContext } from "./kitchen-context";
+import { useTranslation } from "@/stores/lang-store";
 
 type TabKey = "pending" | "preparing" | "ready";
 
-const TAB_CONFIG: { key: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
-  { key: "pending", label: "Pendientes", icon: Clock },
-  { key: "preparing", label: "Preparando", icon: ChefHat },
-  { key: "ready", label: "Listos", icon: CheckCircle },
-];
-
-const COLUMN_CONFIG: Record<
-  TabKey,
-  { icon: React.ComponentType<{ className?: string }>; label: string; emptyLabel: string }
-> = {
-  pending: { icon: Clock, label: "Pendientes", emptyLabel: "Sin ordenes pendientes" },
-  preparing: { icon: ChefHat, label: "En Preparacion", emptyLabel: "Nada en preparacion" },
-  ready: { icon: CheckCircle, label: "Listos", emptyLabel: "Sin ordenes listas" },
-};
-
 function MobileColumn({ status }: { status: TabKey }) {
+  const { t, lang } = useTranslation();
   const {
     columns,
     advanceOrder,
@@ -34,6 +21,27 @@ function MobileColumn({ status }: { status: TabKey }) {
     isAdvancing,
     isUpdatingItem,
   } = useKitchenContext();
+
+  const COLUMN_CONFIG: Record<
+    TabKey,
+    { icon: React.ComponentType<{ className?: string }>; label: string; emptyLabel: string }
+  > = {
+    pending: {
+      icon: Clock,
+      label: t("kitchen.pending"),
+      emptyLabel: lang === "vi" ? "Không có đơn hàng chờ xử lý" : "No pending orders"
+    },
+    preparing: {
+      icon: ChefHat,
+      label: t("kitchen.preparing"),
+      emptyLabel: lang === "vi" ? "Không có món nào đang chế biến" : "No items in preparation"
+    },
+    ready: {
+      icon: CheckCircle,
+      label: t("kitchen.ready"),
+      emptyLabel: lang === "vi" ? "Chưa có đơn hàng hoàn thành" : "No ready orders"
+    },
+  };
 
   const config = COLUMN_CONFIG[status];
   const columnOrders = columns[status];
@@ -76,8 +84,15 @@ function MobileColumn({ status }: { status: TabKey }) {
 }
 
 export function MobileTabs() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<TabKey>("pending");
   const { columns } = useKitchenContext();
+
+  const TAB_CONFIG: { key: TabKey; label: string; icon: React.ComponentType<{ className?: string }> }[] = [
+    { key: "pending", label: t("kitchen.pending"), icon: Clock },
+    { key: "preparing", label: t("kitchen.preparing"), icon: ChefHat },
+    { key: "ready", label: t("kitchen.ready"), icon: CheckCircle },
+  ];
 
   return (
     <>

@@ -13,6 +13,7 @@ import {
   DialogFooter,
 } from "@restai/ui/components/dialog";
 import { useCreateInvoice } from "@/hooks/use-payments";
+import { useTranslation } from "@/stores/lang-store";
 
 interface InvoiceDialogProps {
   open: boolean;
@@ -21,6 +22,7 @@ interface InvoiceDialogProps {
 }
 
 export function InvoiceDialog({ open, onOpenChange, payment }: InvoiceDialogProps) {
+  const { t, lang } = useTranslation();
   const [form, setForm] = useState({
     type: "boleta",
     customerName: "",
@@ -54,36 +56,36 @@ export function InvoiceDialog({ open, onOpenChange, payment }: InvoiceDialogProp
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Generar Comprobante</DialogTitle>
+          <DialogTitle>{t("payments.createInvoice")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label htmlFor="invoiceType">Tipo de Comprobante</Label>
+            <Label htmlFor="invoiceType">{lang === "vi" ? "Loại Hóa đơn" : "Invoice Type"}</Label>
             <Select value={form.type} onValueChange={(v) => setForm({ ...form, type: v })}>
               <SelectTrigger>
-                <SelectValue placeholder="Seleccionar tipo" />
+                <SelectValue placeholder={lang === "vi" ? "Chọn loại..." : "Select type..."} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="boleta">Boleta</SelectItem>
-                <SelectItem value="factura">Factura</SelectItem>
+                <SelectItem value="boleta">{t("payments.receipt")}</SelectItem>
+                <SelectItem value="factura">{t("payments.invoice")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label htmlFor="customerName">Nombre del Cliente</Label>
+            <Label htmlFor="customerName">{t("payments.client")}</Label>
             <Input
               id="customerName"
-              placeholder="Nombre o razon social"
+              placeholder={lang === "vi" ? "Tên khách hàng hoặc công ty..." : "Customer or company name..."}
               value={form.customerName}
               onChange={(e) => setForm({ ...form, customerName: e.target.value })}
             />
           </div>
           <div className="grid grid-cols-2 gap-4">
             <div className="space-y-2">
-              <Label htmlFor="docType">Tipo de Documento</Label>
+              <Label htmlFor="docType">{lang === "vi" ? "Loại giấy tờ" : "Document Type"}</Label>
               <Select value={form.customerDocType} onValueChange={(v) => setForm({ ...form, customerDocType: v })}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Tipo doc." />
+                  <SelectValue placeholder={lang === "vi" ? "Chọn loại..." : "Select doc..."} />
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="dni">DNI</SelectItem>
@@ -93,7 +95,7 @@ export function InvoiceDialog({ open, onOpenChange, payment }: InvoiceDialogProp
               </Select>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="docNumber">Numero de Documento</Label>
+              <Label htmlFor="docNumber">{lang === "vi" ? "Số giấy tờ" : "Document Number"}</Label>
               <Input
                 id="docNumber"
                 placeholder={
@@ -118,7 +120,7 @@ export function InvoiceDialog({ open, onOpenChange, payment }: InvoiceDialogProp
         </div>
         <DialogFooter>
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            Cancelar
+            {t("common.cancel")}
           </Button>
           <Button
             onClick={handleCreate}
@@ -128,7 +130,7 @@ export function InvoiceDialog({ open, onOpenChange, payment }: InvoiceDialogProp
               !form.customerDocNumber
             }
           >
-            {createInvoice.isPending ? "Generando..." : "Generar Comprobante"}
+            {createInvoice.isPending ? t("common.saving") : t("payments.createInvoice")}
           </Button>
         </DialogFooter>
       </DialogContent>

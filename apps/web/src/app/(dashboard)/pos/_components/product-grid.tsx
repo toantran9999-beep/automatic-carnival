@@ -6,6 +6,7 @@ import { Badge } from "@restai/ui/components/badge";
 import { Search, Loader2, UtensilsCrossed, X } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
+import { useTranslation } from "@/stores/lang-store";
 import type { PosCartItem } from "../page";
 
 // ---------------------------------------------------------------------------
@@ -33,6 +34,8 @@ export function ProductGrid({
   cart: PosCartItem[];
   onItemClick: (item: any) => void;
 }) {
+  const { t } = useTranslation();
+
   const filteredItems = items.filter((item: any) => {
     if (!item.is_available) return false;
     if (search) return item.name.toLowerCase().includes(search.toLowerCase());
@@ -43,8 +46,8 @@ export function ProductGrid({
     <div className="flex-1 flex flex-col min-w-0">
       <div className="mb-3">
         <PageHeader
-          title="Punto de Venta"
-          description="Selecciona productos para crear una orden"
+          title={t("nav.pos")}
+          description={t("pos.selectProducts", "Select products to create an order")}
         />
       </div>
 
@@ -52,7 +55,7 @@ export function ProductGrid({
       <div className="relative mb-3">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
-          placeholder="Buscar producto..."
+          placeholder={t("pos.searchPlaceholder")}
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
           className="pl-9"
@@ -74,7 +77,7 @@ export function ProductGrid({
           size="sm"
           onClick={() => onCategoryChange(null)}
         >
-          Todos
+          {t("common.all")}
         </Button>
         {categories.map((cat: any) => (
           <Button
@@ -89,14 +92,14 @@ export function ProductGrid({
       </div>
 
       {/* Product grid */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="flex-1 overflow-y-auto pb-24 md:pb-0">
         {isLoading ? (
           <div className="flex items-center justify-center py-12">
             <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
           </div>
         ) : filteredItems.length === 0 ? (
           <div className="text-center py-12 text-muted-foreground">
-            No se encontraron productos
+            {t("pos.noProducts")}
           </div>
         ) : (
           <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">

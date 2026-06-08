@@ -7,6 +7,7 @@ import { createInvoiceSchema, idParamSchema } from "@restai/validators";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { t } from "../lib/i18n.js";
 
 const invoices = new Hono<AppEnv>();
 
@@ -29,27 +30,27 @@ invoices.post(
 
     if (docType === "dni" && (docNumber.length !== 8 || !/^\d{8}$/.test(docNumber))) {
       return c.json(
-        { success: false, error: { code: "BAD_REQUEST", message: "DNI debe ser 8 digitos" } },
+        { success: false, error: { code: "BAD_REQUEST", message: t(c, "invalid_dni_length") } },
         400,
       );
     }
     if (docType === "ruc") {
       if (docNumber.length !== 11 || !/^\d{11}$/.test(docNumber)) {
         return c.json(
-          { success: false, error: { code: "BAD_REQUEST", message: "RUC debe ser 11 digitos" } },
+          { success: false, error: { code: "BAD_REQUEST", message: t(c, "invalid_ruc_length") } },
           400,
         );
       }
       if (!docNumber.startsWith("10") && !docNumber.startsWith("20")) {
         return c.json(
-          { success: false, error: { code: "BAD_REQUEST", message: "RUC debe empezar con 10 o 20" } },
+          { success: false, error: { code: "BAD_REQUEST", message: t(c, "invalid_ruc_prefix") } },
           400,
         );
       }
     }
     if (docType === "ce" && (docNumber.length < 9 || docNumber.length > 12)) {
       return c.json(
-        { success: false, error: { code: "BAD_REQUEST", message: "CE debe tener entre 9 y 12 caracteres" } },
+        { success: false, error: { code: "BAD_REQUEST", message: t(c, "invalid_ce_length") } },
         400,
       );
     }
@@ -57,7 +58,7 @@ invoices.post(
     // Factura requires RUC
     if (body.type === "factura" && docType !== "ruc") {
       return c.json(
-        { success: false, error: { code: "BAD_REQUEST", message: "Factura requiere RUC" } },
+        { success: false, error: { code: "BAD_REQUEST", message: t(c, "ruc_required_for_factura") } },
         400,
       );
     }
@@ -76,7 +77,7 @@ invoices.post(
 
     if (!order) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Orden no encontrada" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
         404,
       );
     }
@@ -84,6 +85,13 @@ invoices.post(
     // Generate series/number + insert in a transaction with row locking
     const invoice = await db.transaction(async (tx) => {
       const prefix = body.type === "boleta" ? "B001" : "F001";
+
+      const [branch] = await tx
+        .select({ tax_rate: schema.branches.tax_rate })
+        .from(schema.branches)
+        .where(eq(schema.branches.id, tenant.branchId))
+        .limit(1);
+      const taxRate = branch?.tax_rate ?? 1000;
 
       const lastInvoice = await tx
         .select({ number: schema.invoices.number })
@@ -100,7 +108,7 @@ invoices.post(
 
       const nextNumber = (lastInvoice[0]?.number || 0) + 1;
 
-      const subtotal = Math.round(order.total / 1.18);
+      const subtotal = Math.round(order.total / (1 + (taxRate / 10000)));
       const igv = order.total - subtotal;
 
       const [created] = await tx
@@ -183,7 +191,7 @@ invoices.get(
 
     if (!invoice) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Comprobante no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "invoice_not_found") } },
         404,
       );
     }

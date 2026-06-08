@@ -10,7 +10,8 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useUpdateTablePosition } from "@/hooks/use-tables";
-import { statusConfig, plannerStatusColors } from "./constants";
+import { useTranslation } from "@/stores/lang-store";
+import { plannerStatusColors } from "./constants";
 
 interface TableServiceRequestIndicator {
   type: "request_bill" | "call_waiter";
@@ -24,6 +25,7 @@ export function FloorPlannerView({
   tables: any[];
   requestByTableId: Record<string, TableServiceRequestIndicator>;
 }) {
+  const { t, lang } = useTranslation();
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
   const [dragging, setDragging] = useState<string | null>(null);
@@ -137,7 +139,7 @@ export function FloorPlannerView({
           {Object.entries(plannerStatusColors).map(([status, colors]) => (
             <div key={status} className="flex items-center gap-1">
               <div className={cn("w-3 h-3 rounded border", colors.bg, colors.border)} />
-              <span>{statusConfig[status]?.label}</span>
+              <span>{t(`tables.${status === "available" ? "free" : status}`)}</span>
             </div>
           ))}
         </div>
@@ -212,17 +214,17 @@ export function FloorPlannerView({
                   {table.number}
                 </span>
                 <span className="text-[10px] text-muted-foreground mt-0.5">
-                  {table.capacity}p
+                  {table.capacity}{t("tables.person").charAt(0)}
                 </span>
                 <span className={cn("text-[9px] mt-0.5", colors.text)}>
-                  {statusConfig[table.status]?.label}
+                  {t(`tables.${table.status === "available" ? "free" : table.status}`)}
                 </span>
                 {serviceRequest && (
                   <span
                     title={`${serviceRequest.customerName}: ${
                       serviceRequest.type === "request_bill"
-                        ? "solicita cuenta"
-                        : "solicita mozo"
+                        ? t("customer.requestBill")
+                        : t("customer.callingStaff")
                     }`}
                     className={cn(
                       "absolute -top-1 -right-1 h-3 w-3 rounded-full border border-background shadow-sm",
@@ -240,12 +242,14 @@ export function FloorPlannerView({
         {/* Empty state */}
         {tables.length === 0 && (
           <div className="absolute inset-0 flex items-center justify-center">
-            <p className="text-muted-foreground">No hay mesas para mostrar</p>
+            <p className="text-muted-foreground">{t("dashboard.noTables")}</p>
           </div>
         )}
       </div>
       <p className="text-xs text-muted-foreground">
-        Arrastra las mesas para posicionarlas. Usa la rueda del raton para hacer zoom. Clic y arrastra el fondo para desplazarte.
+        {lang === "vi"
+          ? "Kéo thả bàn để thay đổi vị trí. Sử dụng cuộn chuột để phóng to/thu nhỏ. Nhấp và kéo nền để di chuyển."
+          : "Drag tables to position them. Scroll to zoom. Click and drag background to pan."}
       </p>
     </div>
   );

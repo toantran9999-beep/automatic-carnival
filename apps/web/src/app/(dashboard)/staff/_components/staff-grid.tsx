@@ -5,14 +5,7 @@ import { Badge } from "@restai/ui/components/badge";
 import { Button } from "@restai/ui/components/button";
 import { Mail, Eye, EyeOff, Pencil, UserX, UserCheck, KeyRound } from "lucide-react";
 import { SearchInput } from "@/components/search-input";
-
-const roleLabels: Record<string, string> = {
-  org_admin: "Admin",
-  branch_manager: "Gerente",
-  cashier: "Cajero",
-  waiter: "Mesero",
-  kitchen: "Cocina",
-};
+import { useTranslation } from "@/stores/lang-store";
 
 const roleBadgeVariant: Record<string, "default" | "secondary" | "outline"> = {
   org_admin: "default",
@@ -51,6 +44,16 @@ export function StaffGrid({
   onToggleActive,
   updatePending,
 }: StaffGridProps) {
+  const { t } = useTranslation();
+
+  const roleLabels: Record<string, string> = {
+    org_admin: t("staff.role_org_admin"),
+    branch_manager: t("staff.role_branch_manager"),
+    cashier: t("staff.role_cashier"),
+    waiter: t("staff.role_waiter"),
+    kitchen: t("staff.role_kitchen"),
+  };
+
   const filteredStaff = staff.filter(
     (member: any) =>
       member.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -64,14 +67,14 @@ export function StaffGrid({
         <SearchInput
           value={search}
           onChange={onSearchChange}
-          placeholder="Buscar por nombre o email..."
+          placeholder={t("staff.searchPlaceholder")}
           className="flex-1"
         />
         <Button
           variant={showInactive ? "secondary" : "outline"}
           size="icon"
           onClick={onToggleInactive}
-          title={showInactive ? "Ocultar inactivos" : "Mostrar inactivos"}
+          title={showInactive ? t("staff.hideInactive") : t("staff.showInactive")}
         >
           {showInactive ? <Eye className="h-4 w-4" /> : <EyeOff className="h-4 w-4" />}
         </Button>
@@ -98,7 +101,7 @@ export function StaffGrid({
         </div>
       ) : filteredStaff.length === 0 ? (
         <p className="text-sm text-muted-foreground text-center py-8">
-          {search ? "No se encontraron miembros" : "No hay miembros de staff"}
+          {search ? t("staff.noMembersFound") : t("staff.noMembers")}
         </p>
       ) : (
         <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
@@ -133,7 +136,7 @@ export function StaffGrid({
                       </Badge>
                       {isInactive && (
                         <Badge variant="destructive" className="text-[10px]">
-                          Inactivo
+                          {t("staff.inactive")}
                         </Badge>
                       )}
                     </div>
@@ -147,7 +150,7 @@ export function StaffGrid({
                           </Badge>
                         ))
                       ) : (
-                        <span className="text-xs text-muted-foreground">Sin sedes</span>
+                        <span className="text-xs text-muted-foreground">{t("staff.noBranches")}</span>
                       )}
                     </div>
                     <div className="flex gap-1">
@@ -156,7 +159,7 @@ export function StaffGrid({
                         size="icon"
                         className="h-7 w-7"
                         onClick={() => onEdit(member)}
-                        title="Editar"
+                        title={t("common.edit")}
                       >
                         <Pencil className="h-3.5 w-3.5" />
                       </Button>
@@ -165,7 +168,7 @@ export function StaffGrid({
                         size="icon"
                         className="h-7 w-7"
                         onClick={() => onPassword(member)}
-                        title="Cambiar contrasena"
+                        title={t("staff.changePassword")}
                       >
                         <KeyRound className="h-3.5 w-3.5" />
                       </Button>
@@ -175,7 +178,7 @@ export function StaffGrid({
                         className="h-7 w-7"
                         onClick={() => onToggleActive(member)}
                         disabled={updatePending}
-                        title={member.isActive ? "Desactivar" : "Activar"}
+                        title={member.isActive ? t("staff.deactivate") : t("staff.activate")}
                       >
                         {member.isActive ? (
                           <UserX className="h-3.5 w-3.5 text-destructive" />

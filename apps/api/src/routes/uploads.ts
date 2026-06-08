@@ -3,6 +3,7 @@ import type { AppEnv } from "../types.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware } from "../middleware/tenant.js";
 import { uploadToR2, deleteFromR2, getPublicUrl } from "../lib/r2.js";
+import { t } from "../lib/i18n.js";
 
 const ALLOWED_TYPES = new Set([
   "image/jpeg",
@@ -41,7 +42,7 @@ uploads.post("/", async (c) => {
     return c.json(
       {
         success: false,
-        error: { code: "BAD_REQUEST", message: "Se requiere un archivo" },
+        error: { code: "BAD_REQUEST", message: t(c, "file_required") },
       },
       400,
     );
@@ -53,7 +54,7 @@ uploads.post("/", async (c) => {
         success: false,
         error: {
           code: "BAD_REQUEST",
-          message: "Tipo de archivo no permitido. Usa JPEG, PNG, WebP o GIF",
+          message: t(c, "file_type_not_allowed"),
         },
       },
       400,
@@ -66,7 +67,7 @@ uploads.post("/", async (c) => {
         success: false,
         error: {
           code: "BAD_REQUEST",
-          message: "El archivo excede el tamaño máximo de 5MB",
+          message: t(c, "file_size_exceeded"),
         },
       },
       400,
@@ -80,7 +81,7 @@ uploads.post("/", async (c) => {
         success: false,
         error: {
           code: "BAD_REQUEST",
-          message: "Tipo de upload inválido. Usa menu, logo o category",
+          message: t(c, "invalid_upload_type"),
         },
       },
       400,
@@ -105,7 +106,7 @@ uploads.delete("/*", async (c) => {
     return c.json(
       {
         success: false,
-        error: { code: "BAD_REQUEST", message: "Se requiere la key del archivo" },
+        error: { code: "BAD_REQUEST", message: t(c, "file_key_required") },
       },
       400,
     );

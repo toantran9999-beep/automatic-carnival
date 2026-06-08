@@ -12,6 +12,7 @@ import {
 } from "@restai/ui/components/dialog";
 import { useChangePassword } from "@/hooks/use-staff";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
 
 interface PasswordDialogProps {
   open: boolean;
@@ -22,19 +23,20 @@ interface PasswordDialogProps {
 export function PasswordDialog({ open, onOpenChange, member }: PasswordDialogProps) {
   const [newPassword, setNewPassword] = useState("");
   const changePassword = useChangePassword();
+  const { t } = useTranslation();
 
   const handleChange = async () => {
     if (!member || newPassword.length < 8) {
-      toast.error("La contrasena debe tener al menos 8 caracteres");
+      toast.error(t("staff.minPasswordLength"));
       return;
     }
     try {
       await changePassword.mutateAsync({ id: member.id, password: newPassword });
-      toast.success(`Contrasena de ${member.name} actualizada`);
+      toast.success(t("staff.passwordUpdated"));
       onOpenChange(false);
       setNewPassword("");
     } catch (err: any) {
-      toast.error(err.message || "Error al cambiar contrasena");
+      toast.error(err.message || t("staff.passwordError"));
     }
   };
 
@@ -42,24 +44,24 @@ export function PasswordDialog({ open, onOpenChange, member }: PasswordDialogPro
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Cambiar Contrasena</DialogTitle>
+          <DialogTitle>{t("staff.passwordDialogTitle")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           {member && (
             <p className="text-sm text-muted-foreground">
-              Cambiar contrasena de <span className="font-medium text-foreground">{member.name}</span>
+              {t("staff.changePassword")} <span className="font-medium text-foreground">{member.name}</span>
             </p>
           )}
           <div className="space-y-2">
-            <Label>Nueva Contrasena</Label>
+            <Label>{t("staff.newPassword")}</Label>
             <Input
               type="password"
               value={newPassword}
               onChange={(e) => setNewPassword(e.target.value)}
-              placeholder="Minimo 8 caracteres"
+              placeholder={t("staff.passwordHelp")}
             />
             {newPassword.length > 0 && newPassword.length < 8 && (
-              <p className="text-xs text-destructive">Debe tener al menos 8 caracteres</p>
+              <p className="text-xs text-destructive">{t("staff.minPasswordLength")}</p>
             )}
           </div>
           <Button
@@ -67,7 +69,7 @@ export function PasswordDialog({ open, onOpenChange, member }: PasswordDialogPro
             onClick={handleChange}
             disabled={changePassword.isPending || newPassword.length < 8}
           >
-            {changePassword.isPending ? "Cambiando..." : "Cambiar Contrasena"}
+            {changePassword.isPending ? t("staff.changing") : t("staff.changePassword")}
           </Button>
         </div>
       </DialogContent>

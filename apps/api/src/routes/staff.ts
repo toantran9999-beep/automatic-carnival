@@ -9,6 +9,7 @@ import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { hashPassword } from "../lib/hash.js";
+import { t } from "../lib/i18n.js";
 
 const staff = new Hono<AppEnv>();
 
@@ -94,7 +95,7 @@ staff.post(
 
     if (existing) {
       return c.json(
-        { success: false, error: { code: "CONFLICT", message: "El email ya esta registrado" } },
+        { success: false, error: { code: "CONFLICT", message: t(c, "email_exists") } },
         409,
       );
     }
@@ -167,7 +168,7 @@ staff.patch(
 
     if (!user) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Usuario no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "user_not_found") } },
         404,
       );
     }
@@ -233,7 +234,7 @@ staff.patch(
 
     if (!user) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Usuario no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "user_not_found") } },
         404,
       );
     }
@@ -278,7 +279,7 @@ staff.post(
 
     if (existingShift) {
       return c.json(
-        { success: false, error: { code: "CONFLICT", message: "Ya tienes un turno activo" } },
+        { success: false, error: { code: "CONFLICT", message: t(c, "active_shift_exists") } },
         409,
       );
     }
@@ -358,14 +359,14 @@ staff.patch(
 
     if (!shift) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: "Turno no encontrado" } },
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "shift_not_found") } },
         404,
       );
     }
 
     if (shift.end_time) {
       return c.json(
-        { success: false, error: { code: "BAD_REQUEST", message: "El turno ya fue cerrado" } },
+        { success: false, error: { code: "BAD_REQUEST", message: t(c, "shift_closed") } },
         400,
       );
     }

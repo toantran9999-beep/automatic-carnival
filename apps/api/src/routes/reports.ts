@@ -5,19 +5,56 @@ import { eq, and, gte, lte, sql, desc, inArray, count, sum } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import { reportQuerySchema } from "@restai/validators";
 import { authMiddleware } from "../middleware/auth.js";
-import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
+import { tenantMiddleware } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { peruStartOfDay } from "../lib/timezone.js";
+import { t } from "../lib/i18n.js";
 
 const reports = new Hono<AppEnv>();
 
 reports.use("*", authMiddleware);
 reports.use("*", tenantMiddleware);
-reports.use("*", requireBranch);
+
+/**
+ * Resolves whether a report should be scoped to a single branch or aggregated
+ * across all branches of the organization.
+ *
+ * "All branches" is only honoured for users with global access
+ * (super_admin / org_admin) and when `?allBranches=true` is passed.
+ * Otherwise a branch must be selected (x-branch-id header).
+ *
+ * Returns either { ok: false, response } (caller should return it) or
+ * { ok: true, useAll, orgCondition } where orgCondition is the SQL filter to
+ * apply to the `orders` table.
+ */
+function resolveReportScope(c: any) {
+  const tenant = c.get("tenant");
+  const user = c.get("user");
+  const hasGlobalAccess = user?.role === "super_admin" || user?.role === "org_admin";
+  const useAll = c.req.query("allBranches") === "true" && hasGlobalAccess;
+
+  if (!useAll && !tenant?.branchId) {
+    return {
+      ok: false as const,
+      response: c.json(
+        { success: false, error: { code: "BAD_REQUEST", message: t(c, "branch_header_required") } },
+        400,
+      ),
+    };
+  }
+
+  const ordersCondition = useAll
+    ? eq(schema.orders.organization_id, tenant.organizationId)
+    : eq(schema.orders.branch_id, tenant.branchId);
+
+  return { ok: true as const, useAll, tenant, ordersCondition };
+}
 
 // GET /dashboard - Dashboard stats
 reports.get("/dashboard", requirePermission("reports:read"), async (c) => {
-  const tenant = c.get("tenant") as any;
+  const scope = resolveReportScope(c);
+  if (!scope.ok) return scope.response;
+  const { useAll, tenant, ordersCondition } = scope;
 
   const today = peruStartOfDay();
 
@@ -30,7 +67,7 @@ reports.get("/dashboard", requirePermission("reports:read"), async (c) => {
     .from(schema.orders)
     .where(
       and(
-        eq(schema.orders.branch_id, tenant.branchId),
+        ordersCondition,
         gte(schema.orders.created_at, today),
       ),
     );
@@ -41,7 +78,7 @@ reports.get("/dashboard", requirePermission("reports:read"), async (c) => {
     .from(schema.orders)
     .where(
       and(
-        eq(schema.orders.branch_id, tenant.branchId),
+        ordersCondition,
         inArray(schema.orders.status, ["pending", "confirmed", "preparing", "ready"]),
       ),
     );
@@ -50,7 +87,11 @@ reports.get("/dashboard", requirePermission("reports:read"), async (c) => {
   const allTables = await db
     .select({ status: schema.tables.status })
     .from(schema.tables)
-    .where(eq(schema.tables.branch_id, tenant.branchId));
+    .where(
+      useAll
+        ? eq(schema.tables.organization_id, tenant.organizationId)
+        : eq(schema.tables.branch_id, tenant.branchId),
+    );
 
   const totalTables = allTables.length;
   const occupiedTables = allTables.filter((t) => t.status === "occupied").length;
@@ -80,7 +121,9 @@ reports.get(
   zValidator("query", reportQuerySchema),
   async (c) => {
     const { startDate, endDate } = c.req.valid("query");
-    const tenant = c.get("tenant") as any;
+    const scope = resolveReportScope(c);
+    if (!scope.ok) return scope.response;
+    const { useAll, tenant, ordersCondition } = scope;
 
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -98,7 +141,7 @@ reports.get(
       .from(schema.orders)
       .where(
         and(
-          eq(schema.orders.branch_id, tenant.branchId),
+          ordersCondition,
           gte(schema.orders.created_at, start),
           lte(schema.orders.created_at, end),
           eq(schema.orders.status, "completed"),
@@ -115,7 +158,7 @@ reports.get(
       .from(schema.orders)
       .where(
         and(
-          eq(schema.orders.branch_id, tenant.branchId),
+          ordersCondition,
           gte(schema.orders.created_at, start),
           lte(schema.orders.created_at, end),
           eq(schema.orders.status, "completed"),
@@ -124,13 +167,43 @@ reports.get(
       .groupBy(sql`to_char(${schema.orders.created_at}, 'YYYY-MM-DD')`)
       .orderBy(sql`to_char(${schema.orders.created_at}, 'YYYY-MM-DD')`);
 
+    // Per-branch breakdown (only meaningful in all-branches mode)
+    let branches: { branchId: string; name: string; orders: number; revenue: number }[] = [];
+    if (useAll) {
+      const branchRows = await db
+        .select({
+          branchId: schema.orders.branch_id,
+          name: schema.branches.name,
+          orders: count(),
+          revenue: sum(schema.orders.total),
+        })
+        .from(schema.orders)
+        .innerJoin(schema.branches, eq(schema.branches.id, schema.orders.branch_id))
+        .where(
+          and(
+            eq(schema.orders.organization_id, tenant.organizationId),
+            gte(schema.orders.created_at, start),
+            lte(schema.orders.created_at, end),
+            eq(schema.orders.status, "completed"),
+          ),
+        )
+        .groupBy(schema.orders.branch_id, schema.branches.name)
+        .orderBy(desc(sum(schema.orders.total)));
+      branches = branchRows.map((b) => ({
+        branchId: b.branchId,
+        name: b.name,
+        orders: b.orders,
+        revenue: Number(b.revenue || 0),
+      }));
+    }
+
     // Payment method breakdown - join completed orders with payments
     const completedOrders = await db
       .select({ id: schema.orders.id })
       .from(schema.orders)
       .where(
         and(
-          eq(schema.orders.branch_id, tenant.branchId),
+          ordersCondition,
           gte(schema.orders.created_at, start),
           lte(schema.orders.created_at, end),
           eq(schema.orders.status, "completed"),
@@ -174,6 +247,7 @@ reports.get(
           revenue: Number(d.revenue || 0),
         })),
         paymentMethods,
+        branches,
       },
     });
   },
@@ -186,7 +260,9 @@ reports.get(
   zValidator("query", reportQuerySchema),
   async (c) => {
     const { startDate, endDate } = c.req.valid("query");
-    const tenant = c.get("tenant") as any;
+    const scope = resolveReportScope(c);
+    if (!scope.ok) return scope.response;
+    const { ordersCondition } = scope;
 
     const start = new Date(startDate);
     const end = new Date(endDate);
@@ -201,7 +277,7 @@ reports.get(
       .from(schema.orders)
       .where(
         and(
-          eq(schema.orders.branch_id, tenant.branchId),
+          ordersCondition,
           gte(schema.orders.created_at, start),
           lte(schema.orders.created_at, end),
           eq(schema.orders.status, "completed"),

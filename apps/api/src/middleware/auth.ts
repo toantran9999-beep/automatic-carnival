@@ -1,6 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { verifyAccessToken } from "../lib/jwt.js";
 import type { AppEnv } from "../types.js";
+import { t } from "../lib/i18n.js";
 
 export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
   const header = c.req.header("Authorization");
@@ -8,7 +9,7 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     return c.json(
       {
         success: false,
-        error: { code: "UNAUTHORIZED", message: "Token no proporcionado" },
+        error: { code: "UNAUTHORIZED", message: t(c, "token_required") },
       },
       401,
     );
@@ -23,7 +24,7 @@ export const authMiddleware = createMiddleware<AppEnv>(async (c, next) => {
     return c.json(
       {
         success: false,
-        error: { code: "UNAUTHORIZED", message: "Token inválido o expirado" },
+        error: { code: "UNAUTHORIZED", message: t(c, "token_expired") },
       },
       401,
     );

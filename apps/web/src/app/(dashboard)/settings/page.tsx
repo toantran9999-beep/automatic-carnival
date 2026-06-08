@@ -8,9 +8,11 @@ import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
 import { OrgTab } from "./_components/org-tab";
 import { BranchTab } from "./_components/branch-tab";
 import { SedesTab } from "./_components/sedes-tab";
+import { useTranslation } from "@/stores/lang-store";
 
 export default function SettingsPage() {
   const [activeTab, setActiveTab] = useState<"org" | "branch" | "sedes">("org");
+  const { t } = useTranslation();
 
   const { error: orgError, refetch: refetchOrg } = useOrgSettings();
   const { error: branchError, refetch: refetchBranch } = useBranchSettings();
@@ -19,12 +21,12 @@ export default function SettingsPage() {
   if (error) {
     return (
       <div className="space-y-6 max-w-2xl">
-        <PageHeader title="Configuracion" />
+        <PageHeader title={t("settings.title")} />
         <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/5 flex items-center justify-between">
-          <p className="text-sm text-destructive">Error al cargar: {(error as Error).message}</p>
+          <p className="text-sm text-destructive">{t("common.error")}: {(error as Error).message}</p>
           <Button variant="outline" size="sm" onClick={() => { refetchOrg(); refetchBranch(); }}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Reintentar
+            {t("dashboard.retry")}
           </Button>
         </div>
       </div>
@@ -34,8 +36,8 @@ export default function SettingsPage() {
   return (
     <div className="space-y-6 max-w-2xl">
       <PageHeader
-        title="Configuracion"
-        description="Administra la configuracion de tu organizacion y sedes"
+        title={t("settings.title")}
+        description={t("settings.description")}
       />
 
       <div className="flex gap-2 border-b pb-2">
@@ -45,7 +47,7 @@ export default function SettingsPage() {
           onClick={() => setActiveTab("org")}
         >
           <Building2 className="h-4 w-4 mr-2" />
-          Organizacion
+          {t("settings.tabOrg")}
         </Button>
         <Button
           variant={activeTab === "branch" ? "default" : "ghost"}
@@ -53,7 +55,7 @@ export default function SettingsPage() {
           onClick={() => setActiveTab("branch")}
         >
           <MapPin className="h-4 w-4 mr-2" />
-          Sede
+          {t("settings.tabBranch")}
         </Button>
         <Button
           variant={activeTab === "sedes" ? "default" : "ghost"}
@@ -61,7 +63,7 @@ export default function SettingsPage() {
           onClick={() => setActiveTab("sedes")}
         >
           <Store className="h-4 w-4 mr-2" />
-          Sedes
+          {t("settings.tabBranches")}
         </Button>
       </div>
 

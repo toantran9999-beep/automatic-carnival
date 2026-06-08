@@ -14,15 +14,21 @@ import { ProgramsTab } from "./_components/programs-tab";
 import { CustomersTab } from "./_components/customers-tab";
 import { RewardsTab } from "./_components/rewards-tab";
 import { CouponsTab } from "./_components/coupons-tab";
+import { useTranslation } from "@/stores/lang-store";
 
 export default function LoyaltyPage() {
+  const { t, lang } = useTranslation();
   const [tab, setTab] = useState("programs");
 
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Fidelizacion"
-        description="Gestiona tus clientes, programa de puntos, recompensas y cupones"
+        title={t("loyalty.title")}
+        description={
+          lang === "vi"
+            ? "Quản lý khách hàng, chương trình tích điểm, phần thưởng và mã giảm giá"
+            : "Manage customers, loyalty points programs, rewards, and coupons"
+        }
       />
 
       <LoyaltyStats />
@@ -31,19 +37,19 @@ export default function LoyaltyPage() {
         <TabsList>
           <TabsTrigger value="programs">
             <Star className="h-4 w-4 mr-2" />
-            Programas
+            {t("loyalty.programs")}
           </TabsTrigger>
           <TabsTrigger value="customers">
             <Users className="h-4 w-4 mr-2" />
-            Clientes
+            {t("loyalty.customers")}
           </TabsTrigger>
           <TabsTrigger value="rewards">
             <Gift className="h-4 w-4 mr-2" />
-            Recompensas
+            {t("loyalty.rewards")}
           </TabsTrigger>
           <TabsTrigger value="coupons">
             <Ticket className="h-4 w-4 mr-2" />
-            Cupones
+            {t("loyalty.coupons")}
           </TabsTrigger>
         </TabsList>
 

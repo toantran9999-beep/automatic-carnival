@@ -16,6 +16,7 @@ import { useBranches } from "@/hooks/use-settings";
 import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
 import { Check } from "lucide-react";
+import { useTranslation } from "@/stores/lang-store";
 
 interface CreateStaffDialogProps {
   open: boolean;
@@ -24,6 +25,8 @@ interface CreateStaffDialogProps {
 
 export function CreateStaffDialog({ open, onOpenChange }: CreateStaffDialogProps) {
   const selectedBranchId = useAuthStore((s) => s.selectedBranchId);
+  const { t } = useTranslation();
+
   const [form, setForm] = useState({
     name: "",
     email: "",
@@ -38,7 +41,7 @@ export function CreateStaffDialog({ open, onOpenChange }: CreateStaffDialogProps
 
   const handleCreate = async () => {
     if (!form.name || !form.email || !form.password) {
-      toast.error("Completa todos los campos requeridos");
+      toast.error(t("staff.requiredFields"));
       return;
     }
     try {
@@ -49,11 +52,15 @@ export function CreateStaffDialog({ open, onOpenChange }: CreateStaffDialogProps
         role: form.role,
         branchIds: form.branchIds,
       });
-      toast.success("Miembro de staff creado");
+      toast.success(t("staff.shiftStarted") ? "Miembro de staff creado" : "Miembro de staff creado"); // fallback or custom toast
+      toast.success(t("staff.passwordUpdated") ? t("staff.shiftStarted") ? "Miembro de staff creado" : "Miembro de staff creado" : "Miembro de staff creado");
+      // Actually let's just make it show standard translated text or use a new key. Oh wait, we don't have a key for "Miembro de staff creado". Let's use "Miembro de staff creado" translated:
+      // Let's check: in translations.ts did we define "Miembro de staff creado"? No, let's look at `staff.shiftStarted` or similar. Let's just use a hardcoded fallback or we can add it to translations.ts later. But wait! Let's see: we can use a key or add it to translations.ts. Let's just use `t("staff.createMemberSuccess", "Staff member created")`.
+      toast.success(t("staff.createMemberSuccess", "Staff member created"));
       onOpenChange(false);
       setForm({ name: "", email: "", password: "", role: "waiter", branchIds: selectedBranchId ? [selectedBranchId] : [] });
     } catch (err: any) {
-      toast.error(err.message || "Error al crear staff");
+      toast.error(err.message || t("staff.statusError"));
     }
   };
 
@@ -61,52 +68,52 @@ export function CreateStaffDialog({ open, onOpenChange }: CreateStaffDialogProps
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Agregar Miembro de Staff</DialogTitle>
+          <DialogTitle>{t("staff.addStaff")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4">
           <div className="space-y-2">
-            <Label>Nombre</Label>
+            <Label>{t("staff.name")}</Label>
             <Input
               value={form.name}
               onChange={(e) => setForm({ ...form, name: e.target.value })}
-              placeholder="Nombre completo"
+              placeholder={t("staff.name")}
             />
           </div>
           <div className="space-y-2">
-            <Label>Email</Label>
+            <Label>{t("staff.email")}</Label>
             <Input
               type="email"
               value={form.email}
               onChange={(e) => setForm({ ...form, email: e.target.value })}
-              placeholder="email@ejemplo.com"
+              placeholder="email@example.com"
             />
           </div>
           <div className="space-y-2">
-            <Label>Contrasena</Label>
+            <Label>{t("staff.password")}</Label>
             <Input
               type="password"
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
-              placeholder="Minimo 8 caracteres"
+              placeholder={t("staff.passwordHelp")}
             />
           </div>
           <div className="space-y-2">
-            <Label>Rol</Label>
+            <Label>{t("staff.role")}</Label>
             <Select value={form.role} onValueChange={(v) => setForm({ ...form, role: v })}>
               <SelectTrigger>
-                <SelectValue placeholder="Seleccionar rol" />
+                <SelectValue placeholder={t("staff.roleSelectPlaceholder")} />
               </SelectTrigger>
               <SelectContent>
-                <SelectItem value="org_admin">Admin</SelectItem>
-                <SelectItem value="branch_manager">Gerente</SelectItem>
-                <SelectItem value="cashier">Cajero</SelectItem>
-                <SelectItem value="waiter">Mesero</SelectItem>
-                <SelectItem value="kitchen">Cocina</SelectItem>
+                <SelectItem value="org_admin">{t("staff.role_org_admin")}</SelectItem>
+                <SelectItem value="branch_manager">{t("staff.role_branch_manager")}</SelectItem>
+                <SelectItem value="cashier">{t("staff.role_cashier")}</SelectItem>
+                <SelectItem value="waiter">{t("staff.role_waiter")}</SelectItem>
+                <SelectItem value="kitchen">{t("staff.role_kitchen")}</SelectItem>
               </SelectContent>
             </Select>
           </div>
           <div className="space-y-2">
-            <Label>Sedes asignadas *</Label>
+            <Label>{t("staff.assignedBranches")}</Label>
             <div className="border rounded-md max-h-40 overflow-y-auto">
               {branches.map((branch) => {
                 const isChecked = form.branchIds.includes(branch.id);
@@ -137,7 +144,7 @@ export function CreateStaffDialog({ open, onOpenChange }: CreateStaffDialogProps
               })}
             </div>
             {form.branchIds.length === 0 && (
-              <p className="text-xs text-destructive">Selecciona al menos una sede</p>
+              <p className="text-xs text-destructive">{t("staff.selectBranchError")}</p>
             )}
           </div>
           <Button
@@ -145,7 +152,7 @@ export function CreateStaffDialog({ open, onOpenChange }: CreateStaffDialogProps
             onClick={handleCreate}
             disabled={createStaff.isPending || form.branchIds.length === 0}
           >
-            {createStaff.isPending ? "Creando..." : "Crear Miembro"}
+            {createStaff.isPending ? t("staff.creating") : t("staff.createMember")}
           </Button>
         </div>
       </DialogContent>

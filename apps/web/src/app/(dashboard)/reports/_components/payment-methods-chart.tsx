@@ -11,6 +11,8 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
+import { useTranslation } from "@/stores/lang-store";
+
 const PIE_COLORS = ["#0f766e", "#2563eb", "#16a34a", "#d97706", "#e11d48", "#4b5563"];
 
 function Skeleton({ className }: { className?: string }) {
@@ -23,10 +25,11 @@ interface PaymentMethodsChartProps {
 }
 
 export function PaymentMethodsChart({ paymentMethods, isLoading }: PaymentMethodsChartProps) {
+  const { t, lang } = useTranslation();
   return (
     <Card>
       <CardHeader>
-        <CardTitle>Metodos de Pago</CardTitle>
+        <CardTitle>{t("reports.paymentShare")}</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="h-[300px]">
@@ -52,7 +55,7 @@ export function PaymentMethodsChart({ paymentMethods, isLoading }: PaymentMethod
                   ))}
                 </Pie>
                 <Tooltip
-                  formatter={(value: number) => [`${value}%`, "Porcentaje"]}
+                  formatter={(value: number) => [`${value}%`, lang === "vi" ? "Tỷ lệ" : "Percentage"]}
                   contentStyle={{
                     backgroundColor: "var(--card)",
                     border: "1px solid var(--border)",
@@ -64,7 +67,7 @@ export function PaymentMethodsChart({ paymentMethods, isLoading }: PaymentMethod
             </ResponsiveContainer>
           ) : (
             <div className="h-full flex items-center justify-center text-sm text-muted-foreground">
-              No hay datos de metodos de pago
+              {lang === "vi" ? "Không có dữ liệu phương thức thanh toán" : "No payment method data available"}
             </div>
           )}
         </div>

@@ -16,6 +16,7 @@ import {
 import { Plus, Pencil, Store } from "lucide-react";
 import { useBranches, useCreateBranch, useUpdateBranchById } from "@/hooks/use-settings";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className ?? ""}`} />;
@@ -36,6 +37,7 @@ export function SedesTab() {
   const { data: branches, isLoading: branchesLoading } = useBranches();
   const createBranch = useCreateBranch();
   const updateBranchById = useUpdateBranchById();
+  const { t } = useTranslation();
 
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<any>(null);
@@ -76,7 +78,7 @@ export function SedesTab() {
           address: branchDialogForm.address,
           phone: branchDialogForm.phone,
         });
-        toast.success("Sede actualizada correctamente");
+        toast.success(t("settings.branchSuccess"));
       } else {
         await createBranch.mutateAsync({
           name: branchDialogForm.name,
@@ -84,11 +86,11 @@ export function SedesTab() {
           address: branchDialogForm.address || undefined,
           phone: branchDialogForm.phone || undefined,
         });
-        toast.success("Sede creada correctamente");
+        toast.success(t("settings.createBranchSuccess"));
       }
       setBranchDialogOpen(false);
     } catch (err: any) {
-      toast.error(err.message || "Error al guardar sede");
+      toast.error(err.message || t("settings.saveBranchError"));
     }
   };
 
@@ -96,12 +98,12 @@ export function SedesTab() {
     <>
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-lg font-semibold">Todas las Sedes</h2>
-          <p className="text-sm text-muted-foreground">Gestiona las sedes de tu organizacion</p>
+          <h2 className="text-lg font-semibold">{t("settings.branchesTitle")}</h2>
+          <p className="text-sm text-muted-foreground">{t("settings.branchesDesc")}</p>
         </div>
         <Button size="sm" onClick={openCreateBranchDialog}>
           <Plus className="h-4 w-4 mr-2" />
-          Nueva Sede
+          {t("settings.newBranch")}
         </Button>
       </div>
 
@@ -114,10 +116,10 @@ export function SedesTab() {
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <Store className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground">No hay sedes configuradas</p>
+            <p className="text-muted-foreground">{t("settings.noBranches")}</p>
             <Button className="mt-4" size="sm" onClick={openCreateBranchDialog}>
               <Plus className="h-4 w-4 mr-2" />
-              Crear primera sede
+              {t("settings.createFirstBranch")}
             </Button>
           </CardContent>
         </Card>
@@ -157,17 +159,17 @@ export function SedesTab() {
       <Dialog open={branchDialogOpen} onOpenChange={setBranchDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingBranch ? "Editar Sede" : "Nueva Sede"}</DialogTitle>
+            <DialogTitle>{editingBranch ? t("settings.editBranch") : t("settings.newBranch")}</DialogTitle>
             <DialogDescription>
-              {editingBranch ? "Modifica los datos de la sede" : "Agrega una nueva sede a tu organizacion"}
+              {editingBranch ? t("settings.branchDialogDescEdit") : t("settings.branchDialogDescCreate")}
             </DialogDescription>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div className="space-y-2">
-              <Label htmlFor="dialogBranchName">Nombre</Label>
+              <Label htmlFor="dialogBranchName">{t("settings.orgNameLabel")}</Label>
               <Input
                 id="dialogBranchName"
-                placeholder="Sede Centro"
+                placeholder="Chi nhánh mới"
                 value={branchDialogForm.name}
                 onChange={(e) => {
                   const name = e.target.value;
@@ -180,10 +182,10 @@ export function SedesTab() {
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="dialogBranchSlug">Slug (URL)</Label>
+              <Label htmlFor="dialogBranchSlug">{t("settings.slugLabel")}</Label>
               <Input
                 id="dialogBranchSlug"
-                placeholder="sede-centro"
+                placeholder="chi-nhanh-moi"
                 value={branchDialogForm.slug}
                 onChange={(e) => {
                   setSlugManuallyEdited(true);
@@ -191,23 +193,23 @@ export function SedesTab() {
                 }}
               />
               <p className="text-xs text-muted-foreground">
-                Identificador unico para URLs y codigos QR
+                {t("settings.slugHelp")}
               </p>
             </div>
             <div className="space-y-2">
-              <Label htmlFor="dialogBranchAddress">Direccion</Label>
+              <Label htmlFor="dialogBranchAddress">{t("settings.addressLabel")}</Label>
               <Input
                 id="dialogBranchAddress"
-                placeholder="Av. Principal 123"
+                placeholder="123 Đường chính"
                 value={branchDialogForm.address}
                 onChange={(e) => setBranchDialogForm({ ...branchDialogForm, address: e.target.value })}
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="dialogBranchPhone">Telefono</Label>
+              <Label htmlFor="dialogBranchPhone">{t("settings.phoneLabel")}</Label>
               <Input
                 id="dialogBranchPhone"
-                placeholder="+51 999 999 999"
+                placeholder="+84..."
                 value={branchDialogForm.phone}
                 onChange={(e) => setBranchDialogForm({ ...branchDialogForm, phone: e.target.value })}
               />
@@ -215,13 +217,17 @@ export function SedesTab() {
           </div>
           <DialogFooter>
             <Button variant="outline" onClick={() => setBranchDialogOpen(false)}>
-              Cancelar
+              {t("settings.cancel")}
             </Button>
             <Button
               onClick={handleBranchDialogSave}
               disabled={!branchDialogForm.name || !branchDialogForm.slug || createBranch.isPending || updateBranchById.isPending}
             >
-              {(createBranch.isPending || updateBranchById.isPending) ? "Guardando..." : editingBranch ? "Guardar" : "Crear Sede"}
+              {(createBranch.isPending || updateBranchById.isPending)
+                ? t("settings.saving")
+                : editingBranch
+                ? t("settings.save")
+                : t("settings.create")}
             </Button>
           </DialogFooter>
         </DialogContent>

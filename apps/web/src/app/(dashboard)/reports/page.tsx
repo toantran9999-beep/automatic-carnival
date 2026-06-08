@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { Button } from "@restai/ui/components/button";
 import { DatePicker } from "@restai/ui/components/date-picker";
 import { Label } from "@restai/ui/components/label";
-import { Check, RefreshCw } from "lucide-react";
+import { Check, RefreshCw, Building2, Store } from "lucide-react";
 import {
   useSalesReport,
   useTopItems,
@@ -12,19 +12,14 @@ import {
   type PaymentMethodShare,
   type TopItemReport,
 } from "@/hooks/use-reports";
+import { useBranches } from "@/hooks/use-settings";
+import { useAuthStore } from "@/stores/auth-store";
+import { formatCurrency } from "@/lib/utils";
 import { ReportStats } from "./_components/report-stats";
 import { SalesChart } from "./_components/sales-chart";
 import { PaymentMethodsChart } from "./_components/payment-methods-chart";
 import { TopItemsList } from "./_components/top-items-list";
-
-const METHOD_LABELS: Record<string, string> = {
-  cash: "Efectivo",
-  card: "Tarjeta",
-  yape: "Yape",
-  plin: "Plin",
-  transfer: "Transferencia",
-  other: "Otro",
-};
+import { useTranslation } from "@/stores/lang-store";
 
 function getDefaultDates() {
   const end = new Date();
@@ -61,11 +56,20 @@ function getCurrentMonthRange() {
 }
 
 export default function ReportsPage() {
+  const { t, lang } = useTranslation();
   const defaults = useMemo(() => getDefaultDates(), []);
   const [startDate, setStartDate] = useState<string>(defaults.start);
   const [endDate, setEndDate] = useState<string>(defaults.end);
   const [draftStartDate, setDraftStartDate] = useState<string>(defaults.start);
   const [draftEndDate, setDraftEndDate] = useState<string>(defaults.end);
+  const [allBranches, setAllBranches] = useState(false);
+
+  const user = useAuthStore((s) => s.user);
+  const { data: branchList } = useBranches();
+  const canViewAll =
+    (user?.role === "org_admin" || user?.role === "super_admin") &&
+    (branchList?.length ?? 0) > 1;
+  const effectiveAll = canViewAll && allBranches;
 
   const {
     data: salesData,
@@ -73,7 +77,7 @@ export default function ReportsPage() {
     isFetching: salesFetching,
     error: salesError,
     refetch: refetchSales,
-  } = useSalesReport(startDate, endDate);
+  } = useSalesReport(startDate, endDate, effectiveAll);
 
   const {
     data: topItemsData,
@@ -81,7 +85,16 @@ export default function ReportsPage() {
     isFetching: topItemsFetching,
     error: topItemsError,
     refetch: refetchTopItems,
-  } = useTopItems(startDate, endDate, 10);
+  } = useTopItems(startDate, endDate, 10, effectiveAll);
+
+  const METHOD_LABELS: Record<string, string> = {
+    cash: t("payments.cash"),
+    card: t("payments.card"),
+    yape: t("payments.yape"),
+    plin: t("payments.plin"),
+    transfer: t("payments.transfer"),
+    other: t("payments.other"),
+  };
 
   const days: SalesReportDay[] = salesData?.days ?? [];
   const paymentMethods: PaymentMethodShare[] = (salesData?.paymentMethods ?? []).map((pm) => ({
@@ -120,10 +133,10 @@ export default function ReportsPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Reportes</h1>
+          <h1 className="text-2xl font-bold">{t("reports.title")}</h1>
         </div>
         <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/5 flex items-center justify-between">
-          <p className="text-sm text-destructive">Error al cargar reportes: {(error as Error).message}</p>
+          <p className="text-sm text-destructive">{t("reports.errorLoad")}: {(error as Error).message}</p>
           <Button
             variant="outline"
             size="sm"
@@ -134,7 +147,7 @@ export default function ReportsPage() {
             }}
           >
             <RefreshCw className={`h-4 w-4 mr-2 ${isRefreshing ? "animate-spin" : ""}`} />
-            Reintentar
+            {t("common.retry")}
           </Button>
         </div>
       </div>
@@ -145,12 +158,12 @@ export default function ReportsPage() {
     <div className="space-y-6">
       <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold">Reportes</h1>
-          <p className="text-muted-foreground">Analisis de ventas y productos</p>
+          <h1 className="text-2xl font-bold">{t("reports.title")}</h1>
+          <p className="text-muted-foreground">{t("reports.analysis")}</p>
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4">
           <div className="space-y-2 min-w-[220px]">
-            <Label className="text-xs text-muted-foreground block pl-0.5">Desde</Label>
+            <Label className="text-xs text-muted-foreground block pl-0.5">{t("reports.from")}</Label>
             <DatePicker
               value={draftStartDate}
               onChange={(d) => setDraftStartDate(d ?? "")}
@@ -158,7 +171,7 @@ export default function ReportsPage() {
             />
           </div>
           <div className="space-y-2 min-w-[220px]">
-            <Label className="text-xs text-muted-foreground block pl-0.5">Hasta</Label>
+            <Label className="text-xs text-muted-foreground block pl-0.5">{t("reports.to")}</Label>
             <DatePicker
               value={draftEndDate}
               onChange={(d) => setDraftEndDate(d ?? "")}
@@ -172,7 +185,7 @@ export default function ReportsPage() {
             onClick={applyFilters}
           >
             <Check className="h-4 w-4" />
-            Aplicar
+            {t("reports.apply")}
           </Button>
           <Button
             variant="outline"
@@ -185,7 +198,7 @@ export default function ReportsPage() {
             }}
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
-            Actualizar
+            {lang === "vi" ? "Cập nhật" : "Refresh"}
           </Button>
         </div>
       </div>
@@ -197,7 +210,7 @@ export default function ReportsPage() {
           className="h-8 active:translate-y-px active:scale-[0.98]"
           onClick={() => applyRange(getTodayRange())}
         >
-          Hoy
+          {t("reports.today")}
         </Button>
         <Button
           type="button"
@@ -206,7 +219,7 @@ export default function ReportsPage() {
           className="h-8 active:translate-y-px active:scale-[0.98]"
           onClick={() => applyRange(getLastDaysRange(7))}
         >
-          Ultimos 7 dias
+          {t("reports.last7days")}
         </Button>
         <Button
           type="button"
@@ -215,7 +228,7 @@ export default function ReportsPage() {
           className="h-8 active:translate-y-px active:scale-[0.98]"
           onClick={() => applyRange(getLastDaysRange(30))}
         >
-          Ultimos 30 dias
+          {t("reports.last30days")}
         </Button>
         <Button
           type="button"
@@ -224,18 +237,30 @@ export default function ReportsPage() {
           className="h-8 active:translate-y-px active:scale-[0.98]"
           onClick={() => applyRange(getCurrentMonthRange())}
         >
-          Este mes
+          {t("reports.thisMonth")}
         </Button>
+        {canViewAll && (
+          <Button
+            type="button"
+            variant={allBranches ? "default" : "outline"}
+            size="sm"
+            className="h-8 ml-auto active:translate-y-px active:scale-[0.98]"
+            onClick={() => setAllBranches((v) => !v)}
+          >
+            <Store className="h-4 w-4" />
+            {t("reports.allBranches")}
+          </Button>
+        )}
         {isRefreshing && (
           <span className="text-xs text-muted-foreground inline-flex items-center gap-2">
             <span className="h-1.5 w-6 rounded-full bg-muted-foreground/40 animate-pulse" />
-            Actualizando reportes...
+            {t("reports.loading")}
           </span>
         )}
       </div>
       {invalidDateRange && (
         <p className="text-sm text-destructive">
-          El rango de fechas no es valido: "Desde" debe ser menor o igual a "Hasta".
+          {t("reports.invalidRange")}
         </p>
       )}
 
@@ -246,6 +271,33 @@ export default function ReportsPage() {
         totalTax={totalTax}
         isLoading={isLoading}
       />
+
+      {effectiveAll && (salesData?.branches?.length ?? 0) > 0 && (
+        <div className="rounded-xl border bg-card p-4">
+          <h3 className="font-semibold flex items-center gap-2 mb-3">
+            <Building2 className="h-4 w-4 text-primary" />
+            {t("reports.revenueByBranch")}
+          </h3>
+          <div className="space-y-2">
+            {salesData!.branches!.map((b) => {
+              const pct = totalRevenue > 0 ? Math.round((b.revenue / totalRevenue) * 100) : 0;
+              return (
+                <div key={b.branchId} className="space-y-1">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="font-medium">{b.name}</span>
+                    <span className="text-muted-foreground">
+                      {formatCurrency(b.revenue)} · {b.orders} {t("reports.ordersShort")}
+                    </span>
+                  </div>
+                  <div className="h-2 rounded-full bg-muted overflow-hidden">
+                    <div className="h-full bg-primary rounded-full" style={{ width: `${pct}%` }} />
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
 
       <div className="grid gap-6 lg:grid-cols-2">
         <SalesChart days={days} isLoading={salesLoading} />

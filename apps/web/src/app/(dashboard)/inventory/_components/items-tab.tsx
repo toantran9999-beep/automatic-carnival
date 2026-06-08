@@ -6,6 +6,7 @@ import { Button } from "@restai/ui/components/button";
 import { Plus, AlertTriangle } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { SearchInput } from "@/components/search-input";
+import { useTranslation } from "@/stores/lang-store";
 
 function Skeleton({ className }: { className?: string }) {
   return (
@@ -26,6 +27,7 @@ export function ItemsTab({
   setSearch: (s: string) => void;
   onNewItem: () => void;
 }) {
+  const { t, lang } = useTranslation();
   const filteredItems = items.filter((item: any) =>
     item.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -36,12 +38,12 @@ export function ItemsTab({
         <SearchInput
           value={search}
           onChange={setSearch}
-          placeholder="Buscar item..."
+          placeholder={t("inventory.searchPlaceholder")}
           className="flex-1"
         />
         <Button onClick={onNewItem}>
           <Plus className="h-4 w-4 mr-2" />
-          Nuevo Item
+          {t("inventory.addIngredient")}
         </Button>
       </div>
 
@@ -52,22 +54,22 @@ export function ItemsTab({
               <thead>
                 <tr className="border-b border-border bg-muted/50">
                   <th className="text-left p-3 text-sm font-medium text-muted-foreground">
-                    Nombre
+                    {t("common.name")}
                   </th>
                   <th className="text-center p-3 text-sm font-medium text-muted-foreground hidden sm:table-cell">
-                    Unidad
+                    {lang === "vi" ? "Đơn vị" : "Unit"}
                   </th>
                   <th className="text-right p-3 text-sm font-medium text-muted-foreground">
-                    Stock Actual
+                    {t("inventory.stock")}
                   </th>
                   <th className="text-right p-3 text-sm font-medium text-muted-foreground hidden md:table-cell">
-                    Stock Min.
+                    {lang === "vi" ? "Tồn tối thiểu" : "Min Stock"}
                   </th>
                   <th className="text-right p-3 text-sm font-medium text-muted-foreground hidden md:table-cell">
-                    Costo
+                    {t("inventory.cost")}
                   </th>
                   <th className="text-center p-3 text-sm font-medium text-muted-foreground">
-                    Estado
+                    {t("common.status")}
                   </th>
                 </tr>
               </thead>
@@ -102,8 +104,8 @@ export function ItemsTab({
                       className="p-8 text-center text-sm text-muted-foreground"
                     >
                       {search
-                        ? "No se encontraron items"
-                        : "No hay items en inventario"}
+                        ? (lang === "vi" ? "Không tìm thấy nguyên liệu" : "No ingredients found")
+                        : t("inventory.noItems")}
                     </td>
                   </tr>
                 ) : (
@@ -155,7 +157,7 @@ export function ItemsTab({
                           <Badge
                             variant={isLow ? "destructive" : "secondary"}
                           >
-                            {isLow ? "Bajo" : "OK"}
+                            {isLow ? (lang === "vi" ? "Sắp hết" : "Low") : "OK"}
                           </Badge>
                         </td>
                       </tr>

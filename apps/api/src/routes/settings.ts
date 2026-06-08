@@ -7,6 +7,7 @@ import { updateOrgSettingsSchema, updateBranchSettingsSchema } from "@restai/val
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { t } from "../lib/i18n.js";
 
 const settings = new Hono<AppEnv>();
 settings.use("*", authMiddleware, tenantMiddleware);
@@ -17,7 +18,7 @@ settings.get("/org", async (c) => {
   const [org] = await db.select().from(schema.organizations)
     .where(eq(schema.organizations.id, tenant.organizationId));
   if (!org) {
-    return c.json({ success: false, error: { code: "NOT_FOUND", message: "Organizacion no encontrada" } }, 404);
+    return c.json({ success: false, error: { code: "NOT_FOUND", message: t(c, "org_not_found") } }, 404);
   }
   return c.json({ success: true, data: org });
 });
@@ -43,12 +44,12 @@ settings.patch("/org", requirePermission("org:update"), zValidator("json", updat
 settings.get("/branch", async (c) => {
   const tenant = c.get("tenant") as any;
   if (!tenant.branchId) {
-    return c.json({ success: false, error: { code: "BAD_REQUEST", message: "Branch ID requerido" } }, 400);
+    return c.json({ success: false, error: { code: "BAD_REQUEST", message: t(c, "branch_header_required") } }, 400);
   }
   const [branch] = await db.select().from(schema.branches)
     .where(eq(schema.branches.id, tenant.branchId));
   if (!branch) {
-    return c.json({ success: false, error: { code: "NOT_FOUND", message: "Sede no encontrada" } }, 404);
+    return c.json({ success: false, error: { code: "NOT_FOUND", message: t(c, "branch_not_found") } }, 404);
   }
   return c.json({ success: true, data: branch });
 });
@@ -57,7 +58,7 @@ settings.get("/branch", async (c) => {
 settings.patch("/branch", requirePermission("settings:*"), zValidator("json", updateBranchSettingsSchema), async (c) => {
   const tenant = c.get("tenant") as any;
   if (!tenant.branchId) {
-    return c.json({ success: false, error: { code: "BAD_REQUEST", message: "Branch ID requerido" } }, 400);
+    return c.json({ success: false, error: { code: "BAD_REQUEST", message: t(c, "branch_header_required") } }, 400);
   }
   const body = c.req.valid("json");
   const updateData: any = { updated_at: new Date() };
@@ -69,7 +70,11 @@ settings.patch("/branch", requirePermission("settings:*"), zValidator("json", up
   if (body.currency !== undefined) updateData.currency = body.currency;
   if (body.settings !== undefined) updateData.settings = body.settings;
 
-  if (body.inventoryEnabled !== undefined || body.waiterTableAssignmentEnabled !== undefined) {
+  if (
+    body.inventoryEnabled !== undefined ||
+    body.waiterTableAssignmentEnabled !== undefined ||
+    body.printMode !== undefined
+  ) {
     // Fetch current settings to merge
     const [existing] = await db.select({ settings: schema.branches.settings })
       .from(schema.branches)
@@ -79,6 +84,7 @@ settings.patch("/branch", requirePermission("settings:*"), zValidator("json", up
     const merged = { ...currentSettings };
     if (body.inventoryEnabled !== undefined) merged.inventory_enabled = body.inventoryEnabled;
     if (body.waiterTableAssignmentEnabled !== undefined) merged.waiter_table_assignment_enabled = body.waiterTableAssignmentEnabled;
+    if (body.printMode !== undefined) merged.print_mode = body.printMode;
     updateData.settings = merged;
   }
 

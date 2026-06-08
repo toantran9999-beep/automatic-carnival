@@ -15,6 +15,7 @@ import {
 import { Plus, X } from "lucide-react";
 import { useCreateRecipe } from "@/hooks/use-inventory";
 import { toast } from "sonner";
+import { useTranslation } from "@/stores/lang-store";
 
 export function CreateRecipeDialog({
   open,
@@ -25,6 +26,7 @@ export function CreateRecipeDialog({
   onOpenChange: (open: boolean) => void;
   items: any[];
 }) {
+  const { t, lang } = useTranslation();
   const createRecipe = useCreateRecipe();
   const [form, setForm] = useState({
     menuItemId: "",
@@ -73,9 +75,9 @@ export function CreateRecipeDialog({
         ingredients: [{ inventoryItemId: "", quantityUsed: "" }],
       });
       onOpenChange(false);
-      toast.success("Receta guardada exitosamente");
+      toast.success(t("inventory.saveSuccess"));
     } catch (err) {
-      toast.error(`Error: ${(err as Error).message}`);
+      toast.error(`${t("common.error")}: ${(err as Error).message}`);
     }
   }
 
@@ -83,16 +85,16 @@ export function CreateRecipeDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Configurar Receta</DialogTitle>
+          <DialogTitle>{lang === "vi" ? "Cấu hình công thức định lượng" : "Configure Recipe"}</DialogTitle>
         </DialogHeader>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div className="space-y-2">
             <Label htmlFor="recipeMenuItem">
-              ID del Item del Menu (UUID)
+              {lang === "vi" ? "ID của món ăn (UUID)" : "Menu Item ID (UUID)"}
             </Label>
             <Input
               id="recipeMenuItem"
-              placeholder="UUID del item del menu"
+              placeholder={lang === "vi" ? "Nhập UUID của món ăn" : "UUID of the menu item"}
               value={form.menuItemId}
               onChange={(e) =>
                 setForm({ ...form, menuItemId: e.target.value })
@@ -101,7 +103,7 @@ export function CreateRecipeDialog({
             />
           </div>
           <div className="space-y-2">
-            <Label>Ingredientes</Label>
+            <Label>{lang === "vi" ? "Nguyên liệu" : "Ingredients"}</Label>
             {form.ingredients.map((ing, index) => (
               <div key={index} className="flex gap-2 items-center">
                 <Select
@@ -115,7 +117,7 @@ export function CreateRecipeDialog({
                   }
                 >
                   <SelectTrigger className="flex-1">
-                    <SelectValue placeholder="Seleccionar item..." />
+                    <SelectValue placeholder={lang === "vi" ? "Chọn nguyên liệu..." : "Select ingredient..."} />
                   </SelectTrigger>
                   <SelectContent>
                     {items.map((item: any) => (
@@ -130,7 +132,7 @@ export function CreateRecipeDialog({
                   type="number"
                   step="0.001"
                   min="0"
-                  placeholder="Cant."
+                  placeholder={lang === "vi" ? "S.lượng" : "Qty"}
                   value={ing.quantityUsed}
                   onChange={(e) =>
                     updateIngredient(
@@ -159,15 +161,15 @@ export function CreateRecipeDialog({
               className="w-full"
             >
               <Plus className="h-3 w-3 mr-1" />
-              Agregar ingrediente
+              {lang === "vi" ? "Thêm nguyên liệu" : "Add ingredient"}
             </Button>
           </div>
           <DialogFooter>
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancelar
+              {t("common.cancel")}
             </Button>
             <Button type="submit" disabled={createRecipe.isPending || !form.menuItemId}>
-              {createRecipe.isPending ? "Guardando..." : "Guardar Receta"}
+              {createRecipe.isPending ? t("common.saving") : (lang === "vi" ? "Lưu công thức" : "Save Recipe")}
             </Button>
           </DialogFooter>
         </form>

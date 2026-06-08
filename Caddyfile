@@ -1,0 +1,20 @@
+# Caddy reverse proxy with automatic HTTPS (Let's Encrypt).
+# Domains are injected from docker-compose env (WEB_DOMAIN / API_DOMAIN).
+# WebSocket (/ws) is proxied transparently by reverse_proxy.
+
+{
+	# Optional contact email for Let's Encrypt (set ACME_EMAIL in .env).
+	email {$ACME_EMAIL}
+}
+
+# Dashboard + POS (Next.js)
+{$WEB_DOMAIN} {
+	encode gzip zstd
+	reverse_proxy web:3000
+}
+
+# REST API + WebSocket (Hono on Bun)
+{$API_DOMAIN} {
+	encode gzip zstd
+	reverse_proxy api:3001
+}

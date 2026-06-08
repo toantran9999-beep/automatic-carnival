@@ -12,6 +12,7 @@ import {
   verifyRefreshToken,
 } from "../lib/jwt.js";
 import { authMiddleware } from "../middleware/auth.js";
+import { t } from "../lib/i18n.js";
 
 const auth = new Hono<AppEnv>();
 
@@ -28,7 +29,7 @@ auth.post("/register", zValidator("json", registerOrgSchema), async (c) => {
 
   if (existing.length > 0) {
     return c.json(
-      { success: false, error: { code: "CONFLICT", message: "El email ya está registrado" } },
+      { success: false, error: { code: "CONFLICT", message: t(c, "email_exists") } },
       409,
     );
   }
@@ -42,7 +43,7 @@ auth.post("/register", zValidator("json", registerOrgSchema), async (c) => {
 
   if (existingOrg.length > 0) {
     return c.json(
-      { success: false, error: { code: "CONFLICT", message: "El slug de organización ya existe" } },
+      { success: false, error: { code: "CONFLICT", message: t(c, "org_slug_exists") } },
       409,
     );
   }
@@ -72,7 +73,7 @@ auth.post("/register", zValidator("json", registerOrgSchema), async (c) => {
       .insert(schema.branches)
       .values({
         organization_id: org.id,
-        name: "Sede Principal",
+        name: "Chi Nhánh Chính",
         slug: body.slug,
       })
       .returning({ id: schema.branches.id });
@@ -136,7 +137,7 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
 
   if (!user || !user.is_active) {
     return c.json(
-      { success: false, error: { code: "UNAUTHORIZED", message: "Credenciales inválidas" } },
+      { success: false, error: { code: "UNAUTHORIZED", message: t(c, "invalid_credentials") } },
       401,
     );
   }
@@ -144,7 +145,7 @@ auth.post("/login", zValidator("json", loginSchema), async (c) => {
   const valid = await verifyPassword(user.password_hash, password);
   if (!valid) {
     return c.json(
-      { success: false, error: { code: "UNAUTHORIZED", message: "Credenciales inválidas" } },
+      { success: false, error: { code: "UNAUTHORIZED", message: t(c, "invalid_credentials") } },
       401,
     );
   }
@@ -202,7 +203,7 @@ auth.post(
       payload = await verifyRefreshToken(refreshToken);
     } catch {
       return c.json(
-        { success: false, error: { code: "UNAUTHORIZED", message: "Refresh token inválido" } },
+        { success: false, error: { code: "UNAUTHORIZED", message: t(c, "token_expired") } },
         401,
       );
     }
@@ -215,7 +216,7 @@ auth.post(
 
     if (!user || !user.is_active) {
       return c.json(
-        { success: false, error: { code: "UNAUTHORIZED", message: "Usuario no encontrado" } },
+        { success: false, error: { code: "UNAUTHORIZED", message: t(c, "user_not_found") } },
         401,
       );
     }
@@ -253,7 +254,7 @@ auth.post(
       // Even if token is invalid, just return success
     }
 
-    return c.json({ success: true, data: { message: "Sesión cerrada" } });
+    return c.json({ success: true, data: { message: t(c, "session_closed") } });
   },
 );
 
@@ -275,7 +276,7 @@ auth.get("/me", authMiddleware, async (c) => {
 
   if (!user) {
     return c.json(
-      { success: false, error: { code: "NOT_FOUND", message: "Usuario no encontrado" } },
+      { success: false, error: { code: "NOT_FOUND", message: t(c, "user_not_found") } },
       404,
     );
   }

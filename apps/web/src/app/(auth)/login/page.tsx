@@ -9,10 +9,12 @@ import { Input } from "@restai/ui/components/input";
 import { Label } from "@restai/ui/components/label";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
-import Link from "next/link";
+import { useTranslation } from "@/stores/lang-store";
+import { LanguageSwitcher } from "@/components/language-switcher";
 
 export default function LoginPage() {
   const { login } = useAuth();
+  const { t } = useTranslation();
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
 
@@ -30,20 +32,23 @@ export default function LoginPage() {
       setLoading(true);
       await login(data.email, data.password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Error al iniciar sesion");
+      setError(err instanceof Error ? err.message : t("login.error"));
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <Card>
+    <Card className="relative">
+      <div className="absolute right-4 top-4">
+        <LanguageSwitcher />
+      </div>
       <CardHeader className="text-center">
         <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
           <span className="text-2xl font-bold text-primary-foreground">R</span>
         </div>
-        <CardTitle className="text-2xl">RestAI</CardTitle>
-        <CardDescription>Inicia sesion en tu cuenta</CardDescription>
+        <CardTitle className="text-2xl">TODA POS</CardTitle>
+        <CardDescription>{t("login.subtitle")}</CardDescription>
       </CardHeader>
       <form onSubmit={handleSubmit(onSubmit)}>
         <CardContent className="space-y-4">
@@ -53,7 +58,7 @@ export default function LoginPage() {
             </div>
           )}
           <div className="space-y-2">
-            <Label htmlFor="email">Email</Label>
+            <Label htmlFor="email">{t("login.email")}</Label>
             <Input
               id="email"
               type="email"
@@ -65,7 +70,7 @@ export default function LoginPage() {
             )}
           </div>
           <div className="space-y-2">
-            <Label htmlFor="password">Contrasena</Label>
+            <Label htmlFor="password">{t("login.password")}</Label>
             <Input
               id="password"
               type="password"
@@ -81,16 +86,11 @@ export default function LoginPage() {
         </CardContent>
         <CardFooter className="flex flex-col gap-4">
           <Button type="submit" className="w-full" disabled={loading}>
-            {loading ? "Ingresando..." : "Iniciar Sesion"}
+            {loading ? t("login.loading") : t("login.button")}
           </Button>
-          <p className="text-sm text-muted-foreground">
-            No tienes cuenta?{" "}
-            <Link href="/register" className="text-primary hover:underline">
-              Registrate
-            </Link>
-          </p>
         </CardFooter>
       </form>
     </Card>
   );
 }
+

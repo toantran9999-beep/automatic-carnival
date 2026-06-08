@@ -10,8 +10,10 @@ import { PaymentsTable } from "./_components/payments-table";
 import { PaymentDialog } from "./_components/payment-dialog";
 import { ReceiptDialog } from "./_components/receipt-dialog";
 import { InvoiceDialog } from "./_components/invoice-dialog";
+import { useTranslation } from "@/stores/lang-store";
 
 export default function PaymentsPage() {
+  const { t } = useTranslation();
   const [search, setSearch] = useState("");
   const [methodFilter, setMethodFilter] = useState("all");
   const [paymentDialogOpen, setPaymentDialogOpen] = useState(false);
@@ -39,13 +41,13 @@ export default function PaymentsPage() {
     return (
       <div className="space-y-6">
         <div>
-          <h1 className="text-2xl font-bold">Pagos</h1>
+          <h1 className="text-2xl font-bold">{t("payments.title")}</h1>
         </div>
         <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/5 flex items-center justify-between">
-          <p className="text-sm text-destructive">Error al cargar pagos: {(error as Error).message}</p>
+          <p className="text-sm text-destructive">{t("common.error")}: {(error as Error).message}</p>
           <Button variant="outline" size="sm" onClick={() => refetch()}>
             <RefreshCw className="h-4 w-4 mr-2" />
-            Reintentar
+            {t("common.retry")}
           </Button>
         </div>
       </div>
@@ -55,12 +57,12 @@ export default function PaymentsPage() {
   return (
     <div className="space-y-6">
       <PageHeader
-        title="Pagos"
-        description={isLoading ? "Cargando..." : `${payments.length} pagos registrados`}
+        title={t("payments.title")}
+        description={isLoading ? t("common.loading") : `${payments.length} ${t("payments.registeredPayments")}`}
         actions={
           <Button onClick={() => setPaymentDialogOpen(true)}>
             <Plus className="h-4 w-4 mr-2" />
-            Registrar Pago
+            {t("payments.registerPayment")}
           </Button>
         }
       />

@@ -19,7 +19,7 @@ export const createUserSchema = z.object({
   password: z.string().min(8),
   name: z.string().min(2).max(255),
   role: z.enum(["org_admin", "branch_manager", "cashier", "waiter", "kitchen"]),
-  branchIds: z.array(z.string().uuid()).min(1, "Debe asignar al menos una sede"),
+  branchIds: z.array(z.string().uuid()).min(1, "Vui lòng phân công ít nhất một chi nhánh"),
 });
 
 // Branch validators
@@ -28,9 +28,9 @@ export const createBranchSchema = z.object({
   slug: z.string().min(2).max(100).regex(/^[a-z0-9-]+$/),
   address: z.string().max(500).optional(),
   phone: z.string().max(20).optional(),
-  timezone: z.string().default("America/Lima"),
-  currency: z.string().length(3).default("PEN"),
-  taxRate: z.number().int().min(0).max(10000).default(1800),
+  timezone: z.string().default("Asia/Ho_Chi_Minh"),
+  currency: z.string().length(3).default("VND"),
+  taxRate: z.number().int().min(0).max(10000).default(1000),
 });
 
 export const updateBranchSchema = createBranchSchema.partial();
@@ -102,9 +102,9 @@ export const updateTableStatusSchema = z.object({
   status: z.enum(["available", "occupied", "reserved", "maintenance"]),
 });
 
-// Customer session (QR flow)
+// Customer session (legacy QR flow; phase 1 prioritizes staff-created orders)
 export const startSessionSchema = z.object({
-  customerName: z.string().min(1, "Ingresa tu nombre").max(255),
+  customerName: z.string().min(1, "Vui lòng nhập tên").max(255),
   customerPhone: z.string().max(20).optional(),
 });
 
@@ -122,9 +122,11 @@ export const createOrderSchema = z.object({
   type: z.enum(["dine_in", "takeout", "delivery"]).default("dine_in"),
   customerName: z.string().max(255).optional(),
   notes: z.string().max(500).optional(),
-  items: z.array(createOrderItemSchema).min(1, "La orden debe tener al menos un item"),
+  items: z.array(createOrderItemSchema).min(1, "Đơn hàng phải có ít nhất một món"),
   couponCode: z.string().max(50).optional(),
   redemptionId: z.string().uuid().optional(),
+  tableId: z.string().uuid().optional(),
+  tableSessionId: z.string().uuid().optional(),
 });
 
 export const updateOrderStatusSchema = z.object({
@@ -221,6 +223,7 @@ export const updateBranchSettingsSchema = z.object({
   settings: z.record(z.unknown()).optional(),
   inventoryEnabled: z.boolean().optional(),
   waiterTableAssignmentEnabled: z.boolean().optional(),
+  printMode: z.enum(["combined", "per_item"]).optional(),
 });
 
 // Query validators for GET endpoints

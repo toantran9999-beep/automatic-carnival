@@ -32,6 +32,8 @@ export const PERMISSIONS = {
     "invoices:*", "settings:read",
   ],
   cashier: [
+    "menu:read",
+    "tables:read", "tables:update",
     "orders:read", "orders:create", "orders:update",
     "payments:*", "customers:*",
     "invoices:create", "invoices:read",

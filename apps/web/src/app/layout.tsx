@@ -1,11 +1,15 @@
 import type { Metadata, Viewport } from "next";
-import { Inter } from "next/font/google";
+import { Be_Vietnam_Pro } from "next/font/google";
 import "./globals.css";
 import { Providers } from "@/components/providers";
 import { ServiceWorkerRegister } from "@/components/sw-register";
 import { Toaster } from "sonner";
 
-const inter = Inter({ subsets: ["latin"] });
+const beVietnamPro = Be_Vietnam_Pro({
+  subsets: ["latin", "vietnamese"],
+  weight: ["300", "400", "500", "600", "700", "800"],
+  display: "swap",
+});
 
 export const metadata: Metadata = {
   title: "TODA POS",
@@ -36,7 +40,7 @@ export default function RootLayout({
 }) {
   return (
     <html lang="vi" suppressHydrationWarning className="dark">
-      <body className={inter.className}>
+      <body className={beVietnamPro.className}>
         <Providers>
           {children}
           <Toaster position="top-right" richColors />

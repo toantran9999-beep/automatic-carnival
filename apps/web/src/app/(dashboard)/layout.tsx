@@ -76,7 +76,7 @@ const allowedPaths = {
     "/loyalty",
     "/reports",
   ]),
-  cashier: new Set(["/", "/pos", "/orders", "/payments"]),
+  cashier: new Set(["/", "/pos", "/orders", "/tables", "/payments"]),
   waiter: new Set(["/", "/pos", "/orders", "/tables", "/connections", "/kitchen"]),
   kitchen: new Set(["/", "/kitchen"]),
 };

@@ -2,7 +2,7 @@
 
 import * as React from "react";
 import { format, parse } from "date-fns";
-import { es } from "date-fns/locale";
+import { vi } from "date-fns/locale";
 import { Calendar as CalendarIcon } from "lucide-react";
 import { cn } from "../utils";
 import { Button } from "./button";
@@ -38,7 +38,7 @@ function toStr(date: Date | undefined): string | undefined {
 function DatePicker({
   value,
   onChange,
-  placeholder = "Seleccionar fecha...",
+  placeholder = "Chọn ngày...",
   className,
   disabled,
   id,
@@ -63,7 +63,7 @@ function DatePicker({
           <CalendarIcon className="mr-2 h-4 w-4" />
           <span className="truncate">
             {selected ? (
-              format(selected, "PPP", { locale: es })
+              format(selected, "d MMMM yyyy", { locale: vi })
             ) : (
               placeholder
             )}

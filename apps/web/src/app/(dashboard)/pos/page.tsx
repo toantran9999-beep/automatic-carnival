@@ -63,6 +63,7 @@ export default function PosPage() {
   // Selected table state
   const [tableId, setTableId] = useState<string | null>(null);
   const [tableNumber, setTableNumber] = useState<string | null>(null);
+  const [autoPay, setAutoPay] = useState(false);
 
   // Parse table parameters from URL
   useEffect(() => {
@@ -76,6 +77,9 @@ export default function PosPage() {
       }
       if (tNum) {
         setTableNumber(tNum);
+      }
+      if (params.get("pay") === "1") {
+        setAutoPay(true);
       }
     }
   }, []);
@@ -271,6 +275,18 @@ export default function PosPage() {
     setPaymentCart(allOrderedItems);
     setPaymentDialogOpen(true);
   };
+
+  // Tự mở hộp thoại thanh toán khi vào từ nút "Thanh toán" ở màn Bàn (?pay=1)
+  useEffect(() => {
+    if (!autoPay) return;
+    const unpaid = activeSession?.orders?.filter(
+      (o: any) => o.status !== "completed" && o.status !== "cancelled",
+    ) || [];
+    if (unpaid.length > 0) {
+      handlePayUnpaidOrders();
+      setAutoPay(false);
+    }
+  }, [autoPay, activeSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handlePaymentSuccess = () => {
     setCart([]);

@@ -36,6 +36,7 @@ import {
   usePendingSessions,
   useApproveSession,
   useRejectSession,
+  useVoidTableSession,
 } from "@/hooks/use-tables";
 import { useBranchSettings } from "@/hooks/use-settings";
 import { PageHeader } from "@/components/page-header";
@@ -91,9 +92,30 @@ export default function TablesPage() {
   const [requestsDialogOpen, setRequestsDialogOpen] = useState(false);
   const { accessToken, selectedBranchId } = useAuthStore();
 
+  const [voidConfirm, setVoidConfirm] = useState<any>(null);
+  const voidSession = useVoidTableSession();
+  // Mô hình gắn-bàn do nhân viên thao tác → ẩn luồng khách tự quét QR (duyệt phiên + gọi phục vụ).
+  const showCustomerQrFlow = false;
+
   const handleCardClick = useCallback((table: any) => {
     router.push(`/pos?tableId=${table.id}&tableNumber=${table.number}`);
   }, [router]);
+
+  const handlePay = useCallback((table: any) => {
+    router.push(`/pos?tableId=${table.id}&tableNumber=${table.number}&pay=1`);
+  }, [router]);
+
+  const handleVoidConfirm = () => {
+    const sessionId = voidConfirm?.activeSession?.id;
+    if (!sessionId) return;
+    voidSession.mutate(sessionId, {
+      onSuccess: () => {
+        toast.success(lang === "vi" ? "Đã hủy & giải phóng bàn (đã ghi log)" : "Table voided & freed (logged)");
+        setVoidConfirm(null);
+      },
+      onError: (e: any) => toast.error(e?.message || "Error"),
+    });
+  };
 
   // Data hooks
   const { data: spacesData, isLoading: spacesLoading } = useSpaces();
@@ -377,7 +399,7 @@ export default function TablesPage() {
       </div>
 
       {/* Pending Session Requests */}
-      {pendingSessions.length > 0 && (
+      {showCustomerQrFlow && pendingSessions.length > 0 && (
         <Card className="border-2 border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20">
           <CardHeader className="pb-3">
             <CardTitle className="text-base flex items-center gap-2">
@@ -426,7 +448,7 @@ export default function TablesPage() {
       )}
 
       {/* Table service requests summary */}
-      {serviceRequests.length > 0 && (
+      {showCustomerQrFlow && serviceRequests.length > 0 && (
         <Card className="border-2 border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20">
           <CardContent className="p-3 flex items-center justify-between gap-3">
             <div className="flex items-center gap-2">
@@ -502,6 +524,8 @@ export default function TablesPage() {
             }
             onStatusChange={handleStatusChange}
             onCardClick={handleCardClick}
+            onPay={handlePay}
+            onVoid={setVoidConfirm}
           />
         )}
       </Tabs>
@@ -573,6 +597,19 @@ export default function TablesPage() {
         }
         onConfirm={handleDelete}
         loading={deleteTable.isPending || deleteSpace.isPending}
+      />
+      <ConfirmDialog
+        open={!!voidConfirm}
+        onOpenChange={(open) => !open && setVoidConfirm(null)}
+        title={lang === "vi" ? "Hủy bàn & hủy đơn chưa thanh toán?" : "Void table & cancel unpaid orders?"}
+        description={
+          lang === "vi"
+            ? `Sẽ hủy các đơn CHƯA thanh toán của ${voidConfirm?.activeSession?.customerName || "bàn này"} và giải phóng bàn. Hành động được ghi log. Không hoàn tác được.`
+            : "Cancels all UNPAID orders for this table and frees it. This action is logged and cannot be undone."
+        }
+        confirmLabel={lang === "vi" ? "Hủy bàn" : "Void"}
+        onConfirm={handleVoidConfirm}
+        loading={voidSession.isPending}
       />
       <HistoryDialog table={historyDialog} onClose={() => setHistoryDialog(null)} />
       <AssignmentDialog table={assignDialog} onClose={() => setAssignDialog(null)} />

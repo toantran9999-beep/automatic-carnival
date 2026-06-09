@@ -668,6 +668,104 @@ tables.patch(
   },
 );
 
+// PATCH /sessions/:id/void - Huỷ đơn chưa thanh toán + đóng phiên + giải phóng bàn (có ghi log)
+// Khác /end: /end để đơn lửng; /void huỷ hẳn đơn chưa TT và lưu vết vào table_session_events.
+tables.patch(
+  "/sessions/:id/void",
+  requirePermission("tables:update"),
+  zValidator("param", idParamSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const tenant = c.get("tenant") as any;
+    const user = c.get("user") as any;
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [session] = await tx
+          .select()
+          .from(schema.tableSessions)
+          .where(
+            and(
+              eq(schema.tableSessions.id, id),
+              eq(schema.tableSessions.branch_id, tenant.branchId),
+              eq(schema.tableSessions.status, "active"),
+            ),
+          )
+          .limit(1);
+        if (!session) throw new Error("ACTIVE_SESSION_NOT_FOUND");
+
+        const openOrders = await tx
+          .select({ id: schema.orders.id, total: schema.orders.total })
+          .from(schema.orders)
+          .where(
+            and(
+              eq(schema.orders.table_session_id, id),
+              eq(schema.orders.branch_id, tenant.branchId),
+              sql`orders.status NOT IN ('completed', 'cancelled')`,
+            ),
+          );
+        const cancelledTotal = openOrders.reduce((s, o) => s + o.total, 0);
+
+        if (openOrders.length > 0) {
+          await tx
+            .update(schema.orders)
+            .set({ status: "cancelled", updated_at: new Date() })
+            .where(
+              and(
+                eq(schema.orders.table_session_id, id),
+                sql`orders.status NOT IN ('completed', 'cancelled')`,
+              ),
+            );
+        }
+
+        await tx
+          .update(schema.tableSessions)
+          .set({ status: "completed", ended_at: new Date() })
+          .where(eq(schema.tableSessions.id, id));
+
+        await tx
+          .update(schema.tables)
+          .set({ status: "available" })
+          .where(eq(schema.tables.id, session.table_id));
+
+        await tx.insert(schema.tableSessionEvents).values({
+          organization_id: tenant.organizationId,
+          branch_id: tenant.branchId,
+          actor_user_id: user?.sub ?? null,
+          action: "void",
+          source_session_id: id,
+          source_table_id: session.table_id,
+          metadata: { cancelledOrders: openOrders.length, cancelledTotal },
+        });
+
+        return {
+          tableId: session.table_id,
+          sessionId: id,
+          cancelledOrders: openOrders.length,
+          cancelledTotal,
+        };
+      });
+
+      await wsManager.publish(`branch:${tenant.branchId}`, {
+        type: "session:ended",
+        payload: { sessionId: id, tableId: result.tableId },
+        timestamp: Date.now(),
+      });
+      await publishTableLayoutChanged(tenant.branchId, { action: "void", ...result });
+
+      return c.json({ success: true, data: result });
+    } catch (e: any) {
+      if (e.message === "ACTIVE_SESSION_NOT_FOUND") {
+        return c.json(
+          { success: false, error: { code: "NOT_FOUND", message: t(c, "active_session_not_found") } },
+          404,
+        );
+      }
+      throw e;
+    }
+  },
+);
+
 // POST /sessions/:id/transfer - Move an active table session to an empty table
 tables.post(
   "/sessions/:id/transfer",

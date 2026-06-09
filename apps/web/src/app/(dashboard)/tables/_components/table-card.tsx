@@ -36,6 +36,8 @@ interface TableCardProps {
   onOperations?: (table: any) => void;
   onStatusChange: (tableId: string, status: string) => void;
   onCardClick?: (table: any) => void;
+  onPay?: (table: any) => void;
+  onVoid?: (table: any) => void;
 }
 
 const STATUS_METADATA: Record<
@@ -88,6 +90,8 @@ export function TableCard({
   onOperations,
   onStatusChange,
   onCardClick,
+  onPay,
+  onVoid,
 }: TableCardProps) {
   const { t, lang } = useTranslation();
   const meta = STATUS_METADATA[table.status] || STATUS_METADATA.available;
@@ -194,20 +198,6 @@ export function TableCard({
 
         <div className="flex-1" />
 
-        {actionLabel && meta.actionTarget && (
-          <button
-            type="button"
-            disabled={statusChangePending}
-            onClick={() => onStatusChange(table.id, meta.actionTarget!)}
-            className={cn(
-              "text-[10px] font-bold px-2.5 py-1 rounded-lg transition-colors disabled:opacity-50",
-              meta.actionBg
-            )}
-          >
-            {actionLabel}
-          </button>
-        )}
-
         <IconBtn
           icon={<Trash2 className="h-3.5 w-3.5" />}
           title={t("common.delete")}
@@ -216,24 +206,53 @@ export function TableCard({
         />
       </div>
 
-      {/* Status selector */}
-      <div onClick={(e) => e.stopPropagation()}>
-        <Select value={table.status} onValueChange={(v) => onStatusChange(table.id, v)}>
-          <SelectTrigger className="h-7 text-xs bg-white/50 dark:bg-white/5 border-0 shadow-none">
-            <SelectValue />
-          </SelectTrigger>
-          <SelectContent>
-            {statusOptions.map((opt) => (
-              <SelectItem key={opt.value} value={opt.value}>
-                <span className="flex items-center gap-2">
-                  <Circle className={cn("h-2 w-2 fill-current", STATUS_METADATA[opt.value]?.text)} />
-                  {opt.label}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {/* Primary actions: theo trạng thái đơn */}
+      {table.activeSession ? (
+        /* Bàn đang có đơn → chỉ đóng bằng Thanh toán hoặc Hủy (có log). KHÔNG đổi status thô để khỏi bỏ rơi đơn. */
+        <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
+          <button
+            type="button"
+            onClick={() => onVoid?.(table)}
+            className="text-xs font-semibold px-3 py-2 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+          >
+            {lang === "vi" ? "Hủy bàn" : "Void"}
+          </button>
+          <button
+            type="button"
+            onClick={() => onPay?.(table)}
+            className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+          >
+            {lang === "vi" ? "Thanh toán" : "Pay"} · {formatCurrency(table.activeSession.total)}
+          </button>
+        </div>
+      ) : (
+        <div className="flex gap-2 items-center" onClick={(e) => e.stopPropagation()}>
+          {table.status === "available" && (
+            <button
+              type="button"
+              onClick={() => onCardClick?.(table)}
+              className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+            >
+              {lang === "vi" ? "Mở bàn" : "Open"}
+            </button>
+          )}
+          <Select value={table.status} onValueChange={(v) => onStatusChange(table.id, v)}>
+            <SelectTrigger className="h-9 w-auto text-xs bg-white/50 dark:bg-white/5 border-0 shadow-none">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {statusOptions.map((opt) => (
+                <SelectItem key={opt.value} value={opt.value}>
+                  <span className="flex items-center gap-2">
+                    <Circle className={cn("h-2 w-2 fill-current", STATUS_METADATA[opt.value]?.text)} />
+                    {opt.label}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+      )}
     </div>
   );
 }

@@ -39,6 +39,8 @@ interface GridViewProps {
   onOperations?: (table: any) => void;
   onStatusChange: (tableId: string, status: string) => void;
   onCardClick?: (table: any) => void;
+  onPay?: (table: any) => void;
+  onVoid?: (table: any) => void;
 }
 
 export function GridView({
@@ -54,6 +56,8 @@ export function GridView({
   onOperations,
   onStatusChange,
   onCardClick,
+  onPay,
+  onVoid,
 }: GridViewProps) {
   return (
     <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 mt-4">
@@ -75,6 +79,8 @@ export function GridView({
               onOperations={onOperations}
               onStatusChange={onStatusChange}
               onCardClick={onCardClick}
+              onPay={onPay}
+              onVoid={onVoid}
             />
           ))}
     </div>

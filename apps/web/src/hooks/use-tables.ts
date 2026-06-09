@@ -196,6 +196,19 @@ export function useEndSession() {
   });
 }
 
+export function useVoidTableSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/api/tables/sessions/${id}/void`, { method: "PATCH" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tables"] });
+      qc.invalidateQueries({ queryKey: ["sessions"] });
+      qc.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
 // --- Table History ---
 
 export function useTableHistory(tableId: string | null, from?: string, to?: string) {

@@ -1,5 +1,39 @@
 # Codex Activity Log
 
+## 2026-06-09 09:52 +07
+
+Task: Reconcile multi-agent Git state after Claude reported possible layout/function overwrite.
+
+### Summary
+
+- Read `AGENTS.md` before making changes.
+- Confirmed the required source of truth is GitHub repo `toantran9999-beep/automatic-carnival`, branch `master`.
+- Found local Windows `origin` was still pointing at `https://github.com/EijunnN/restai.git`.
+- Changed local Windows `origin` to `https://github.com/toantran9999-beep/automatic-carnival.git`.
+- Ran `git fetch origin`; local `master` now matches `origin/master`.
+- Checked VPS `/root/toda-pos`; it already uses the correct GitHub remote.
+- Ran `git fetch origin` on VPS; VPS `master` now matches `origin/master`.
+- Moved untracked VPS `.env.bak*` file(s) out of the repo into `/root/toda-pos-env-backups/` so `git status` is clean without deleting secrets.
+
+### Verification
+
+- Local Windows status: clean against `origin/master`.
+- VPS status: clean against `origin/master`.
+- Confirmed table operations feature is still present on VPS:
+  - transfer endpoint exists in `apps/api/src/routes/tables.ts`
+  - merge endpoint exists in `apps/api/src/routes/tables.ts`
+  - split endpoint exists in `apps/api/src/routes/tables.ts`
+  - `TableOperationsDialog` exists in `/tables` components
+  - `table_session_events` migration exists
+- Public API smoke tests for transfer/merge/split with fake UUIDs returned expected business errors, not 404.
+
+### Notes For Claude
+
+- Codex did not edit dashboard layout in this reconciliation task.
+- Codex did not change table operation code in this reconciliation task.
+- The only repo-tracked change from this task is this activity log entry.
+- GitHub `origin/master` is now the shared source of truth for both local Windows and VPS.
+
 ## 2026-06-08 20:39 +07
 
 Task: Implement "Gop/Tach/Chuyen Ban Tren Dien Thoai Nhan Vien".

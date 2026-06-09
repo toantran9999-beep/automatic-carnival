@@ -85,7 +85,8 @@ export default function PosPage() {
   const [modDialogOpen, setModDialogOpen] = useState(false);
 
   const { data: categories } = useCategories();
-  const { data: menuItems, isLoading: itemsLoading } = useMenuItems(selectedCategory || undefined);
+  // Lấy toàn bộ món 1 lần, lọc danh mục/tìm kiếm phía client (đổi danh mục tức thì + đếm số món).
+  const { data: menuItems, isLoading: itemsLoading } = useMenuItems();
   const { data: tablesData } = useTables();
   const createOrder = useCreateOrder();
 

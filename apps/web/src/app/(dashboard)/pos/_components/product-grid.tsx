@@ -3,11 +3,41 @@
 import { Input } from "@restai/ui/components/input";
 import { Button } from "@restai/ui/components/button";
 import { Badge } from "@restai/ui/components/badge";
-import { Search, Loader2, UtensilsCrossed, X } from "lucide-react";
+import { Search, Loader2, X } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { PageHeader } from "@/components/page-header";
+import { TodaMark } from "@/components/toda-mark";
 import { useTranslation } from "@/stores/lang-store";
 import type { PosCartItem } from "../page";
+
+// Tông màu gradient ổn định theo danh mục (placeholder khi món chưa có ảnh).
+function catHue(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 360;
+  return h;
+}
+
+function BrandPlaceholder({ categoryName, seed }: { categoryName?: string; seed: string }) {
+  const h = catHue(seed || categoryName || "toda");
+  return (
+    <div
+      className="absolute inset-0 flex flex-col items-center justify-center"
+      style={{
+        background: `linear-gradient(135deg, hsl(${h} 30% 32%), hsl(${(h + 38) % 360} 34% 22%))`,
+      }}
+    >
+      <TodaMark size={34} className="text-white/85" />
+      <span className="mt-1.5 text-[11px] font-semibold tracking-wide text-white/80">
+        Toda Café
+      </span>
+      {categoryName && (
+        <span className="absolute bottom-1.5 left-1.5 rounded-md bg-black/30 px-1.5 py-0.5 text-[9px] font-medium uppercase tracking-wider text-white/85">
+          {categoryName}
+        </span>
+      )}
+    </div>
+  );
+}
 
 // ---------------------------------------------------------------------------
 // ProductGrid
@@ -36,8 +66,15 @@ export function ProductGrid({
 }) {
   const { t } = useTranslation();
 
-  const filteredItems = items.filter((item: any) => {
-    if (!item.is_available) return false;
+  const availableItems = items.filter((i: any) => i.is_available);
+  const countAll = availableItems.length;
+  const countByCat = (id: string) =>
+    availableItems.filter((i: any) => i.category_id === id).length;
+  const catName = (id: string | null) =>
+    categories.find((c: any) => c.id === id)?.name as string | undefined;
+
+  const filteredItems = availableItems.filter((item: any) => {
+    if (selectedCategory && item.category_id !== selectedCategory) return false;
     if (search) return item.name.toLowerCase().includes(search.toLowerCase());
     return true;
   });
@@ -58,7 +95,7 @@ export function ProductGrid({
           placeholder={t("pos.searchPlaceholder")}
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="pl-9"
+          className="pl-9 h-12 rounded-xl"
         />
         {search && (
           <button
@@ -70,23 +107,31 @@ export function ProductGrid({
         )}
       </div>
 
-      {/* Category tabs */}
+      {/* Category tabs với badge đếm */}
       <div className="flex gap-2 flex-wrap mb-3">
         <Button
           variant={selectedCategory === null ? "default" : "outline"}
           size="sm"
+          className="gap-1.5"
           onClick={() => onCategoryChange(null)}
         >
           {t("common.all")}
+          <span className="rounded-full bg-black/15 px-1.5 text-[11px] font-semibold tabular-nums dark:bg-white/15">
+            {countAll}
+          </span>
         </Button>
         {categories.map((cat: any) => (
           <Button
             key={cat.id}
             variant={selectedCategory === cat.id ? "default" : "outline"}
             size="sm"
+            className="gap-1.5"
             onClick={() => onCategoryChange(cat.id)}
           >
             {cat.name}
+            <span className="rounded-full bg-black/15 px-1.5 text-[11px] font-semibold tabular-nums dark:bg-white/15">
+              {countByCat(cat.id)}
+            </span>
           </Button>
         ))}
       </div>
@@ -114,7 +159,7 @@ export function ProductGrid({
                   onClick={() => onItemClick(item)}
                   className="group relative text-left rounded-xl border bg-card overflow-hidden hover:border-primary/50 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
                 >
-                  {/* Image */}
+                  {/* Image / branded placeholder */}
                   <div className="aspect-[4/3] bg-muted relative overflow-hidden">
                     {item.image_url ? (
                       <img
@@ -123,9 +168,7 @@ export function ProductGrid({
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200"
                       />
                     ) : (
-                      <div className="w-full h-full flex items-center justify-center">
-                        <UtensilsCrossed className="h-8 w-8 text-muted-foreground/25" />
-                      </div>
+                      <BrandPlaceholder categoryName={catName(item.category_id)} seed={item.id} />
                     )}
                     {inCartQty > 0 && (
                       <Badge className="absolute top-1.5 right-1.5 h-6 min-w-6 justify-center text-xs shadow-lg">
@@ -137,7 +180,7 @@ export function ProductGrid({
                   {/* Info */}
                   <div className="p-2.5">
                     <p className="text-sm font-medium leading-snug line-clamp-2">{item.name}</p>
-                    <p className="text-sm font-bold text-primary mt-1">
+                    <p className="text-sm font-bold text-primary mt-1 tabular-nums">
                       {formatCurrency(item.price)}
                     </p>
                   </div>

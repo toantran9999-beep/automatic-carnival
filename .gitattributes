@@ -1,0 +1,14 @@
+# Ép LF cho mọi file text để tránh CRLF churn giữa Windows (local) và Linux (VPS).
+* text=auto eol=lf
+
+# File nhị phân — không đụng line endings
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.pdf binary
+*.xlsx binary
+*.woff binary
+*.woff2 binary

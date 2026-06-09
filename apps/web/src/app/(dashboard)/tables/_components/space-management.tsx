@@ -36,7 +36,8 @@ export function SpaceInfoCard({ space, tableCount, onEdit, onDelete }: SpaceInfo
             <p className="text-sm text-muted-foreground">{space.description}</p>
           )}
           <p className="text-xs text-muted-foreground">
-            {t("tables.floor")} {space.floor_number} - {tableCount} {t("tables.tablesCount")}
+            {space.floor_number ? `${t("tables.floor")} ${space.floor_number} – ` : ""}
+            {tableCount} {t("tables.tablesCount")}
           </p>
         </div>
         <div className="flex gap-2">
@@ -63,7 +64,7 @@ export function CreateSpaceDialog({ open, onOpenChange }: CreateSpaceDialogProps
   const { t } = useTranslation();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [floor, setFloor] = useState("1");
+  const [floor, setFloor] = useState("");
   const createSpace = useCreateSpace();
 
   const handleCreate = () => {
@@ -72,14 +73,14 @@ export function CreateSpaceDialog({ open, onOpenChange }: CreateSpaceDialogProps
       {
         name: name.trim(),
         description: description.trim() || undefined,
-        floorNumber: parseInt(floor) || 1,
+        floorNumber: floor.trim() ? Math.max(0, parseInt(floor) || 0) : 0,
       },
       {
         onSuccess: () => {
           onOpenChange(false);
           setName("");
           setDescription("");
-          setFloor("1");
+          setFloor("");
         },
       }
     );
@@ -111,14 +112,14 @@ export function CreateSpaceDialog({ open, onOpenChange }: CreateSpaceDialogProps
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="space-floor">{t("tables.floor")}</Label>
+            <Label htmlFor="space-floor">{t("tables.floor")} ({t("menu.optional").toLowerCase()})</Label>
             <Input
               id="space-floor"
               type="number"
               min={0}
               value={floor}
               onChange={(e) => setFloor(e.target.value)}
-              placeholder="1"
+              placeholder={t("tables.floorOptionalHint")}
             />
           </div>
         </div>
@@ -149,7 +150,7 @@ export function EditSpaceDialog({ space, onClose }: EditSpaceDialogProps) {
   const { t } = useTranslation();
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
-  const [floor, setFloor] = useState("1");
+  const [floor, setFloor] = useState("");
   const updateSpace = useUpdateSpace();
 
   // Sync form state when space changes
@@ -158,7 +159,7 @@ export function EditSpaceDialog({ space, onClose }: EditSpaceDialogProps) {
     setPrevSpaceId(space.id);
     setName(space.name);
     setDescription(space.description || "");
-    setFloor(String(space.floor_number));
+    setFloor(space.floor_number ? String(space.floor_number) : "");
   }
   if (!space && prevSpaceId) {
     setPrevSpaceId(null);
@@ -171,7 +172,7 @@ export function EditSpaceDialog({ space, onClose }: EditSpaceDialogProps) {
         id: space.id,
         name: name.trim(),
         description: description.trim() || undefined,
-        floorNumber: parseInt(floor) || 1,
+        floorNumber: floor.trim() ? Math.max(0, parseInt(floor) || 0) : 0,
       },
       {
         onSuccess: () => onClose(),
@@ -203,13 +204,14 @@ export function EditSpaceDialog({ space, onClose }: EditSpaceDialogProps) {
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="edit-space-floor">{t("tables.floor")}</Label>
+            <Label htmlFor="edit-space-floor">{t("tables.floor")} ({t("menu.optional").toLowerCase()})</Label>
             <Input
               id="edit-space-floor"
               type="number"
               min={0}
               value={floor}
               onChange={(e) => setFloor(e.target.value)}
+              placeholder={t("tables.floorOptionalHint")}
             />
           </div>
         </div>

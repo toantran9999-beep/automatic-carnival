@@ -81,6 +81,9 @@ export default function PosPage() {
       if (params.get("pay") === "1") {
         setAutoPay(true);
       }
+      if (params.get("takeout") === "1") {
+        setOrderType("takeout");
+      }
     }
   }, []);
 

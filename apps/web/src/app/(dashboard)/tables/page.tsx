@@ -37,7 +37,15 @@ import {
   useApproveSession,
   useRejectSession,
   useVoidTableSession,
+  useTakeawayOrders,
+  useVoidTakeaway,
+  type TakeawayOrder,
 } from "@/hooks/use-tables";
+import { useQueryClient } from "@tanstack/react-query";
+import { ShoppingBag } from "lucide-react";
+import { formatCurrency } from "@/lib/utils";
+import { PosPaymentDialog } from "../pos/_components/pos-payment-dialog";
+import type { PosCartItem } from "../pos/page";
 import { useBranchSettings } from "@/hooks/use-settings";
 import { PageHeader } from "@/components/page-header";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -96,6 +104,36 @@ export default function TablesPage() {
   const voidSession = useVoidTableSession();
   // Mô hình gắn-bàn do nhân viên thao tác → ẩn luồng khách tự quét QR (duyệt phiên + gọi phục vụ).
   const showCustomerQrFlow = false;
+
+  // Mang về (thẻ động)
+  const qc = useQueryClient();
+  const { data: takeawayOrders } = useTakeawayOrders();
+  const voidTakeaway = useVoidTakeaway();
+  const [takeawayPay, setTakeawayPay] = useState<TakeawayOrder | null>(null);
+  const [takeawayVoid, setTakeawayVoid] = useState<TakeawayOrder | null>(null);
+  const takeawayList: TakeawayOrder[] = takeawayOrders ?? [];
+
+  const takeawayCart: PosCartItem[] = (takeawayPay?.items ?? []).map((i) => ({
+    lineId: i.id,
+    menuItemId: i.menuItemId,
+    name: i.name,
+    imageUrl: null,
+    unitPrice: i.unitPrice,
+    quantity: i.quantity,
+    notes: i.notes,
+    modifiers: i.modifiers,
+  }));
+
+  const handleTakeawayVoid = () => {
+    if (!takeawayVoid) return;
+    voidTakeaway.mutate(takeawayVoid.id, {
+      onSuccess: () => {
+        toast.success(lang === "vi" ? "Đã hủy đơn mang về (đã ghi log)" : "Takeaway voided (logged)");
+        setTakeawayVoid(null);
+      },
+      onError: (e: any) => toast.error(e?.message || "Error"),
+    });
+  };
 
   const handleCardClick = useCallback((table: any) => {
     router.push(`/pos?tableId=${table.id}&tableNumber=${table.number}`);
@@ -530,6 +568,71 @@ export default function TablesPage() {
         )}
       </Tabs>
 
+      {/* Mang về (thẻ động) */}
+      <div className="space-y-3 pt-2">
+        <div className="flex items-center justify-between">
+          <h2 className="text-lg font-bold flex items-center gap-2">
+            <ShoppingBag className="h-5 w-5 text-primary" />
+            {lang === "vi" ? "Mang về" : "Takeaway"}
+            {takeawayList.length > 0 && (
+              <span className="rounded-full bg-primary/15 text-primary px-2 py-0.5 text-xs font-semibold">
+                {takeawayList.length}
+              </span>
+            )}
+          </h2>
+          <Button size="sm" onClick={() => router.push("/pos?takeout=1")}>
+            <Plus className="h-4 w-4 mr-1" />
+            {lang === "vi" ? "Đơn mang về" : "New takeaway"}
+          </Button>
+        </div>
+
+        {takeawayList.length === 0 ? (
+          <p className="text-sm text-muted-foreground">
+            {lang === "vi" ? "Chưa có đơn mang về đang mở." : "No open takeaway orders."}
+          </p>
+        ) : (
+          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+            {takeawayList.map((o) => (
+              <div key={o.id} className="rounded-2xl p-4 flex flex-col gap-2 bg-card border">
+                <div className="flex items-center justify-between">
+                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                    <ShoppingBag className="h-3.5 w-3.5" />
+                    #{o.order_number}
+                  </span>
+                  <span className="text-sm font-bold text-primary tabular-nums">
+                    {formatCurrency(o.total)}
+                  </span>
+                </div>
+                <p className="text-xs font-medium truncate text-muted-foreground">
+                  {o.customer_name || (lang === "vi" ? "Khách lẻ" : "Walk-in")}
+                </p>
+                {o.itemSummary && (
+                  <p className="text-[11px] text-muted-foreground line-clamp-2 italic">
+                    {o.itemSummary}
+                  </p>
+                )}
+                <div className="flex gap-2 mt-auto pt-1">
+                  <button
+                    type="button"
+                    onClick={() => setTakeawayVoid(o)}
+                    className="text-xs font-semibold px-3 py-2 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                  >
+                    {lang === "vi" ? "Hủy" : "Void"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setTakeawayPay(o)}
+                    className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                  >
+                    {lang === "vi" ? "Thanh toán" : "Pay"}
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
       {/* Dialogs */}
       <Dialog open={requestsDialogOpen} onOpenChange={setRequestsDialogOpen}>
         <DialogContent>
@@ -611,6 +714,35 @@ export default function TablesPage() {
         onConfirm={handleVoidConfirm}
         loading={voidSession.isPending}
       />
+      <ConfirmDialog
+        open={!!takeawayVoid}
+        onOpenChange={(open) => !open && setTakeawayVoid(null)}
+        title={lang === "vi" ? "Hủy đơn mang về?" : "Void takeaway order?"}
+        description={
+          lang === "vi"
+            ? `Hủy đơn #${takeawayVoid?.order_number || ""} (${formatCurrency(takeawayVoid?.total || 0)}). Hành động được ghi log, không hoàn tác.`
+            : "Cancels this takeaway order. Logged, cannot be undone."
+        }
+        confirmLabel={lang === "vi" ? "Hủy đơn" : "Void"}
+        onConfirm={handleTakeawayVoid}
+        loading={voidTakeaway.isPending}
+      />
+      {takeawayPay && (
+        <PosPaymentDialog
+          open={!!takeawayPay}
+          onOpenChange={(open) => !open && setTakeawayPay(null)}
+          orderId={takeawayPay.id}
+          orderNumber={takeawayPay.order_number}
+          totalAmount={takeawayPay.total}
+          taxAmount={takeawayPay.tax}
+          cart={takeawayCart}
+          customerName={takeawayPay.customer_name || undefined}
+          onSuccess={() => {
+            setTakeawayPay(null);
+            qc.invalidateQueries({ queryKey: ["tables", "takeaway"] });
+          }}
+        />
+      )}
       <HistoryDialog table={historyDialog} onClose={() => setHistoryDialog(null)} />
       <AssignmentDialog table={assignDialog} onClose={() => setAssignDialog(null)} />
       <TableOperationsDialog

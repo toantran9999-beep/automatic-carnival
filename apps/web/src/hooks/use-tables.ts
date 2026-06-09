@@ -209,6 +209,45 @@ export function useVoidTableSession() {
   });
 }
 
+export interface TakeawayOrder {
+  id: string;
+  order_number: string;
+  customer_name: string | null;
+  total: number;
+  tax: number;
+  created_at: string;
+  itemSummary: string;
+  items: {
+    id: string;
+    menuItemId: string;
+    name: string;
+    unitPrice: number;
+    quantity: number;
+    notes?: string;
+    modifiers: { modifierId: string; name: string; price: number }[];
+  }[];
+}
+
+export function useTakeawayOrders() {
+  return useQuery<TakeawayOrder[]>({
+    queryKey: ["tables", "takeaway"],
+    queryFn: () => apiFetch<TakeawayOrder[]>("/api/tables/takeaway"),
+    refetchInterval: 20000,
+  });
+}
+
+export function useVoidTakeaway() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/api/tables/takeaway/${id}/void`, { method: "PATCH" }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["tables", "takeaway"] });
+      qc.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
 // --- Table History ---
 
 export function useTableHistory(tableId: string | null, from?: string, to?: string) {

@@ -185,6 +185,116 @@ tables.get("/", requirePermission("tables:read"), async (c) => {
   return c.json({ success: true, data: { tables: result, branchSlug: branch?.slug || "" } });
 });
 
+// GET /takeaway - Đơn mang về đang mở (chưa thanh toán/hủy)
+tables.get("/takeaway", requirePermission("orders:read"), async (c) => {
+  const tenant = c.get("tenant") as any;
+  const orders = await db
+    .select({
+      id: schema.orders.id,
+      order_number: schema.orders.order_number,
+      customer_name: schema.orders.customer_name,
+      total: schema.orders.total,
+      tax: schema.orders.tax,
+      created_at: schema.orders.created_at,
+    })
+    .from(schema.orders)
+    .where(
+      and(
+        eq(schema.orders.branch_id, tenant.branchId),
+        eq(schema.orders.type, "takeout"),
+        sql`orders.status NOT IN ('completed','cancelled')`,
+      ),
+    )
+    .orderBy(desc(schema.orders.created_at));
+
+  if (orders.length === 0) return c.json({ success: true, data: [] });
+
+  const orderIds = orders.map((o) => o.id);
+  const items = await db
+    .select({
+      order_id: schema.orderItems.order_id,
+      id: schema.orderItems.id,
+      menu_item_id: schema.orderItems.menu_item_id,
+      name: schema.orderItems.name,
+      unit_price: schema.orderItems.unit_price,
+      quantity: schema.orderItems.quantity,
+      notes: schema.orderItems.notes,
+    })
+    .from(schema.orderItems)
+    .where(inArray(schema.orderItems.order_id, orderIds));
+
+  const byOrder = new Map<string, typeof items>();
+  for (const it of items) {
+    if (!byOrder.has(it.order_id)) byOrder.set(it.order_id, []);
+    byOrder.get(it.order_id)!.push(it);
+  }
+
+  const data = orders.map((o) => {
+    const its = byOrder.get(o.id) || [];
+    return {
+      ...o,
+      itemSummary: its.map((i) => `${i.quantity}x ${i.name}`).join(", "),
+      items: its.map((i) => ({
+        id: i.id,
+        menuItemId: i.menu_item_id,
+        name: i.name,
+        unitPrice: i.unit_price,
+        quantity: i.quantity,
+        notes: i.notes ?? undefined,
+        modifiers: [] as { modifierId: string; name: string; price: number }[],
+      })),
+    };
+  });
+  return c.json({ success: true, data });
+});
+
+// PATCH /takeaway/:id/void - Huỷ đơn mang về (có ghi log)
+tables.patch(
+  "/takeaway/:id/void",
+  requirePermission("orders:update"),
+  zValidator("param", idParamSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const tenant = c.get("tenant") as any;
+    const user = c.get("user") as any;
+
+    const [order] = await db
+      .select({ id: schema.orders.id, status: schema.orders.status, total: schema.orders.total })
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.id, id),
+          eq(schema.orders.branch_id, tenant.branchId),
+          eq(schema.orders.type, "takeout"),
+        ),
+      )
+      .limit(1);
+    if (!order) {
+      return c.json({ success: false, error: { code: "NOT_FOUND", message: "Không tìm thấy đơn mang về" } }, 404);
+    }
+    if (order.status === "completed" || order.status === "cancelled") {
+      return c.json({ success: false, error: { code: "BAD_REQUEST", message: "Đơn đã đóng" } }, 400);
+    }
+
+    await db.transaction(async (tx) => {
+      await tx
+        .update(schema.orders)
+        .set({ status: "cancelled", updated_at: new Date() })
+        .where(eq(schema.orders.id, id));
+      await tx.insert(schema.tableSessionEvents).values({
+        organization_id: tenant.organizationId,
+        branch_id: tenant.branchId,
+        actor_user_id: user?.sub ?? null,
+        action: "void",
+        metadata: { takeaway: true, orderId: id, total: order.total },
+      });
+    });
+
+    await publishTableLayoutChanged(tenant.branchId, { action: "takeaway_void", orderId: id });
+    return c.json({ success: true, data: { id } });
+  },
+);
+
 // POST / - Create table
 tables.post(
   "/",

@@ -36,6 +36,7 @@ interface GridViewProps {
   onHistory: (table: any) => void;
   onAssign: (table: any) => void;
   onDelete: (table: any) => void;
+  onOperations?: (table: any) => void;
   onStatusChange: (tableId: string, status: string) => void;
   onCardClick?: (table: any) => void;
 }
@@ -50,6 +51,7 @@ export function GridView({
   onHistory,
   onAssign,
   onDelete,
+  onOperations,
   onStatusChange,
   onCardClick,
 }: GridViewProps) {
@@ -70,6 +72,7 @@ export function GridView({
               onHistory={onHistory}
               onAssign={onAssign}
               onDelete={onDelete}
+              onOperations={onOperations}
               onStatusChange={onStatusChange}
               onCardClick={onCardClick}
             />

@@ -14,7 +14,7 @@ import { TABLE_STATUS_TRANSITIONS } from "@restai/config";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { generateQrCode } from "../lib/id.js";
+import { generateOrderNumber, generateQrCode } from "../lib/id.js";
 import { signCustomerToken } from "../lib/jwt.js";
 import { wsManager } from "../ws/manager.js";
 import * as sessionService from "../services/session.service.js";
@@ -25,6 +25,43 @@ const tables = new Hono<AppEnv>();
 tables.use("*", authMiddleware);
 tables.use("*", tenantMiddleware);
 tables.use("*", requireBranch);
+
+const tableTransferSchema = z.object({
+  targetTableId: z.string().uuid(),
+});
+
+const tableMergeSchema = z.object({
+  targetSessionId: z.string().uuid(),
+  sourceSessionIds: z.array(z.string().uuid()).min(1).max(10),
+});
+
+const tableSplitSchema = z.object({
+  targetTableId: z.string().uuid(),
+  items: z
+    .array(
+      z.object({
+        orderItemId: z.string().uuid(),
+        quantity: z.number().int().min(1).max(99),
+      }),
+    )
+    .min(1)
+    .max(50),
+});
+
+function centsTax(total: number, taxRate: number) {
+  return Math.round(total - total / (1 + taxRate / 10000));
+}
+
+async function publishTableLayoutChanged(
+  branchId: string,
+  payload: Record<string, unknown>,
+) {
+  await wsManager.publish(`branch:${branchId}`, {
+    type: "table:layout_changed",
+    payload,
+    timestamp: Date.now(),
+  });
+}
 
 // GET / - List tables for branch (optional spaceId filter)
 tables.get("/", requirePermission("tables:read"), async (c) => {
@@ -631,6 +668,573 @@ tables.patch(
   },
 );
 
+// POST /sessions/:id/transfer - Move an active table session to an empty table
+tables.post(
+  "/sessions/:id/transfer",
+  requirePermission("tables:update"),
+  zValidator("param", idParamSchema),
+  zValidator("json", tableTransferSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const { targetTableId } = c.req.valid("json");
+    const tenant = c.get("tenant") as any;
+    const user = c.get("user") as any;
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [session] = await tx
+          .select()
+          .from(schema.tableSessions)
+          .where(
+            and(
+              eq(schema.tableSessions.id, id),
+              eq(schema.tableSessions.branch_id, tenant.branchId),
+              eq(schema.tableSessions.status, "active"),
+            ),
+          )
+          .limit(1);
+
+        if (!session) throw new Error("ACTIVE_SESSION_NOT_FOUND");
+        if (session.table_id === targetTableId) throw new Error("SAME_TABLE");
+
+        const [targetTable] = await tx
+          .select()
+          .from(schema.tables)
+          .where(
+            and(
+              eq(schema.tables.id, targetTableId),
+              eq(schema.tables.branch_id, tenant.branchId),
+              eq(schema.tables.organization_id, tenant.organizationId),
+            ),
+          )
+          .limit(1);
+        if (!targetTable) throw new Error("TARGET_TABLE_NOT_FOUND");
+
+        const [targetActive] = await tx
+          .select({ id: schema.tableSessions.id })
+          .from(schema.tableSessions)
+          .where(
+            and(
+              eq(schema.tableSessions.table_id, targetTableId),
+              eq(schema.tableSessions.branch_id, tenant.branchId),
+              eq(schema.tableSessions.status, "active"),
+            ),
+          )
+          .limit(1);
+        if (targetActive) throw new Error("TARGET_TABLE_OCCUPIED");
+
+        const [completedOrder] = await tx
+          .select({ id: schema.orders.id })
+          .from(schema.orders)
+          .where(
+            and(
+              eq(schema.orders.table_session_id, id),
+              eq(schema.orders.branch_id, tenant.branchId),
+              eq(schema.orders.status, "completed"),
+            ),
+          )
+          .limit(1);
+        if (completedOrder) throw new Error("COMPLETED_ORDER_LOCKED");
+
+        const [updatedSession] = await tx
+          .update(schema.tableSessions)
+          .set({ table_id: targetTableId })
+          .where(eq(schema.tableSessions.id, id))
+          .returning();
+
+        await tx
+          .update(schema.tables)
+          .set({ status: "available" })
+          .where(eq(schema.tables.id, session.table_id));
+        await tx
+          .update(schema.tables)
+          .set({ status: "occupied" })
+          .where(eq(schema.tables.id, targetTableId));
+
+        await tx.insert(schema.tableSessionEvents).values({
+          organization_id: tenant.organizationId,
+          branch_id: tenant.branchId,
+          actor_user_id: user.sub,
+          action: "transfer",
+          source_session_id: id,
+          target_session_id: id,
+          source_table_id: session.table_id,
+          target_table_id: targetTableId,
+          metadata: {
+            fromTableId: session.table_id,
+            toTableId: targetTableId,
+          },
+        });
+
+        return {
+          session: updatedSession,
+          sourceTableId: session.table_id,
+          targetTableId,
+        };
+      });
+
+      await publishTableLayoutChanged(tenant.branchId, {
+        action: "transfer",
+        sessionId: id,
+        sourceTableId: result.sourceTableId,
+        targetTableId: result.targetTableId,
+      });
+
+      return c.json({ success: true, data: result });
+    } catch (e: any) {
+      const messages: Record<string, string> = {
+        ACTIVE_SESSION_NOT_FOUND: "Khong tim thay phien ban dang hoat dong.",
+        SAME_TABLE: "Ban dich phai khac ban hien tai.",
+        TARGET_TABLE_NOT_FOUND: "Khong tim thay ban dich trong chi nhanh.",
+        TARGET_TABLE_OCCUPIED: "Ban dich dang co khach. Hay dung thao tac gop ban.",
+        COMPLETED_ORDER_LOCKED: "Ban da co bill hoan tat, khong the chuyen/gop/tach.",
+      };
+      if (messages[e.message]) {
+        return c.json(
+          { success: false, error: { code: "BAD_REQUEST", message: messages[e.message] } },
+          400,
+        );
+      }
+      throw e;
+    }
+  },
+);
+
+// POST /sessions/merge - Merge source sessions into a target active session
+tables.post(
+  "/sessions/merge",
+  requirePermission("tables:update"),
+  zValidator("json", tableMergeSchema),
+  async (c) => {
+    const { targetSessionId, sourceSessionIds } = c.req.valid("json");
+    const tenant = c.get("tenant") as any;
+    const user = c.get("user") as any;
+    const uniqueSourceIds = Array.from(new Set(sourceSessionIds)).filter(
+      (sourceId) => sourceId !== targetSessionId,
+    );
+
+    if (uniqueSourceIds.length === 0) {
+      return c.json(
+        { success: false, error: { code: "BAD_REQUEST", message: "Chon it nhat mot ban can gop." } },
+        400,
+      );
+    }
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const sessionIds = [targetSessionId, ...uniqueSourceIds];
+        const sessions = await tx
+          .select()
+          .from(schema.tableSessions)
+          .where(
+            and(
+              inArray(schema.tableSessions.id, sessionIds),
+              eq(schema.tableSessions.branch_id, tenant.branchId),
+              eq(schema.tableSessions.organization_id, tenant.organizationId),
+              eq(schema.tableSessions.status, "active"),
+            ),
+          );
+
+        if (sessions.length !== sessionIds.length) throw new Error("SESSION_NOT_FOUND");
+
+        const targetSession = sessions.find((session) => session.id === targetSessionId)!;
+        const sourceSessions = sessions.filter((session) => uniqueSourceIds.includes(session.id));
+
+        const [completedOrder] = await tx
+          .select({ id: schema.orders.id })
+          .from(schema.orders)
+          .where(
+            and(
+              inArray(schema.orders.table_session_id, sessionIds),
+              eq(schema.orders.branch_id, tenant.branchId),
+              eq(schema.orders.status, "completed"),
+            ),
+          )
+          .limit(1);
+        if (completedOrder) throw new Error("COMPLETED_ORDER_LOCKED");
+
+        await tx
+          .update(schema.orders)
+          .set({ table_session_id: targetSessionId, updated_at: new Date() })
+          .where(
+            and(
+              inArray(schema.orders.table_session_id, uniqueSourceIds),
+              eq(schema.orders.branch_id, tenant.branchId),
+              sql`orders.status != 'cancelled'`,
+            ),
+          );
+
+        await tx
+          .update(schema.tableSessions)
+          .set({ status: "completed", ended_at: new Date() })
+          .where(inArray(schema.tableSessions.id, uniqueSourceIds));
+
+        await tx
+          .update(schema.tables)
+          .set({ status: "available" })
+          .where(inArray(schema.tables.id, sourceSessions.map((session) => session.table_id)));
+
+        await tx.insert(schema.tableSessionEvents).values(
+          sourceSessions.map((sourceSession) => ({
+            organization_id: tenant.organizationId,
+            branch_id: tenant.branchId,
+            actor_user_id: user.sub,
+            action: "merge",
+            source_session_id: sourceSession.id,
+            target_session_id: targetSessionId,
+            source_table_id: sourceSession.table_id,
+            target_table_id: targetSession.table_id,
+            metadata: {
+              mergedSessionId: sourceSession.id,
+              targetSessionId,
+            },
+          })),
+        );
+
+        return {
+          targetSessionId,
+          targetTableId: targetSession.table_id,
+          sourceSessionIds: sourceSessions.map((session) => session.id),
+          sourceTableIds: sourceSessions.map((session) => session.table_id),
+        };
+      });
+
+      await publishTableLayoutChanged(tenant.branchId, {
+        action: "merge",
+        ...result,
+      });
+
+      return c.json({ success: true, data: result });
+    } catch (e: any) {
+      const messages: Record<string, string> = {
+        SESSION_NOT_FOUND: "Khong tim thay day du cac phien ban dang hoat dong trong chi nhanh.",
+        COMPLETED_ORDER_LOCKED: "Ban da co bill hoan tat, khong the chuyen/gop/tach.",
+      };
+      if (messages[e.message]) {
+        return c.json(
+          { success: false, error: { code: "BAD_REQUEST", message: messages[e.message] } },
+          400,
+        );
+      }
+      throw e;
+    }
+  },
+);
+
+// POST /sessions/:id/split - Move selected item quantities to another table session
+tables.post(
+  "/sessions/:id/split",
+  requirePermission("tables:update"),
+  zValidator("param", idParamSchema),
+  zValidator("json", tableSplitSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const { targetTableId, items } = c.req.valid("json");
+    const tenant = c.get("tenant") as any;
+    const user = c.get("user") as any;
+    const itemRequests = new Map(items.map((item) => [item.orderItemId, item.quantity]));
+
+    try {
+      const result = await db.transaction(async (tx) => {
+        const [sourceSession] = await tx
+          .select()
+          .from(schema.tableSessions)
+          .where(
+            and(
+              eq(schema.tableSessions.id, id),
+              eq(schema.tableSessions.branch_id, tenant.branchId),
+              eq(schema.tableSessions.status, "active"),
+            ),
+          )
+          .limit(1);
+        if (!sourceSession) throw new Error("ACTIVE_SESSION_NOT_FOUND");
+        if (sourceSession.table_id === targetTableId) throw new Error("SAME_TABLE");
+
+        const [targetTable] = await tx
+          .select()
+          .from(schema.tables)
+          .where(
+            and(
+              eq(schema.tables.id, targetTableId),
+              eq(schema.tables.branch_id, tenant.branchId),
+              eq(schema.tables.organization_id, tenant.organizationId),
+            ),
+          )
+          .limit(1);
+        if (!targetTable) throw new Error("TARGET_TABLE_NOT_FOUND");
+
+        const requestedItemIds = Array.from(itemRequests.keys());
+        const sourceItems = await tx
+          .select({
+            item: schema.orderItems,
+            order: schema.orders,
+          })
+          .from(schema.orderItems)
+          .innerJoin(schema.orders, eq(schema.orderItems.order_id, schema.orders.id))
+          .where(
+            and(
+              inArray(schema.orderItems.id, requestedItemIds),
+              eq(schema.orders.table_session_id, id),
+              eq(schema.orders.branch_id, tenant.branchId),
+              sql`orders.status NOT IN ('completed', 'cancelled')`,
+            ),
+          );
+
+        if (sourceItems.length !== requestedItemIds.length) throw new Error("ITEM_NOT_FOUND");
+
+        for (const row of sourceItems) {
+          const quantity = itemRequests.get(row.item.id)!;
+          if (quantity > row.item.quantity) throw new Error("INVALID_QUANTITY");
+        }
+
+        const [targetActive] = await tx
+          .select()
+          .from(schema.tableSessions)
+          .where(
+            and(
+              eq(schema.tableSessions.table_id, targetTableId),
+              eq(schema.tableSessions.branch_id, tenant.branchId),
+              eq(schema.tableSessions.status, "active"),
+            ),
+          )
+          .limit(1);
+
+        let targetSession = targetActive;
+        if (!targetSession) {
+          const customerToken = await signCustomerToken({
+            sub: crypto.randomUUID(),
+            org: tenant.organizationId,
+            branch: tenant.branchId,
+            table: targetTableId,
+          });
+          [targetSession] = await tx
+            .insert(schema.tableSessions)
+            .values({
+              organization_id: tenant.organizationId,
+              branch_id: tenant.branchId,
+              table_id: targetTableId,
+              status: "active",
+              customer_name: sourceSession.customer_name || "POS Staff",
+              customer_phone: sourceSession.customer_phone,
+              token: customerToken,
+            })
+            .returning();
+
+          await tx
+            .update(schema.tables)
+            .set({ status: "occupied" })
+            .where(eq(schema.tables.id, targetTableId));
+        }
+
+        const completedSessionIds = [id, targetSession.id];
+        const [completedOrder] = await tx
+          .select({ id: schema.orders.id })
+          .from(schema.orders)
+          .where(
+            and(
+              inArray(schema.orders.table_session_id, completedSessionIds),
+              eq(schema.orders.branch_id, tenant.branchId),
+              eq(schema.orders.status, "completed"),
+            ),
+          )
+          .limit(1);
+        if (completedOrder) throw new Error("COMPLETED_ORDER_LOCKED");
+
+        const [branch] = await tx
+          .select({ tax_rate: schema.branches.tax_rate })
+          .from(schema.branches)
+          .where(eq(schema.branches.id, tenant.branchId))
+          .limit(1);
+        const taxRate = branch?.tax_rate ?? 1000;
+
+        const sourceOrderIds = Array.from(new Set(sourceItems.map((row) => row.order.id)));
+        const [targetOrder] = await tx
+          .insert(schema.orders)
+          .values({
+            organization_id: tenant.organizationId,
+            branch_id: tenant.branchId,
+            table_session_id: targetSession.id,
+            customer_id: null,
+            order_number: generateOrderNumber(),
+            type: "dine_in",
+            status: "pending",
+            customer_name: targetSession.customer_name,
+            subtotal: 0,
+            tax: 0,
+            discount: 0,
+            total: 0,
+            notes: `Tach tu phien ${id}`,
+          })
+          .returning();
+
+        let targetTotal = 0;
+        const movedItems: any[] = [];
+
+        for (const row of sourceItems) {
+          const splitQty = itemRequests.get(row.item.id)!;
+          const unitTotal = Math.round(row.item.total / row.item.quantity);
+          const splitTotal = unitTotal * splitQty;
+          targetTotal += splitTotal;
+
+          const [newItem] = await tx
+            .insert(schema.orderItems)
+            .values({
+              order_id: targetOrder.id,
+              menu_item_id: row.item.menu_item_id,
+              name: row.item.name,
+              unit_price: row.item.unit_price,
+              quantity: splitQty,
+              total: splitTotal,
+              notes: row.item.notes,
+              status: row.item.status,
+            })
+            .returning();
+
+          const modifiers = await tx
+            .select()
+            .from(schema.orderItemModifiers)
+            .where(eq(schema.orderItemModifiers.order_item_id, row.item.id));
+          if (modifiers.length > 0) {
+            await tx.insert(schema.orderItemModifiers).values(
+              modifiers.map((modifier) => ({
+                order_item_id: newItem.id,
+                modifier_id: modifier.modifier_id,
+                name: modifier.name,
+                price: modifier.price,
+              })),
+            );
+          }
+
+          if (splitQty === row.item.quantity) {
+            await tx.delete(schema.orderItems).where(eq(schema.orderItems.id, row.item.id));
+          } else {
+            const remainingQty = row.item.quantity - splitQty;
+            await tx
+              .update(schema.orderItems)
+              .set({
+                quantity: remainingQty,
+                total: unitTotal * remainingQty,
+              })
+              .where(eq(schema.orderItems.id, row.item.id));
+          }
+
+          movedItems.push({
+            sourceOrderItemId: row.item.id,
+            targetOrderItemId: newItem.id,
+            name: row.item.name,
+            quantity: splitQty,
+          });
+        }
+
+        await tx
+          .update(schema.orders)
+          .set({
+            subtotal: targetTotal,
+            tax: centsTax(targetTotal, taxRate),
+            total: targetTotal,
+            updated_at: new Date(),
+          })
+          .where(eq(schema.orders.id, targetOrder.id));
+
+        for (const orderId of sourceOrderIds) {
+          const [{ subtotal }] = await tx
+            .select({
+              subtotal: sql<number>`COALESCE(SUM(${schema.orderItems.total}), 0)::int`,
+            })
+            .from(schema.orderItems)
+            .where(eq(schema.orderItems.order_id, orderId));
+
+          if (subtotal <= 0) {
+            await tx.delete(schema.orders).where(eq(schema.orders.id, orderId));
+          } else {
+            await tx
+              .update(schema.orders)
+              .set({
+                subtotal,
+                tax: centsTax(subtotal, taxRate),
+                total: subtotal,
+                updated_at: new Date(),
+              })
+              .where(eq(schema.orders.id, orderId));
+          }
+        }
+
+        const [{ remainingOrders }] = await tx
+          .select({
+            remainingOrders: sql<number>`COUNT(*)::int`,
+          })
+          .from(schema.orders)
+          .where(
+            and(
+              eq(schema.orders.table_session_id, id),
+              eq(schema.orders.branch_id, tenant.branchId),
+              sql`orders.status NOT IN ('completed', 'cancelled')`,
+            ),
+          );
+
+        if (remainingOrders === 0) {
+          await tx
+            .update(schema.tableSessions)
+            .set({ status: "completed", ended_at: new Date() })
+            .where(eq(schema.tableSessions.id, id));
+          await tx
+            .update(schema.tables)
+            .set({ status: "available" })
+            .where(eq(schema.tables.id, sourceSession.table_id));
+        }
+
+        await tx.insert(schema.tableSessionEvents).values({
+          organization_id: tenant.organizationId,
+          branch_id: tenant.branchId,
+          actor_user_id: user.sub,
+          action: "split",
+          source_session_id: id,
+          target_session_id: targetSession.id,
+          source_table_id: sourceSession.table_id,
+          target_table_id: targetTableId,
+          metadata: {
+            targetOrderId: targetOrder.id,
+            movedItems,
+          },
+        });
+
+        return {
+          sourceSessionId: id,
+          targetSessionId: targetSession.id,
+          sourceTableId: sourceSession.table_id,
+          targetTableId,
+          targetOrderId: targetOrder.id,
+          movedItems,
+          sourceClosed: remainingOrders === 0,
+        };
+      });
+
+      await publishTableLayoutChanged(tenant.branchId, {
+        action: "split",
+        ...result,
+      });
+
+      return c.json({ success: true, data: result });
+    } catch (e: any) {
+      const messages: Record<string, string> = {
+        ACTIVE_SESSION_NOT_FOUND: "Khong tim thay phien ban dang hoat dong.",
+        SAME_TABLE: "Ban dich phai khac ban hien tai.",
+        TARGET_TABLE_NOT_FOUND: "Khong tim thay ban dich trong chi nhanh.",
+        ITEM_NOT_FOUND: "Mon can tach khong ton tai hoac da thanh toan/huy.",
+        INVALID_QUANTITY: "So luong tach lon hon so luong hien co.",
+        COMPLETED_ORDER_LOCKED: "Ban da co bill hoan tat, khong the chuyen/gop/tach.",
+      };
+      if (messages[e.message]) {
+        return c.json(
+          { success: false, error: { code: "BAD_REQUEST", message: messages[e.message] } },
+          400,
+        );
+      }
+      throw e;
+    }
+  },
+);
+
 // GET /:id/active-session - Get active session for table with orders and items
 tables.get(
   "/:id/active-session",
@@ -693,7 +1297,9 @@ tables.get(
           name: schema.orderItems.name,
           unit_price: schema.orderItems.unit_price,
           quantity: schema.orderItems.quantity,
+          total: schema.orderItems.total,
           notes: schema.orderItems.notes,
+          status: schema.orderItems.status,
         })
         .from(schema.orderItems)
         .where(inArray(schema.orderItems.order_id, orderIds));

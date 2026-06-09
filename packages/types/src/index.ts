@@ -5,6 +5,7 @@ export type WsMessageType =
   | "order:item_status"
   | "order:cancelled"
   | "table:status"
+  | "table:layout_changed"
   | "table:call_waiter"
   | "table:request_bill"
   | "session:started"

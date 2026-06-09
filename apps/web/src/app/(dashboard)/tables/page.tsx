@@ -47,6 +47,7 @@ import { CreateTableDialog } from "./_components/create-table-dialog";
 import { CreateSpaceDialog, EditSpaceDialog, SpaceInfoCard } from "./_components/space-management";
 import { HistoryDialog } from "./_components/history-dialog";
 import { AssignmentDialog } from "./_components/assignment-dialog";
+import { TableOperationsDialog } from "./_components/table-operations-dialog";
 
 interface TableServiceRequest {
   id: string;
@@ -84,6 +85,7 @@ export default function TablesPage() {
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "table" | "space"; id: string; name: string } | null>(null);
   const [historyDialog, setHistoryDialog] = useState<any>(null);
   const [assignDialog, setAssignDialog] = useState<any>(null);
+  const [operationsDialog, setOperationsDialog] = useState<any>(null);
   const [pendingSessions, setPendingSessions] = useState<PendingSessionRequest[]>([]);
   const [serviceRequests, setServiceRequests] = useState<TableServiceRequest[]>([]);
   const [requestsDialogOpen, setRequestsDialogOpen] = useState(false);
@@ -210,7 +212,12 @@ export default function TablesPage() {
       return;
     }
 
-    if (msg.type === "table:status" || msg.type === "session:started" || msg.type === "session:ended") {
+    if (
+      msg.type === "table:status" ||
+      msg.type === "session:started" ||
+      msg.type === "session:ended" ||
+      msg.type === "table:layout_changed"
+    ) {
       void refetch();
       return;
     }
@@ -489,6 +496,7 @@ export default function TablesPage() {
             onQr={setQrDialog}
             onHistory={setHistoryDialog}
             onAssign={setAssignDialog}
+            onOperations={setOperationsDialog}
             onDelete={(table) =>
               setDeleteConfirm({ type: "table", id: table.id, name: `${t("tables.title")} ${table.number}` })
             }
@@ -568,6 +576,12 @@ export default function TablesPage() {
       />
       <HistoryDialog table={historyDialog} onClose={() => setHistoryDialog(null)} />
       <AssignmentDialog table={assignDialog} onClose={() => setAssignDialog(null)} />
+      <TableOperationsDialog
+        table={operationsDialog}
+        tables={allTables}
+        open={!!operationsDialog}
+        onOpenChange={(open) => !open && setOperationsDialog(null)}
+      />
     </div>
   );
 }

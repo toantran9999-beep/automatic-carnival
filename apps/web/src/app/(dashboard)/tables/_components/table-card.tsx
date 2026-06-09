@@ -14,6 +14,7 @@ import {
   UserPlus,
   Circle,
   BellRing,
+  ArrowRightLeft,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
@@ -32,6 +33,7 @@ interface TableCardProps {
   onHistory: (table: any) => void;
   onAssign: (table: any) => void;
   onDelete: (table: any) => void;
+  onOperations?: (table: any) => void;
   onStatusChange: (tableId: string, status: string) => void;
   onCardClick?: (table: any) => void;
 }
@@ -83,6 +85,7 @@ export function TableCard({
   onHistory,
   onAssign,
   onDelete,
+  onOperations,
   onStatusChange,
   onCardClick,
 }: TableCardProps) {
@@ -180,6 +183,13 @@ export function TableCard({
         <IconBtn icon={<History className="h-3.5 w-3.5" />} title={t("tables.history")} onClick={() => onHistory(table)} />
         {waiterAssignmentEnabled && (
           <IconBtn icon={<UserPlus className="h-3.5 w-3.5" />} title={t("tables.assign")} onClick={() => onAssign(table)} />
+        )}
+        {table.activeSession && onOperations && (
+          <IconBtn
+            icon={<ArrowRightLeft className="h-3.5 w-3.5" />}
+            title="Chuyển / gộp / tách bàn"
+            onClick={() => onOperations(table)}
+          />
         )}
 
         <div className="flex-1" />

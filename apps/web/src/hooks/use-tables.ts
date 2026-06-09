@@ -261,3 +261,58 @@ export function useTableActiveSession(tableId: string | null) {
     enabled: !!tableId,
   });
 }
+
+function invalidateTableOperations(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["tables"] });
+  qc.invalidateQueries({ queryKey: ["sessions"] });
+}
+
+export function useTransferTableSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ sessionId, targetTableId }: { sessionId: string; targetTableId: string }) =>
+      apiFetch(`/api/tables/sessions/${sessionId}/transfer`, {
+        method: "POST",
+        body: JSON.stringify({ targetTableId }),
+      }),
+    onSuccess: () => invalidateTableOperations(qc),
+  });
+}
+
+export function useMergeTableSessions() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      targetSessionId,
+      sourceSessionIds,
+    }: {
+      targetSessionId: string;
+      sourceSessionIds: string[];
+    }) =>
+      apiFetch("/api/tables/sessions/merge", {
+        method: "POST",
+        body: JSON.stringify({ targetSessionId, sourceSessionIds }),
+      }),
+    onSuccess: () => invalidateTableOperations(qc),
+  });
+}
+
+export function useSplitTableSession() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({
+      sessionId,
+      targetTableId,
+      items,
+    }: {
+      sessionId: string;
+      targetTableId: string;
+      items: Array<{ orderItemId: string; quantity: number }>;
+    }) =>
+      apiFetch(`/api/tables/sessions/${sessionId}/split`, {
+        method: "POST",
+        body: JSON.stringify({ targetTableId, items }),
+      }),
+    onSuccess: () => invalidateTableOperations(qc),
+  });
+}

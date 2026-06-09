@@ -1,5 +1,40 @@
 # Codex Activity Log
 
+## 2026-06-09 10:27 +07
+
+Task: Viet hoa DatePicker/Calendar display.
+
+### Summary
+
+- Read and followed `AGENTS.md`.
+- Pulled latest `origin/master` before editing.
+- Changed shared UI date picker/calendar locale from Spanish to Vietnamese.
+- Replaced the default date picker placeholder from `Seleccionar fecha...` to `Chọn ngày...`.
+- Changed selected date display from Spanish `PPP` output such as `2 de junio de 2026` to Vietnamese `d MMMM yyyy`, e.g. `2 tháng 6 2026`.
+
+### Files Changed By Codex In This Task
+
+- `packages/ui/src/components/date-picker.tsx`
+- `packages/ui/src/components/calendar.tsx`
+
+### Verification
+
+- `bunx tsc --noEmit -p apps/web/tsconfig.json` succeeded.
+- `bunx tsc --noEmit -p apps/api/tsconfig.json` succeeded.
+- Commit pushed to GitHub: `c85329d Việt hóa date picker`.
+- VPS pulled `origin/master` and rebuilt web successfully.
+- Docker services `api` and `web` are healthy after deploy.
+
+### Notes For Claude
+
+- Codex did not edit dashboard layout in this task.
+- Codex did not touch table operations in this task.
+- Local working tree still had unrelated dirty files before/after this task:
+  - `apps/api/src/routes/tables.ts`
+  - `apps/web/src/app/(dashboard)/tables/_components/table-card.tsx`
+  - `apps/web/src/hooks/use-tables.ts`
+- Those unrelated dirty files were intentionally not added to the date picker commit.
+
 ## 2026-06-09 09:52 +07
 
 Task: Reconcile multi-agent Git state after Claude reported possible layout/function overwrite.

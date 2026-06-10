@@ -141,6 +141,7 @@ export function KitchenProvider({ children }: { children: ReactNode }) {
           unit_price: i.unit_price || 0,
           total: i.total || 0,
           notes: i.notes,
+          unit: i.unit,
         })),
         notes: order.notes,
       });

@@ -36,6 +36,7 @@ export interface PosCartItem {
   unitPrice: number;
   quantity: number;
   notes?: string;
+  unit?: string;
   modifiers: CartModifier[];
 }
 
@@ -147,6 +148,7 @@ export default function PosPage() {
           unitPrice: item.price,
           quantity: qty,
           notes: notes || undefined,
+          unit: item.unit || undefined,
           modifiers: mods,
         },
       ]);
@@ -216,6 +218,7 @@ export default function PosPage() {
             unit_price: i.unitPrice + modTotal,
             total: (i.unitPrice + modTotal) * i.quantity,
             notes: i.notes,
+            unit: i.unit,
           };
         });
 

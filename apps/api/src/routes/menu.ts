@@ -206,6 +206,7 @@ menu.post(
         is_available: body.isAvailable,
         sort_order: body.sortOrder,
         preparation_time_min: body.preparationTimeMin,
+        unit: body.unit,
       })
       .returning();
 
@@ -233,6 +234,7 @@ menu.patch(
     if (body.isAvailable !== undefined) updateData.is_available = body.isAvailable;
     if (body.sortOrder !== undefined) updateData.sort_order = body.sortOrder;
     if (body.preparationTimeMin !== undefined) updateData.preparation_time_min = body.preparationTimeMin;
+    if (body.unit !== undefined) updateData.unit = body.unit;
 
     const [updated] = await db
       .update(schema.menuItems)

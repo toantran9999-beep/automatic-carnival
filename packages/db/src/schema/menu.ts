@@ -43,6 +43,7 @@ export const menuItems = pgTable("menu_items", {
   is_available: boolean("is_available").default(true).notNull(),
   sort_order: integer("sort_order").default(0).notNull(),
   preparation_time_min: integer("preparation_time_min"),
+  unit: varchar("unit", { length: 20 }), // đơn vị tính: Ly, Phần, Gói...
 }, (table) => [
   index("idx_menu_items_branch").on(table.branch_id),
   index("idx_menu_items_category").on(table.category_id),

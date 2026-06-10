@@ -62,6 +62,7 @@ export function ProductDialog({
   const [categoryId, setCategoryId] = useState(
     initial?.category_id ?? initial?.categoryId ?? categories[0]?.id ?? ""
   );
+  const [unit, setUnit] = useState<string>(initial?.unit ?? "");
   const [prepTime, setPrepTime] = useState<string>(
     initial?.preparation_time_min?.toString() ?? ""
   );
@@ -101,6 +102,7 @@ export function ProductDialog({
       categoryId,
       imageUrl: imageUrl || undefined,
       preparationTimeMin: prepTime ? parseInt(prepTime, 10) : undefined,
+      unit: unit.trim() || undefined,
     };
 
     try {
@@ -207,6 +209,16 @@ export function ProductDialog({
                 placeholder="15"
               />
             </div>
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="prod-unit">{t("menu.unit")}</Label>
+            <Input
+              id="prod-unit"
+              value={unit}
+              onChange={(e) => setUnit(e.target.value)}
+              placeholder={t("menu.unitPlaceholder")}
+              maxLength={20}
+            />
           </div>
           <div className="space-y-2">
             <Label>{t("menu.image")}</Label>

@@ -116,6 +116,7 @@ export function PosPaymentDialog({
           unit_price: i.unitPrice + modTotal,
           total: (i.unitPrice + modTotal) * i.quantity,
           notes: i.notes,
+          unit: i.unit,
         };
       });
 

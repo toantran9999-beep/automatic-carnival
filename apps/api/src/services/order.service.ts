@@ -90,6 +90,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     quantity: number;
     total: number;
     notes?: string;
+    unit?: string | null;
     modifiers: Array<{ modifierId: string }>;
   }> = [];
 
@@ -120,6 +121,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
       quantity: item.quantity,
       total: itemTotal,
       notes: item.notes,
+      unit: (menuItem as any).unit ?? null,
       modifiers: item.modifiers || [],
     });
   }

@@ -66,6 +66,7 @@ export const orderItems = pgTable("order_items", {
   quantity: integer("quantity").notNull().default(1),
   total: integer("total").notNull(), // in cents
   notes: text("notes"),
+  unit: varchar("unit", { length: 20 }), // snapshot đơn vị tính
   status: orderItemStatusEnum("status").default("pending").notNull(),
 }, (table) => [
   index("idx_order_items_order").on(table.order_id),

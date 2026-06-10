@@ -123,6 +123,7 @@ export default function TablesPage() {
     unitPrice: i.unitPrice,
     quantity: i.quantity,
     notes: i.notes,
+    unit: (i as any).unit,
     modifiers: i.modifiers,
   }));
 

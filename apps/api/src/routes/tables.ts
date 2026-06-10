@@ -219,6 +219,7 @@ tables.get("/takeaway", requirePermission("orders:read"), async (c) => {
       unit_price: schema.orderItems.unit_price,
       quantity: schema.orderItems.quantity,
       notes: schema.orderItems.notes,
+      unit: schema.orderItems.unit,
     })
     .from(schema.orderItems)
     .where(inArray(schema.orderItems.order_id, orderIds));

@@ -71,6 +71,7 @@ export const createMenuItemSchema = z.object({
   isAvailable: z.boolean().default(true),
   sortOrder: z.number().int().min(0).default(0),
   preparationTimeMin: z.number().int().min(1).max(120).optional(),
+  unit: z.string().max(20).optional(),
 });
 
 export const updateMenuItemSchema = createMenuItemSchema.partial();

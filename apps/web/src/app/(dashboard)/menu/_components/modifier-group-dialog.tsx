@@ -218,9 +218,9 @@ export function ModifierGroupDialog({
                   >
                     <div className="flex items-center gap-3">
                       <span className="text-sm">{mod.name}</span>
-                      {mod.price > 0 && (
-                        <span className="text-xs text-muted-foreground">
-                          +{formatCurrency(mod.price)}
+                      {mod.price !== 0 && (
+                        <span className={`text-xs font-medium ${mod.price > 0 ? "text-muted-foreground" : "text-emerald-600 dark:text-emerald-400"}`}>
+                          {mod.price > 0 ? "+" : "−"}{formatCurrency(Math.abs(mod.price))}
                         </span>
                       )}
                     </div>
@@ -256,13 +256,13 @@ export function ModifierGroupDialog({
                   />
                   <Input
                     type="number"
-                    step="0.01"
-                    min="0"
+                    step="any"
                     value={mod.price}
                     onChange={(e) =>
                       handleModChange(idx, "price", e.target.value)
                     }
-                    placeholder="S/"
+                    placeholder="+/- giá"
+                    title="Để 0 nếu không đổi giá. Số âm = giảm giá."
                     className="w-24"
                   />
                   {newModifiers.length > 1 && (

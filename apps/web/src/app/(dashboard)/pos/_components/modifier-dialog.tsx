@@ -68,6 +68,22 @@ export function ModifierDialog({
     }
   }, [isLoading, modifierGroups.length, open, item]);
 
+  // Tự chọn mặc định: nhóm BẮT BUỘC + chọn-1 → chọn sẵn tùy chọn đầu tiên (option chuẩn).
+  useEffect(() => {
+    if (!open || isLoading || modifierGroups.length === 0) return;
+    setSelected((prev) => {
+      if (Object.keys(prev).length > 0) return prev; // đã có lựa chọn, không đụng
+      const init: Record<string, string[]> = {};
+      for (const g of modifierGroups) {
+        if (g.is_required && g.max_selections === 1) {
+          const first = (g.modifiers || []).find((m: any) => m.is_available !== false);
+          if (first) init[g.id] = [first.id];
+        }
+      }
+      return init;
+    });
+  }, [open, isLoading, modifierGroups.length]);
+
   if (!item) return null;
 
   // If no modifier groups, the useEffect above handles auto-add
@@ -222,9 +238,12 @@ export function ModifierDialog({
                                 </div>
                                 <span className={isSelected ? "font-medium" : ""}>{mod.name}</span>
                               </div>
-                              {mod.price > 0 && (
-                                <span className="text-xs text-muted-foreground">
-                                  +{formatCurrency(mod.price)}
+                              {mod.price !== 0 && (
+                                <span className={cn(
+                                  "text-xs font-medium",
+                                  mod.price > 0 ? "text-muted-foreground" : "text-emerald-600 dark:text-emerald-400"
+                                )}>
+                                  {mod.price > 0 ? "+" : "−"}{formatCurrency(Math.abs(mod.price))}
                                 </span>
                               )}
                             </button>

@@ -129,8 +129,8 @@ export function ProductsPanel({
 
   if (isLoading) {
     return (
-      <div className="flex gap-6">
-        <div className="w-56 shrink-0 space-y-2">
+      <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+        <div className="hidden md:block w-56 shrink-0 space-y-2">
           {Array.from({ length: 5 }).map((_, i) => (
             <Skeleton key={i} className="h-9" />
           ))}
@@ -179,9 +179,9 @@ export function ProductsPanel({
   }
 
   return (
-    <div className="flex gap-6">
-      {/* Left sidebar: categories */}
-      <div className="w-56 shrink-0">
+    <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+      {/* Left sidebar: categories (desktop) */}
+      <div className="hidden md:block w-56 shrink-0">
         <div className="sticky top-4 space-y-1">
           {/* "Todos" option */}
           <button
@@ -289,6 +289,42 @@ export function ProductsPanel({
 
       {/* Main area: products */}
       <div className="flex-1 min-w-0 space-y-4">
+        {/* Mobile category chips (horizontal scroll) */}
+        <div className="md:hidden -mx-1 px-1 flex gap-2 overflow-x-auto pb-1">
+          <button
+            onClick={() => setSelectedCategoryId("all")}
+            className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+              selectedCategoryId === "all"
+                ? "bg-primary text-primary-foreground"
+                : "bg-muted text-foreground"
+            }`}
+          >
+            {t("common.all")} · {allItems.length}
+          </button>
+          {categoryList.map((cat: any) => (
+            <button
+              key={cat.id}
+              onClick={() => setSelectedCategoryId(cat.id)}
+              className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
+                selectedCategoryId === cat.id
+                  ? "bg-primary text-primary-foreground"
+                  : "bg-muted text-foreground"
+              }`}
+            >
+              {cat.name} · {itemCountByCategory[cat.id] || 0}
+            </button>
+          ))}
+          <button
+            onClick={() => {
+              setEditingCategory(null);
+              setCatDialogOpen(true);
+            }}
+            className="shrink-0 rounded-full px-3 py-1.5 text-xs font-medium bg-muted/50 text-muted-foreground"
+          >
+            <Plus className="h-3.5 w-3.5 inline" />
+          </button>
+        </div>
+
         {/* Header */}
         <div className="flex flex-col sm:flex-row sm:items-center gap-3">
           <div className="flex-1 min-w-0">

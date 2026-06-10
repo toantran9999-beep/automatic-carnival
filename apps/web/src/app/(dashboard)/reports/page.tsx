@@ -162,20 +162,20 @@ export default function ReportsPage() {
           <p className="text-muted-foreground">{t("reports.analysis")}</p>
         </div>
         <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4">
-          <div className="space-y-2 min-w-[220px]">
+          <div className="space-y-2 w-full sm:w-auto sm:min-w-[220px]">
             <Label className="text-xs text-muted-foreground block pl-0.5">{t("reports.from")}</Label>
             <DatePicker
               value={draftStartDate}
               onChange={(d) => setDraftStartDate(d ?? "")}
-              className="w-[220px]"
+              className="w-full sm:w-[220px]"
             />
           </div>
-          <div className="space-y-2 min-w-[220px]">
+          <div className="space-y-2 w-full sm:w-auto sm:min-w-[220px]">
             <Label className="text-xs text-muted-foreground block pl-0.5">{t("reports.to")}</Label>
             <DatePicker
               value={draftEndDate}
               onChange={(d) => setDraftEndDate(d ?? "")}
-              className="w-[220px]"
+              className="w-full sm:w-[220px]"
             />
           </div>
           <Button

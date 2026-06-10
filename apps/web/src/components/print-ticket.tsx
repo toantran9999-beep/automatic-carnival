@@ -2,6 +2,7 @@
 
 import { useRef, useCallback } from "react";
 import { useLangStore } from "@/stores/lang-store";
+import { useAuthStore } from "@/stores/auth-store";
 
 interface OrderItem {
   name: string;
@@ -9,6 +10,43 @@ interface OrderItem {
   unit_price: number;
   total: number;
   notes?: string;
+  /** Đơn vị tính (Ly, Phần, Dĩa...) — tùy chọn */
+  unit?: string;
+}
+
+function currentStaffName(): string {
+  try {
+    return useAuthStore.getState()?.user?.name || "";
+  } catch {
+    return "";
+  }
+}
+
+/** Định dạng "16:33" và "05 thg 01, 2021" theo giờ VN */
+function vnTimeParts(dateStr: string): { time: string; date: string } {
+  const d = new Date(dateStr);
+  const time = d.toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Ho_Chi_Minh",
+  });
+  const parts = new Intl.DateTimeFormat("en-GB", {
+    day: "2-digit",
+    month: "2-digit",
+    year: "numeric",
+    timeZone: "Asia/Ho_Chi_Minh",
+  }).formatToParts(d);
+  const get = (type: string) => parts.find((p) => p.type === type)?.value || "";
+  const date = `${get("day")} thg ${get("month")}, ${get("year")}`;
+  return { time, date };
+}
+
+function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 interface KitchenTicketData {
@@ -141,44 +179,81 @@ function buildKitchenTicketHtml(data: KitchenTicketData): string {
     // Ignore server-side hydration errors
   }
   const t = receiptTranslations[lang === "vi" ? "vi" : "en"];
+  const isVi = lang === "vi";
 
-  const itemsHtml = data.items
-    .map(
-      (item) =>
-        `<tr>
-          <td style="text-align:left;padding:2px 0;">${item.quantity}x ${item.name}${item.notes ? `<br><span style="font-size:10px;color:#666;">* ${item.notes}</span>` : ""}</td>
-        </tr>`
-    )
+  const { time, date } = vnTimeParts(data.createdAt);
+  const staff = currentStaffName();
+  const subtitle = data.tableNumber
+    ? `${(isVi ? "BÀN" : "TABLE")} ${data.tableNumber}`
+    : t.takeaway.toUpperCase();
+
+  const rowsHtml = data.items
+    .map((item) => {
+      const note = item.notes ? `<div class="sub">* ${escapeHtml(item.notes)}</div>` : "";
+      return `<tr>
+        <td class="c">${item.quantity}</td>
+        <td>${escapeHtml(item.name)}${note}</td>
+        <td class="c">${escapeHtml(item.unit || "")}</td>
+      </tr>`;
+    })
     .join("");
+
+  const L = {
+    title: isVi ? "PHIẾU ĐẶT ĐỒ" : "ORDER TICKET",
+    time: isVi ? "Giờ" : "Time",
+    date: isVi ? "Ngày" : "Date",
+    staff: isVi ? "Nhân viên" : "Staff",
+    no: isVi ? "Số thứ tự" : "No.",
+    sl: isVi ? "SL" : "Qty",
+    item: isVi ? "Tên món" : "Item",
+    unit: isVi ? "ĐVT" : "Unit",
+  };
 
   return `<!DOCTYPE html>
 <html>
 <head>
   <meta charset="utf-8">
-  <title>Phiếu bếp - #${data.orderNumber}</title>
+  <title>${L.title} - #${data.orderNumber}</title>
   <style>
     ${thermalStyles(80)}
-    .order-num { font-size: 28px; font-weight: bold; text-align: center; letter-spacing: 2px; }
+    .ticket-title { font-size: 18px; font-weight: 800; text-align: center; letter-spacing: 1px; }
+    .ticket-sub { font-size: 14px; font-weight: 700; text-align: center; margin-top: 2px; }
+    .meta { width: 100%; margin: 6px 0 4px; font-size: 12px; }
+    .meta td { padding: 1px 0; vertical-align: top; }
+    .items { width: 100%; border-collapse: collapse; margin-top: 2px; }
+    .items th, .items td { border: 1px solid #000; padding: 4px 5px; font-size: 12px; vertical-align: top; }
+    .items th { font-weight: 700; }
+    .items .c { text-align: center; white-space: nowrap; }
+    .items .sub { font-size: 10px; color: #444; font-style: italic; margin-top: 1px; }
+    .note { font-size: 11px; color: #555; font-style: italic; margin-top: 6px; }
   </style>
 </head>
 <body>
-  <div class="center bold" style="font-size:14px;">${t.kitchenTitle}</div>
-  <div class="divider"></div>
-  <div class="order-num">#${data.orderNumber}</div>
-  ${data.ticketLabel ? `<div class="center bold" style="font-size:13px;">${t.ticket} ${data.ticketLabel}</div>` : ""}
-  <div class="divider"></div>
-  <table>
+  <div class="ticket-title">${L.title}</div>
+  <div class="ticket-sub">${subtitle}</div>
+  ${data.ticketLabel ? `<div class="center bold" style="font-size:12px;margin-top:2px;">${t.ticket} ${data.ticketLabel}</div>` : ""}
+  <table class="meta">
     <tr>
-      <td>${data.tableNumber ? `${t.table}: ${data.tableNumber}` : t.takeaway}</td>
-      <td style="text-align:right;">${formatDateTime(data.createdAt)}</td>
+      <td><b>${L.time}:</b> ${time}</td>
+      <td><b>${L.date}:</b> ${date}</td>
     </tr>
-    ${data.customerName ? `<tr><td colspan="2">${t.customer}: ${data.customerName}</td></tr>` : ""}
+    <tr>
+      <td><b>${L.staff}:</b> ${escapeHtml(staff || (data.customerName || "-"))}</td>
+      <td><b>${L.no}:</b> #${data.orderNumber}</td>
+    </tr>
   </table>
-  <div class="divider"></div>
-  <table>${itemsHtml}</table>
-  ${data.notes ? `<div class="divider"></div><div style="font-size:11px;">${t.note}: ${data.notes}</div>` : ""}
-  <div class="divider"></div>
-  <div class="center" style="font-size:10px;margin-top:4px;">${t.endOfTicket}</div>
+  <table class="items">
+    <thead>
+      <tr>
+        <th class="c" style="width:30px;">${L.sl}</th>
+        <th style="text-align:left;">${L.item}</th>
+        <th class="c" style="width:46px;">${L.unit}</th>
+      </tr>
+    </thead>
+    <tbody>${rowsHtml}</tbody>
+  </table>
+  ${data.notes ? `<div class="note">${escapeHtml(data.notes)}</div>` : ""}
+  <div class="center" style="font-size:11px;font-weight:700;margin-top:8px;">Toda Café</div>
 </body>
 </html>`;
 }

@@ -293,7 +293,57 @@ function buildReceiptTicketHtml(data: ReceiptTicketData): string {
 </html>`;
 }
 
+function isAndroid(): boolean {
+  return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
+}
+
+/**
+ * Android Chrome bỏ qua lệnh in từ iframe ẩn và in TRANG CHA thay thế
+ * (đó là lý do RawBT từng in ra màn hình app + popup thông báo).
+ * Cách chuẩn trên Android: chèn phiếu vào chính document + @media print
+ * chỉ hiện phiếu, ẩn toàn bộ app, rồi window.print() ở top-level.
+ */
+function printHtmlAndroid(html: string): Promise<void> {
+  return new Promise((resolve) => {
+    const parsed = new DOMParser().parseFromString(html, "text/html");
+    const styleText = Array.from(parsed.querySelectorAll("style"))
+      .map((s) => s.textContent || "")
+      .join("\n");
+    const bodyHtml = parsed.body?.innerHTML || "";
+
+    const root = document.createElement("div");
+    root.id = "toda-print-root";
+    root.innerHTML = bodyHtml;
+
+    const style = document.createElement("style");
+    style.id = "toda-print-style";
+    style.textContent = `
+      #toda-print-root { display: none; }
+      @media print {
+        body > *:not(#toda-print-root) { display: none !important; }
+        #toda-print-root { display: block !important; }
+        ${styleText.replace(/html,\s*body|body/g, "#toda-print-root")}
+      }
+    `;
+
+    document.body.appendChild(root);
+    document.head.appendChild(style);
+
+    setTimeout(() => {
+      window.print();
+      setTimeout(() => {
+        root.remove();
+        style.remove();
+        resolve();
+      }, 800);
+    }, 150);
+  });
+}
+
 function printHtml(html: string): Promise<void> {
+  if (isAndroid()) {
+    return printHtmlAndroid(html);
+  }
   return new Promise((resolve) => {
     const iframe = document.createElement("iframe");
     iframe.style.position = "fixed";

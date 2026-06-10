@@ -380,7 +380,10 @@ export default function DashboardLayout({
       {/* Main content area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
-        <header className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60">
+        <header
+          className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+          style={{ paddingTop: "env(safe-area-inset-top)" }}
+        >
           <div className="flex items-center justify-between h-14 px-4">
             <div className="flex items-center gap-3">
               <Button
@@ -447,7 +450,10 @@ export default function DashboardLayout({
               className="absolute inset-0 bg-black/40 backdrop-blur-sm"
               onClick={() => setMobileOpen(false)}
             />
-            <div className="fixed inset-y-0 left-0 w-72 bg-sidebar border-r shadow-xl flex flex-col">
+            <div
+              className="fixed inset-y-0 left-0 w-72 bg-sidebar border-r shadow-xl flex flex-col"
+              style={{ paddingTop: "env(safe-area-inset-top)" }}
+            >
               {/* Mobile header */}
               <div className="h-14 flex items-center justify-between px-4 border-b border-sidebar-border">
                 <div className="flex items-center gap-3">
@@ -560,10 +566,13 @@ export default function DashboardLayout({
         )}
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-20 md:pb-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-28 md:pb-6">{children}</main>
 
         {/* Mobile bottom nav */}
-        <nav className="md:hidden fixed bottom-0 left-0 right-0 bg-background border-t z-40">
+        <nav
+          className="md:hidden fixed bottom-0 left-0 right-0 bg-background border-t z-40"
+          style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
+        >
           <div className="flex items-center justify-around h-16">
             {mobileNavItems.map((item) => {
               const active = isActive(pathname, item.href);

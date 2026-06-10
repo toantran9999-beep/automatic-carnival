@@ -376,7 +376,8 @@ export default function PosPage() {
         <button
           type="button"
           onClick={() => setCartSheetOpen(true)}
-          className="md:hidden fixed bottom-16 left-0 right-0 z-40 mx-3 mb-2 flex items-center justify-between rounded-xl bg-primary px-4 py-3 text-primary-foreground shadow-lg"
+          style={{ bottom: "calc(4.5rem + env(safe-area-inset-bottom))" }}
+          className="md:hidden fixed left-0 right-0 z-40 mx-3 flex items-center justify-between rounded-xl bg-primary px-4 py-3 text-primary-foreground shadow-lg"
         >
           <span className="flex items-center gap-2 font-semibold">
             <ShoppingCart className="h-5 w-5" />

@@ -99,6 +99,28 @@ async function setupForBranch(orgId: string, branchId: string) {
   }
   console.log(`  ✓ Gắn nhóm vào ${coffeeItems.length} món cà phê (thêm ${links} liên kết mới).`);
 
+  // 3b) Gỡ nhóm GỘP cũ "Đường / sữa / đá" khỏi các món cà phê (đã có nhóm tách riêng) để khỏi trùng.
+  const OLD_COMBINED = ["Đường / sữa / đá", "Đường/Sữa/Đá", "Đường, sữa, đá"];
+  const itemIds = coffeeItems.map((i) => i.id);
+  for (const oldName of OLD_COMBINED) {
+    const [oldGrp] = await db
+      .select({ id: schema.modifierGroups.id })
+      .from(schema.modifierGroups)
+      .where(and(eq(schema.modifierGroups.branch_id, branchId), eq(schema.modifierGroups.name, oldName)))
+      .limit(1);
+    if (!oldGrp || itemIds.length === 0) continue;
+    const del = await db
+      .delete(schema.menuItemModifierGroups)
+      .where(
+        and(
+          eq(schema.menuItemModifierGroups.group_id, oldGrp.id),
+          inArray(schema.menuItemModifierGroups.item_id, itemIds),
+        ),
+      )
+      .returning({ item_id: schema.menuItemModifierGroups.item_id });
+    if (del.length > 0) console.log(`  ✓ Gỡ nhóm gộp cũ "${oldName}" khỏi ${del.length} món cà phê.`);
+  }
+
   // 4) Gộp món "(nhẹ)": gắn nhóm Độ đậm cho món gốc (đã làm ở B3) rồi bỏ món lẻ
   const lightRe = /\s*\(\s*nh[eẹ]\s*\)\s*$/i;
   const nameToId = new Map(coffeeItems.map((i) => [i.name.trim().toLowerCase(), i.id]));

@@ -21,11 +21,12 @@ import { useTranslation } from "@/stores/lang-store";
 interface SpaceInfoCardProps {
   space: any;
   tableCount: number;
+  canManage?: boolean;
   onEdit: () => void;
   onDelete: () => void;
 }
 
-export function SpaceInfoCard({ space, tableCount, onEdit, onDelete }: SpaceInfoCardProps) {
+export function SpaceInfoCard({ space, tableCount, canManage, onEdit, onDelete }: SpaceInfoCardProps) {
   const { t } = useTranslation();
   return (
     <Card className="mt-4">
@@ -40,14 +41,16 @@ export function SpaceInfoCard({ space, tableCount, onEdit, onDelete }: SpaceInfo
             {tableCount} {t("tables.tablesCount")}
           </p>
         </div>
-        <div className="flex gap-2">
-          <Button variant="outline" size="sm" onClick={onEdit}>
-            <Edit2 className="h-4 w-4" />
-          </Button>
-          <Button variant="outline" size="sm" onClick={onDelete}>
-            <Trash2 className="h-4 w-4" />
-          </Button>
-        </div>
+        {canManage && (
+          <div className="flex gap-2">
+            <Button variant="outline" size="sm" onClick={onEdit}>
+              <Edit2 className="h-4 w-4" />
+            </Button>
+            <Button variant="outline" size="sm" onClick={onDelete}>
+              <Trash2 className="h-4 w-4" />
+            </Button>
+          </div>
+        )}
       </CardContent>
     </Card>
   );

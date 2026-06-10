@@ -98,7 +98,9 @@ export default function TablesPage() {
   const [pendingSessions, setPendingSessions] = useState<PendingSessionRequest[]>([]);
   const [serviceRequests, setServiceRequests] = useState<TableServiceRequest[]>([]);
   const [requestsDialogOpen, setRequestsDialogOpen] = useState(false);
-  const { accessToken, selectedBranchId } = useAuthStore();
+  const { accessToken, selectedBranchId, user } = useAuthStore();
+  // Chỉ admin/quản lý mới quản lý cấu trúc bàn (thêm/sửa/xóa bàn & khu vực). Thu ngân/phục vụ chỉ vận hành.
+  const canManageTables = !!user && ["super_admin", "org_admin", "branch_manager"].includes(user.role);
 
   const [voidConfirm, setVoidConfirm] = useState<any>(null);
   const voidSession = useVoidTableSession();
@@ -405,14 +407,18 @@ export default function TablesPage() {
                 <MapIcon className="h-4 w-4" />
               </Button>
             </div>
-            <Button variant="outline" onClick={() => setCreateSpaceDialog(true)}>
-              <LayoutGrid className="h-4 w-4 mr-2" />
-              {t("tables.addSpace")}
-            </Button>
-            <Button onClick={() => setCreateTableDialog(true)}>
-              <Plus className="h-4 w-4 mr-2" />
-              {t("tables.addTable")}
-            </Button>
+            {canManageTables && (
+              <>
+                <Button variant="outline" onClick={() => setCreateSpaceDialog(true)}>
+                  <LayoutGrid className="h-4 w-4 mr-2" />
+                  {t("tables.addSpace")}
+                </Button>
+                <Button onClick={() => setCreateTableDialog(true)}>
+                  <Plus className="h-4 w-4 mr-2" />
+                  {t("tables.addTable")}
+                </Button>
+              </>
+            )}
           </>
         }
       />
@@ -526,6 +532,7 @@ export default function TablesPage() {
             <SpaceInfoCard
               space={currentSpace}
               tableCount={filteredTables.length}
+              canManage={canManageTables}
               onEdit={() => setEditSpaceDialog(currentSpace)}
               onDelete={() =>
                 setDeleteConfirm({
@@ -550,6 +557,7 @@ export default function TablesPage() {
           <GridView
             tables={filteredTables}
             isLoading={isLoading}
+            canManage={canManageTables}
             waiterAssignmentEnabled={waiterAssignmentEnabled}
             statusChangePending={updateTableStatus.isPending}
             requestByTableId={requestByTableId}

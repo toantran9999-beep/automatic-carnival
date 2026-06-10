@@ -26,6 +26,7 @@ interface TableServiceRequestIndicator {
 
 interface TableCardProps {
   table: any;
+  canManage?: boolean;
   waiterAssignmentEnabled: boolean;
   statusChangePending: boolean;
   serviceRequest?: TableServiceRequestIndicator;
@@ -80,6 +81,7 @@ const STATUS_METADATA: Record<
 
 export function TableCard({
   table,
+  canManage,
   waiterAssignmentEnabled,
   statusChangePending,
   serviceRequest,
@@ -198,12 +200,14 @@ export function TableCard({
 
         <div className="flex-1" />
 
-        <IconBtn
-          icon={<Trash2 className="h-3.5 w-3.5" />}
-          title={t("common.delete")}
-          onClick={() => onDelete(table)}
-          destructive
-        />
+        {canManage && (
+          <IconBtn
+            icon={<Trash2 className="h-3.5 w-3.5" />}
+            title={t("common.delete")}
+            onClick={() => onDelete(table)}
+            destructive
+          />
+        )}
       </div>
 
       {/* Primary actions: theo trạng thái đơn */}

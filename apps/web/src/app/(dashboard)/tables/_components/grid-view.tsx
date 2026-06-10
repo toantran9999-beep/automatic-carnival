@@ -29,6 +29,7 @@ function Skeleton({ className }: { className?: string }) {
 interface GridViewProps {
   tables: any[];
   isLoading: boolean;
+  canManage?: boolean;
   waiterAssignmentEnabled: boolean;
   statusChangePending: boolean;
   requestByTableId: Record<string, TableServiceRequestIndicator>;
@@ -46,6 +47,7 @@ interface GridViewProps {
 export function GridView({
   tables,
   isLoading,
+  canManage,
   waiterAssignmentEnabled,
   statusChangePending,
   requestByTableId,
@@ -69,6 +71,7 @@ export function GridView({
             <TableCard
               key={table.id}
               table={table}
+              canManage={canManage}
               waiterAssignmentEnabled={waiterAssignmentEnabled}
               statusChangePending={statusChangePending}
               serviceRequest={requestByTableId[table.id]}

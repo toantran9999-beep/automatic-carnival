@@ -39,7 +39,14 @@ async function setupForBranch(orgId: string, branchId: string) {
 
     if (existing) {
       groupIdByName[g.name] = existing.id;
-      console.log(`  • Nhóm "${g.name}" đã có, bỏ qua tạo.`);
+      // Cập nhật thứ tự tùy chọn theo định nghĩa (sửa data cũ sort_order=0).
+      for (let i = 0; i < g.mods.length; i++) {
+        await db
+          .update(schema.modifiers)
+          .set({ sort_order: i })
+          .where(and(eq(schema.modifiers.group_id, existing.id), eq(schema.modifiers.name, g.mods[i][0])));
+      }
+      console.log(`  • Nhóm "${g.name}" đã có — cập nhật thứ tự tùy chọn.`);
       continue;
     }
 
@@ -56,11 +63,12 @@ async function setupForBranch(orgId: string, branchId: string) {
       .returning({ id: schema.modifierGroups.id });
 
     await db.insert(schema.modifiers).values(
-      g.mods.map(([name, vnd]) => ({
+      g.mods.map(([name, vnd], i) => ({
         group_id: grp.id,
         name,
         price: vnd * 100,
         is_available: true,
+        sort_order: i,
       })),
     );
     groupIdByName[g.name] = grp.id;

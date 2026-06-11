@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, inArray } from "drizzle-orm";
+import { eq, and, inArray, asc } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import {
   createCategorySchema,
@@ -352,6 +352,7 @@ menu.post(
         name: body.name,
         price: body.price,
         is_available: body.isAvailable,
+        sort_order: body.sortOrder ?? 0,
       })
       .returning();
 
@@ -435,7 +436,8 @@ menu.get("/modifier-groups", requirePermission("menu:read"), async (c) => {
         groupIds.length === 1
           ? eq(schema.modifiers.group_id, groupIds[0])
           : inArray(schema.modifiers.group_id, groupIds)
-      );
+      )
+      .orderBy(asc(schema.modifiers.sort_order), asc(schema.modifiers.name));
   }
 
   const result = groups.map((g) => ({
@@ -555,6 +557,7 @@ menu.patch(
     if (body.name !== undefined) updateData.name = body.name;
     if (body.price !== undefined) updateData.price = body.price;
     if (body.isAvailable !== undefined) updateData.is_available = body.isAvailable;
+    if (body.sortOrder !== undefined) updateData.sort_order = body.sortOrder;
 
     const [updated] = await db
       .update(schema.modifiers)

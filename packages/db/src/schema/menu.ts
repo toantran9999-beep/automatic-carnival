@@ -71,6 +71,7 @@ export const modifiers = pgTable("modifiers", {
   name: varchar("name", { length: 255 }).notNull(),
   price: integer("price").default(0).notNull(), // stored in cents
   is_available: boolean("is_available").default(true).notNull(),
+  sort_order: integer("sort_order").default(0).notNull(),
 });
 
 export const menuItemModifierGroups = pgTable(

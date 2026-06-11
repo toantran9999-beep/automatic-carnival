@@ -89,6 +89,7 @@ export const createModifierSchema = z.object({
   // Cho phép giá âm (giảm giá) — vd loại hạt rẻ hơn.
   price: z.number().int().min(-100000000).max(100000000).default(0),
   isAvailable: z.boolean().default(true),
+  sortOrder: z.number().int().min(0).optional(),
 });
 
 export const updateModifierGroupSchema = createModifierGroupSchema.partial();
@@ -96,6 +97,7 @@ export const updateModifierSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   price: z.number().int().min(-100000000).max(100000000).optional(),
   isAvailable: z.boolean().optional(),
+  sortOrder: z.number().int().min(0).optional(),
 });
 
 // Space validators

@@ -29,6 +29,13 @@
       "when": 1781083517526,
       "tag": "0003_add_item_unit",
       "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1781148742048,
+      "tag": "0004_modifier_sort_and_fk",
+      "breakpoints": true
     }
   ]
 }

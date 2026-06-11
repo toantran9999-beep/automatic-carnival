@@ -78,8 +78,7 @@ export const orderItemModifiers = pgTable("order_item_modifiers", {
     .notNull()
     .references(() => orderItems.id, { onDelete: "cascade" }),
   modifier_id: uuid("modifier_id")
-    .notNull()
-    .references(() => modifiers.id, { onDelete: "restrict" }),
+    .references(() => modifiers.id, { onDelete: "set null" }),
   name: varchar("name", { length: 255 }).notNull(), // snapshot
   price: integer("price").notNull().default(0), // snapshot in cents
 });

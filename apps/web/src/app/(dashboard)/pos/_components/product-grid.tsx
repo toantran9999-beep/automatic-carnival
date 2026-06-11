@@ -5,7 +5,6 @@ import { Button } from "@restai/ui/components/button";
 import { Badge } from "@restai/ui/components/badge";
 import { Search, Loader2, X } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { PageHeader } from "@/components/page-header";
 import { TodaMark } from "@/components/toda-mark";
 import { useTranslation } from "@/stores/lang-store";
 import type { PosCartItem } from "../page";
@@ -81,21 +80,14 @@ export function ProductGrid({
 
   return (
     <div className="flex-1 flex flex-col min-w-0">
-      <div className="mb-3">
-        <PageHeader
-          title={t("nav.pos")}
-          description={t("pos.selectProducts", "Select products to create an order")}
-        />
-      </div>
-
-      {/* Search */}
-      <div className="relative mb-3">
+      {/* Search (gọn, không tiêu đề thừa — tối ưu màn POS ngang) */}
+      <div className="relative mb-2">
         <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
         <Input
           placeholder={t("pos.searchPlaceholder")}
           value={search}
           onChange={(e) => onSearchChange(e.target.value)}
-          className="pl-9 h-12 rounded-xl"
+          className="pl-9 h-11 rounded-xl"
         />
         {search && (
           <button
@@ -107,12 +99,12 @@ export function ProductGrid({
         )}
       </div>
 
-      {/* Category tabs với badge đếm */}
-      <div className="flex gap-2 flex-wrap mb-3">
+      {/* Category tabs — cuộn ngang 1 hàng (đỡ tốn chiều cao) */}
+      <div className="flex gap-2 mb-2 overflow-x-auto pb-1">
         <Button
           variant={selectedCategory === null ? "default" : "outline"}
           size="sm"
-          className="gap-1.5"
+          className="gap-1.5 shrink-0 whitespace-nowrap"
           onClick={() => onCategoryChange(null)}
         >
           {t("common.all")}
@@ -147,7 +139,7 @@ export function ProductGrid({
             {t("pos.noProducts")}
           </div>
         ) : (
-          <div className="grid grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-2">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 2xl:grid-cols-6 gap-2">
             {filteredItems.map((item: any) => {
               const inCartQty = cart
                 .filter((c) => c.menuItemId === item.id)
@@ -159,8 +151,8 @@ export function ProductGrid({
                   onClick={() => onItemClick(item)}
                   className="group relative text-left rounded-xl border bg-card overflow-hidden hover:border-primary/50 hover:shadow-lg hover:-translate-y-0.5 transition-all duration-200"
                 >
-                  {/* Image / branded placeholder */}
-                  <div className="aspect-[4/3] bg-muted relative overflow-hidden">
+                  {/* Image / branded placeholder — thấp lại trên màn lớn để hiện nhiều hàng */}
+                  <div className="aspect-[4/3] lg:aspect-auto lg:h-28 xl:h-24 bg-muted relative overflow-hidden">
                     {item.image_url ? (
                       <img
                         src={item.image_url}

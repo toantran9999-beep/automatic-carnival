@@ -229,7 +229,7 @@ export const idParamSchema = z.object({
 // Settings validators
 export const updateOrgSettingsSchema = z.object({
   name: z.string().min(2).max(255).optional(),
-  logoUrl: z.string().url().nullable().optional(),
+  logoUrl: publicImageUrlSchema.nullable().optional(),
   settings: z.record(z.unknown()).optional(),
 });
 

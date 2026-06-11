@@ -1,5 +1,34 @@
 # Codex Activity Log
 
+## 2026-06-11 19:55 +07
+
+Task: Fix dashboard crash and Vietnamese fallback/loading text.
+
+### Summary
+
+- Read and followed `AGENTS.md`.
+- Confirmed local `master` was clean and synced with `origin/master` before editing.
+- Fixed dashboard table activity crash caused by treating the `/api/tables` response object as an array.
+- Replaced Spanish loading/error fallback text with Vietnamese text in app error boundaries and initial redirect loading.
+- Replaced remaining Spanish unknown-error fallback in order fetch handling.
+
+### Files Changed By Codex In This Task
+
+- `apps/web/src/app/(dashboard)/dashboard/page.tsx`
+- `apps/web/src/app/(dashboard)/error.tsx`
+- `apps/web/src/app/global-error.tsx`
+- `apps/web/src/app/(customer)/error.tsx`
+- `apps/web/src/app/page.tsx`
+- `apps/web/src/hooks/use-orders.ts`
+- `apps/web/src/lib/fetcher.ts`
+- `apps/api/src/services/order.service.ts`
+- `CODEX_ACTIVITY_LOG.md`
+
+### Notes For Claude
+
+- Codex only touched dashboard crash handling, Vietnamese fallback/loading text, and one API modifier fallback label in this task.
+- Codex did not edit POS layout, menu modifier ordering, table operations, product image AI, or database migrations.
+
 ## 2026-06-11 18:08 +07
 
 Task: Make modifier options orderable and preserve display order in POS/customer option dialogs.

@@ -83,7 +83,7 @@ export async function apiFetch<T = any>(path: string, options?: ApiFetchOptions)
       json?.error?.message ||
       json?.message ||
       text ||
-      `Loi API ${res.status}`;
+      `Lỗi API ${res.status}`;
     throw new Error(message);
   }
   return json.data as T;

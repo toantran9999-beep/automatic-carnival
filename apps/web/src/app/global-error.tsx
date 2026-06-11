@@ -8,7 +8,7 @@ export default function GlobalError({
   reset: () => void;
 }) {
   return (
-    <html>
+    <html lang="vi">
       <body>
         <div
           style={{
@@ -22,10 +22,10 @@ export default function GlobalError({
           }}
         >
           <h2 style={{ fontSize: "1.5rem", fontWeight: 600 }}>
-            Algo salió mal
+            Đã xảy ra lỗi
           </h2>
           <p style={{ color: "#666" }}>
-            {error.message || "Error inesperado"}
+            {error.message || "Đã xảy ra lỗi không mong muốn"}
           </p>
           <button
             onClick={reset}
@@ -38,7 +38,7 @@ export default function GlobalError({
               cursor: "pointer",
             }}
           >
-            Intentar de nuevo
+            Thử lại
           </button>
         </div>
       </body>

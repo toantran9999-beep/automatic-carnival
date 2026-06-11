@@ -33,7 +33,7 @@ async function fetchOrdersWithPagination(path: string): Promise<OrdersResponse> 
     },
   });
   const json = await res.json();
-  if (!json.success) throw new Error(json.error?.message || "Error desconocido");
+  if (!json.success) throw new Error(json.error?.message || "Lỗi không xác định");
   return {
     orders: json.data ?? [],
     pagination: json.pagination ?? { page: 1, limit: 20, total: 0, totalPages: 1 },

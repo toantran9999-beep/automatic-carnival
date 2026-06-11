@@ -71,8 +71,8 @@ export default function DashboardPage() {
       ]
     : [];
 
-  const orders: any[] = recentOrders ?? [];
-  const tableList: any[] = tables ?? [];
+  const orders: any[] = Array.isArray(recentOrders) ? recentOrders : [];
+  const tableList: any[] = Array.isArray(tables) ? tables : (tables as any)?.tables ?? [];
 
   return (
     <div className="space-y-6">

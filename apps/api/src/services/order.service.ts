@@ -208,7 +208,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
             return {
               order_item_id: createdItems[i].id,
               modifier_id: mod.modifierId,
-              name: modifier?.name || "Modificador",
+              name: modifier?.name || "Tùy chọn",
               price: modifier?.price || 0,
             };
           }),

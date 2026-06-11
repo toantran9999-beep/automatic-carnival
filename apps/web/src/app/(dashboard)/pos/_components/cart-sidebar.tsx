@@ -26,10 +26,6 @@ import { useTranslation } from "@/stores/lang-store";
 import { useBranchSettings } from "@/hooks/use-settings";
 import type { PosCartItem } from "../page";
 
-// ---------------------------------------------------------------------------
-// CartSidebar
-// ---------------------------------------------------------------------------
-
 export function CartSidebar({
   cart,
   orderType,
@@ -74,7 +70,6 @@ export function CartSidebar({
   className?: string;
 }) {
   const { t, lang } = useTranslation();
-
   const { data: branchSettings } = useBranchSettings();
   const taxRate = branchSettings?.tax_rate ?? 1000;
 
@@ -83,33 +78,36 @@ export function CartSidebar({
     return sum + (item.unitPrice + modTotal) * item.quantity;
   }, 0);
   const total = subtotal;
-  const tax = Math.round(total - (total / (1 + (taxRate / 10000))));
+  const tax = Math.round(total - total / (1 + taxRate / 10000));
   const totalQty = cart.reduce((sum, item) => sum + item.quantity, 0);
 
-  const unpaidOrders = activeSession?.orders?.filter((o: any) => o.status !== "completed" && o.status !== "cancelled") || [];
+  const unpaidOrders =
+    activeSession?.orders?.filter(
+      (o: any) => o.status !== "completed" && o.status !== "cancelled"
+    ) || [];
   const hasUnpaid = unpaidOrders.length > 0;
   const unpaidTotal = unpaidOrders.reduce((sum: number, o: any) => sum + o.total, 0);
 
-  // Extract all unpaid ordered items from the session's orders
-  const allOrderedItems = unpaidOrders.flatMap((order: any) => 
-    order.items?.map((item: any) => ({
-      id: item.id,
-      name: item.name,
-      quantity: item.quantity,
-      unitPrice: item.unit_price,
-      notes: item.notes,
-      modifiers: item.modifiers || [],
-    })) || []
+  const allOrderedItems = unpaidOrders.flatMap(
+    (order: any) =>
+      order.items?.map((item: any) => ({
+        id: item.id,
+        name: item.name,
+        quantity: item.quantity,
+        unitPrice: item.unit_price,
+        notes: item.notes,
+        modifiers: item.modifiers || [],
+      })) || []
   );
 
   return (
-    <div className={className ?? "w-80 lg:w-96 flex flex-col border-l pl-4"}>
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-bold flex items-center gap-2">
-          <ShoppingCart className="h-5 w-5" />
+    <div className={className ?? "w-[340px] flex flex-col border-l pl-3"}>
+      <div className="mb-2 flex items-center justify-between">
+        <h2 className="flex items-center gap-2 text-sm font-bold">
+          <ShoppingCart className="h-4 w-4" />
           {t("pos.cartTitle")}
           {totalQty > 0 && (
-            <Badge variant="secondary" className="text-xs">
+            <Badge variant="secondary" className="h-5 rounded-full px-1.5 text-[11px]">
               {totalQty}
             </Badge>
           )}
@@ -118,7 +116,7 @@ export function CartSidebar({
           <Button
             variant="ghost"
             size="sm"
-            className="text-destructive"
+            className="h-8 px-2 text-xs text-destructive"
             onClick={onClearCart}
           >
             {t("pos.clear")}
@@ -126,62 +124,59 @@ export function CartSidebar({
         )}
       </div>
 
-      {/* Order type */}
-      <div className="flex gap-2 mb-3">
+      <div className="mb-2 grid grid-cols-2 gap-1.5 rounded-lg bg-muted p-1">
         <Button
-          variant={orderType === "dine_in" ? "default" : "outline"}
+          variant={orderType === "dine_in" ? "default" : "ghost"}
           size="sm"
-          className="flex-1"
+          className="h-8 text-xs font-semibold"
           onClick={() => onOrderTypeChange("dine_in")}
         >
           {t("pos.dineIn")}
         </Button>
         <Button
-          variant={orderType === "takeout" ? "default" : "outline"}
+          variant={orderType === "takeout" ? "default" : "ghost"}
           size="sm"
-          className="flex-1"
+          className="h-8 text-xs font-semibold"
           onClick={() => onOrderTypeChange("takeout")}
         >
           {t("pos.takeaway")}
         </Button>
       </div>
 
-      {/* Table Selection / Indicator */}
       {orderType === "dine_in" && (
         <>
           {tableNumber ? (
-            <div className="mb-3 p-2.5 rounded-lg bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800/50 flex items-center justify-between text-xs text-emerald-800 dark:text-emerald-300">
-              <span className="font-semibold flex items-center gap-1.5">
-                <span className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-                {t("tables.tableName")}: {t("orders.tableNum").replace("{num}", tableNumber)}
+            <div className="mb-2 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/20 dark:text-emerald-300">
+              <span className="flex items-center gap-1.5 font-semibold">
+                <span className="h-2 w-2 rounded-full bg-emerald-500" />
+                {t("orders.tableNum").replace("{num}", tableNumber)}
               </span>
               <button
                 type="button"
                 onClick={onTableClear}
-                className="text-[10px] text-muted-foreground hover:text-foreground font-medium underline"
+                className="text-[11px] font-medium text-muted-foreground underline hover:text-foreground"
               >
                 {t("common.cancel")}
               </button>
             </div>
           ) : (
             tables.length > 0 && (
-              <div className="mb-3">
+              <div className="mb-2">
                 <Select
                   value={tableId || ""}
                   onValueChange={(val) => {
-                    const matched = tables.find((t: any) => t.id === val);
-                    if (matched && onTableSelect) {
-                      onTableSelect(matched.id, matched.number);
-                    }
+                    const matched = tables.find((tb: any) => tb.id === val);
+                    if (matched && onTableSelect) onTableSelect(matched.id, matched.number);
                   }}
                 >
-                  <SelectTrigger className="h-9 text-xs bg-white/50 dark:bg-white/5 border shadow-none">
+                  <SelectTrigger className="h-9 border bg-white/50 text-xs shadow-none dark:bg-white/5">
                     <SelectValue placeholder={t("tables.selectTablePlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
                     {tables.map((tb: any) => (
                       <SelectItem key={tb.id} value={tb.id}>
-                        {t("orders.tableNum").replace("{num}", String(tb.number))} ({t(`tables.${tb.status === "available" ? "free" : tb.status}`)})
+                        {t("orders.tableNum").replace("{num}", String(tb.number))}{" "}
+                        ({t(`tables.${tb.status === "available" ? "free" : tb.status}`)})
                       </SelectItem>
                     ))}
                   </SelectContent>
@@ -192,24 +187,22 @@ export function CartSidebar({
         </>
       )}
 
-      {/* Customer */}
-      <div className="mb-3">
+      <div className="mb-2">
         <div className="relative">
-          <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+          <User className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder={t("pos.enterCustomerName")}
             value={customerName}
             onChange={(e) => onCustomerNameChange(e.target.value)}
-            className="pl-9 text-sm"
+            className="h-9 rounded-lg pl-9 text-sm"
           />
         </div>
       </div>
 
-      {/* Cart items */}
-      <div className="flex-1 overflow-y-auto space-y-1.5 mb-3 pr-1">
+      <div className="mb-2 flex-1 space-y-1.5 overflow-y-auto pr-1">
         {cart.length === 0 && !hasUnpaid ? (
-          <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-            <ShoppingCart className="h-10 w-10 mb-2 opacity-20" />
+          <div className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed bg-muted/25 py-8 text-muted-foreground">
+            <ShoppingCart className="mb-2 h-8 w-8 opacity-20" />
             <p className="text-sm">{t("pos.noItems")}</p>
           </div>
         ) : (
@@ -217,45 +210,43 @@ export function CartSidebar({
             {cart.map((item) => {
               const modTotal = item.modifiers.reduce((s, m) => s + m.price, 0);
               const lineTotal = (item.unitPrice + modTotal) * item.quantity;
+
               return (
-                <div
-                  key={item.lineId}
-                  className="rounded-lg border p-2.5 space-y-1.5"
-                >
+                <div key={item.lineId} className="space-y-1.5 rounded-lg border bg-card p-2 shadow-sm">
                   <div className="flex items-start gap-2">
-                    {/* Mini thumbnail */}
                     {item.imageUrl ? (
                       <img
                         src={item.imageUrl}
                         alt=""
-                        className="h-9 w-9 rounded object-cover flex-shrink-0 mt-0.5"
+                        className="mt-0.5 h-8 w-8 flex-shrink-0 rounded object-cover"
                       />
                     ) : (
-                      <div className="h-9 w-9 rounded bg-muted flex items-center justify-center flex-shrink-0 mt-0.5">
+                      <div className="mt-0.5 flex h-8 w-8 flex-shrink-0 items-center justify-center rounded bg-muted">
                         <UtensilsCrossed className="h-3.5 w-3.5 text-muted-foreground/40" />
                       </div>
                     )}
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{item.name}</p>
+                    <div className="min-w-0 flex-1">
+                      <p className="truncate text-sm font-semibold">{item.name}</p>
                       <p className="text-xs text-muted-foreground">
-                        {formatCurrency(item.unitPrice + modTotal)}{lang === "vi" ? "" : " ea"}
+                        {formatCurrency(item.unitPrice + modTotal)}
+                        {lang === "vi" ? "" : " ea"}
                       </p>
                     </div>
                     <button
+                      type="button"
                       onClick={() => onRemove(item.lineId)}
-                      className="p-1 text-muted-foreground hover:text-destructive transition-colors"
+                      className="p-1 text-muted-foreground transition-colors hover:text-destructive"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </div>
 
-                  {/* Modifiers */}
                   {item.modifiers.length > 0 && (
-                    <div className="pl-11 flex flex-wrap gap-1">
+                    <div className="flex flex-wrap gap-1 pl-10">
                       {item.modifiers.map((mod) => (
                         <span
                           key={mod.modifierId}
-                          className="text-[11px] px-1.5 py-0.5 rounded bg-muted text-muted-foreground"
+                          className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
                         >
                           {mod.name}
                           {mod.price > 0 && ` +${formatCurrency(mod.price)}`}
@@ -264,20 +255,18 @@ export function CartSidebar({
                     </div>
                   )}
 
-                  {/* Notes */}
                   {item.notes && (
-                    <p className="pl-11 text-[11px] text-muted-foreground italic truncate">
+                    <p className="truncate pl-10 text-[11px] italic text-muted-foreground">
                       {item.notes}
                     </p>
                   )}
 
-                  {/* Qty + line total */}
-                  <div className="flex items-center justify-between pl-11">
+                  <div className="flex items-center justify-between pl-10">
                     <div className="flex items-center gap-1">
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-6 w-6 rounded-md"
                         onClick={() => onUpdateQty(item.lineId, item.quantity - 1)}
                       >
                         <Minus className="h-2.5 w-2.5" />
@@ -286,7 +275,7 @@ export function CartSidebar({
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-6 w-6"
+                        className="h-6 w-6 rounded-md"
                         onClick={() => onUpdateQty(item.lineId, item.quantity + 1)}
                       >
                         <Plus className="h-2.5 w-2.5" />
@@ -298,129 +287,121 @@ export function CartSidebar({
               );
             })}
 
-            {/* Ordered items (read-only) */}
             {hasUnpaid && (
-              <div className="border-t pt-3 mt-3 space-y-2">
-                <h3 className="text-xs font-bold text-muted-foreground uppercase tracking-wider flex items-center gap-1.5 pl-1">
+              <div className="mt-2 space-y-1.5 border-t pt-2">
+                <h3 className="flex items-center gap-1.5 pl-1 text-[11px] font-bold uppercase text-muted-foreground">
                   <UtensilsCrossed className="h-3.5 w-3.5 text-primary" />
                   {lang === "vi" ? "Món đã gửi bếp" : "Sent to Kitchen"}
                 </h3>
-                <div className="space-y-1.5">
-                  {allOrderedItems.map((item: any) => {
-                    const modTotal = item.modifiers.reduce((s: number, m: any) => s + m.price, 0);
-                    const lineTotal = (item.unitPrice + modTotal) * item.quantity;
-                    return (
-                      <div
-                        key={item.id}
-                        className="rounded-lg border bg-muted/40 p-2.5 space-y-1"
-                      >
-                        <div className="flex justify-between items-start gap-2">
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold text-foreground truncate">
-                              {item.quantity}x {item.name}
-                            </p>
-                            {item.modifiers.length > 0 && (
-                              <div className="flex flex-wrap gap-1 mt-1">
-                                {item.modifiers.map((mod: any) => (
-                                  <span
-                                    key={mod.modifierId}
-                                    className="text-[10px] px-1.5 py-0.5 rounded bg-background text-muted-foreground border"
-                                  >
-                                    {mod.name}
-                                    {mod.price > 0 && ` +${formatCurrency(mod.price)}`}
-                                  </span>
-                                ))}
-                              </div>
-                            )}
-                            {item.notes && (
-                              <p className="text-[10px] text-muted-foreground italic mt-1 truncate">
-                                {item.notes}
-                              </p>
-                            )}
-                          </div>
-                          <p className="text-xs font-semibold text-muted-foreground">
-                            {formatCurrency(lineTotal)}
+                {allOrderedItems.map((item: any) => {
+                  const modTotal = item.modifiers.reduce((s: number, m: any) => s + m.price, 0);
+                  const lineTotal = (item.unitPrice + modTotal) * item.quantity;
+
+                  return (
+                    <div key={item.id} className="space-y-1 rounded-lg border bg-muted/40 p-2">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="truncate text-sm font-semibold">
+                            {item.quantity}x {item.name}
                           </p>
+                          {item.modifiers.length > 0 && (
+                            <div className="mt-1 flex flex-wrap gap-1">
+                              {item.modifiers.map((mod: any) => (
+                                <span
+                                  key={mod.modifierId}
+                                  className="rounded border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                                >
+                                  {mod.name}
+                                  {mod.price > 0 && ` +${formatCurrency(mod.price)}`}
+                                </span>
+                              ))}
+                            </div>
+                          )}
+                          {item.notes && (
+                            <p className="mt-1 truncate text-[10px] italic text-muted-foreground">
+                              {item.notes}
+                            </p>
+                          )}
                         </div>
+                        <p className="text-xs font-semibold text-muted-foreground">
+                          {formatCurrency(lineTotal)}
+                        </p>
                       </div>
-                    );
-                  })}
-                </div>
+                    </div>
+                  );
+                })}
               </div>
             )}
           </>
         )}
       </div>
 
-      {/* Notes */}
       {cart.length > 0 && (
-        <div className="mb-3">
+        <div className="mb-2">
           <Input
             placeholder={t("pos.notes")}
             value={orderNotes}
             onChange={(e) => onOrderNotesChange(e.target.value)}
-            className="text-sm"
+            className="h-9 rounded-lg text-sm"
           />
         </div>
       )}
 
-      {/* Totals */}
       {cart.length > 0 && (
-        <div className="border-t pt-3 space-y-1 mb-3">
-          <div className="flex justify-between text-sm">
+        <div className="mb-2 space-y-1 border-t pt-2">
+          <div className="flex justify-between text-xs">
             <span className="text-muted-foreground">{t("pos.subtotal")}</span>
             <span>{formatCurrency(subtotal)}</span>
           </div>
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">{t("pos.tax")} ({((taxRate) / 100).toFixed(2).replace(/\.00$/, "")}%)</span>
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">
+              {t("pos.tax")} ({(taxRate / 100).toFixed(2).replace(/\.00$/, "")}%)
+            </span>
             <span>{formatCurrency(tax)}</span>
           </div>
-          <div className="flex justify-between font-bold text-lg pt-1.5 border-t">
+          <div className="flex justify-between border-t pt-1.5 text-lg font-bold">
             <span>{t("pos.total")}</span>
             <span className="text-primary">{formatCurrency(total)}</span>
           </div>
         </div>
       )}
 
-      {/* Totals for Unpaid Table when cart is empty */}
       {cart.length === 0 && hasUnpaid && (
-        <div className="border-t pt-3 space-y-1 mb-3">
-          <div className="flex justify-between text-sm">
-            <span className="text-muted-foreground">{lang === "vi" ? "Tiền món đã dùng" : "Ordered Total"}</span>
+        <div className="mb-2 space-y-1 border-t pt-2">
+          <div className="flex justify-between text-xs">
+            <span className="text-muted-foreground">
+              {lang === "vi" ? "Tiền món đã dùng" : "Ordered Total"}
+            </span>
             <span>{formatCurrency(unpaidTotal)}</span>
           </div>
-          <div className="flex justify-between font-bold text-lg pt-1.5 border-t">
+          <div className="flex justify-between border-t pt-1.5 text-lg font-bold">
             <span>{lang === "vi" ? "Cần thanh toán" : "Total Due"}</span>
             <span className="text-primary">{formatCurrency(unpaidTotal)}</span>
           </div>
         </div>
       )}
 
-      {/* Create order / Pay order action buttons */}
       {cart.length === 0 ? (
         hasUnpaid ? (
           <Button
-            className="w-full h-12 text-sm font-semibold bg-emerald-600 hover:bg-emerald-700 text-white flex items-center justify-center gap-2"
+            className="flex h-11 w-full items-center justify-center gap-2 bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700"
             disabled={isPending}
             onClick={onPayUnpaidOrders}
           >
-            <Check className="h-5 w-5" />
+            <Check className="h-4 w-4" />
             {lang === "vi" ? "Thanh toán bàn" : "Pay Table"} · {formatCurrency(unpaidTotal)}
           </Button>
         ) : (
-          <Button
-            className="w-full h-12 text-base font-semibold"
-            disabled
-          >
-            <Check className="h-5 w-5 mr-2" />
-            {t("pos.checkout")}
+          <Button className="h-11 w-full text-sm font-semibold" disabled>
+            <Check className="mr-2 h-4 w-4" />
+            {lang === "vi" ? "Chọn món để gửi" : "Select items to send"}
           </Button>
         )
       ) : (
         <div className="flex gap-2">
           <Button
             variant="outline"
-            className="flex-1 h-12 text-sm font-semibold"
+            className="h-11 flex-1 text-sm font-semibold"
             disabled={isPending}
             onClick={() => onCreateOrder(false)}
           >
@@ -428,13 +409,13 @@ export function CartSidebar({
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <>
-                <Printer className="h-4 w-4 mr-1.5" />
-                {lang === "vi" ? "Gửi Bếp" : "Send Kitchen"}
+                <Printer className="mr-1.5 h-4 w-4" />
+                {lang === "vi" ? "Gửi bếp" : "Send Kitchen"}
               </>
             )}
           </Button>
           <Button
-            className="flex-[1.5] h-12 text-sm font-semibold"
+            className="h-11 flex-[1.5] text-sm font-semibold"
             disabled={isPending}
             onClick={() => onCreateOrder(true)}
           >
@@ -442,7 +423,7 @@ export function CartSidebar({
               <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
               <>
-                <Check className="h-4 w-4 mr-1.5" />
+                <Check className="mr-1.5 h-4 w-4" />
                 {lang === "vi" ? "Thanh toán" : "Pay now"} · {formatCurrency(total)}
               </>
             )}

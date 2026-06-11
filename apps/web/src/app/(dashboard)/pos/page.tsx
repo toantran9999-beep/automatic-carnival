@@ -353,7 +353,7 @@ export default function PosPage() {
   };
 
   return (
-    <div className="flex gap-4 h-[calc(100vh-8rem)]">
+    <div className="flex h-[calc(100vh-8rem)] gap-3">
       <ProductGrid
         categories={categories ?? []}
         items={allItems}
@@ -369,7 +369,7 @@ export default function PosPage() {
       {/* Desktop cart (inline sidebar) */}
       <CartSidebar
         {...cartProps}
-        className="hidden md:flex w-80 lg:w-96 flex-col border-l pl-4"
+        className="hidden w-[332px] flex-col border-l pl-3 md:flex xl:w-[352px]"
         onCreateOrder={handleCreateOrder}
         onPayUnpaidOrders={handlePayUnpaidOrders}
       />

@@ -1,5 +1,30 @@
 # Codex Activity Log
 
+## 2026-06-11 17:40 +07
+
+Task: Compact POS ordering UI after owner feedback that the screen still felt unoptimized.
+
+### Summary
+
+- Read and followed `AGENTS.md`.
+- Confirmed local `master` was clean and synced with `origin/master` before editing.
+- Tightened the POS product grid so search/category controls stay sticky, product cards are shorter, and columns auto-fill by available width.
+- Reduced the desktop cart sidebar width and vertical spacing so more products remain visible on the sales screen.
+- Cleaned POS cart hard-coded Vietnamese labels in the touched component.
+
+### Files Changed By Codex In This Task
+
+- `apps/web/src/app/(dashboard)/pos/page.tsx`
+- `apps/web/src/app/(dashboard)/pos/_components/product-grid.tsx`
+- `apps/web/src/app/(dashboard)/pos/_components/cart-sidebar.tsx`
+- `CODEX_ACTIVITY_LOG.md`
+
+### Notes For Claude
+
+- Codex only touched the POS selling screen and this activity log in this task.
+- Codex did not edit dashboard layout.
+- Codex did not edit table layout, table transfer/merge/split logic, API routes, hooks, or database migrations.
+
 ## 2026-06-09 10:27 +07
 
 Task: Viet hoa DatePicker/Calendar display.

@@ -687,7 +687,8 @@ menu.get(
           groupIds.length === 1
             ? eq(schema.modifiers.group_id, groupIds[0])
             : inArray(schema.modifiers.group_id, groupIds)
-        );
+        )
+        .orderBy(asc(schema.modifiers.sort_order), asc(schema.modifiers.name));
     }
 
     const result = groups.map((g) => ({

@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, inArray, sql, desc, isNull } from "drizzle-orm";
+import { eq, and, inArray, sql, desc, isNull, asc } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import {
   startSessionSchema,
@@ -493,7 +493,8 @@ customer.get("/:branchSlug/menu/items/:itemId/modifiers", async (c) => {
       groupIds.length === 1
         ? eq(schema.modifiers.group_id, groupIds[0])
         : inArray(schema.modifiers.group_id, groupIds),
-    );
+    )
+    .orderBy(asc(schema.modifiers.sort_order), asc(schema.modifiers.name));
 
   const result = groups.map((g) => ({
     ...g,

@@ -8,12 +8,17 @@ import {
   Edit,
   Trash2,
   Settings2,
-  GripVertical,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
+  ChevronDown as ChevronDownIcon,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
-import { useModifierGroups, useDeleteModifierGroup } from "@/hooks/use-menu";
+import {
+  useModifierGroups,
+  useDeleteModifierGroup,
+  useUpdateModifier,
+} from "@/hooks/use-menu";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { useTranslation } from "@/stores/lang-store";
@@ -28,14 +33,21 @@ function Skeleton({ className }: { className?: string }) {
 export function ModifierGroupsPanel() {
   const { data: groups, isLoading } = useModifierGroups();
   const deleteGroup = useDeleteModifierGroup();
+  const updateModifier = useUpdateModifier();
   const { t } = useTranslation();
 
   const [editGroup, setEditGroup] = useState<any>(null);
   const [createOpen, setCreateOpen] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<any>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
+  const [movingModifierId, setMovingModifierId] = useState<string | null>(null);
 
   const groupList: any[] = groups ?? [];
+
+  const sortedModifiers = (modifiers: any[]) =>
+    [...modifiers].sort(
+      (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name)
+    );
 
   const handleDelete = async () => {
     if (!confirmDelete) return;
@@ -46,6 +58,30 @@ export function ModifierGroupsPanel() {
       toast.error(err.message || t("menu.deleteError"));
     }
     setConfirmDelete(null);
+  };
+
+  const handleMoveModifier = async (modifiers: any[], idx: number, dir: -1 | 1) => {
+    const ordered = sortedModifiers(modifiers);
+    const targetIdx = idx + dir;
+    if (targetIdx < 0 || targetIdx >= ordered.length) return;
+
+    const next = [...ordered];
+    [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+    setMovingModifierId(next[targetIdx].id);
+
+    try {
+      await Promise.all(
+        next.map((mod, order) =>
+          (mod.sort_order ?? 0) === order
+            ? Promise.resolve()
+            : updateModifier.mutateAsync({ id: mod.id, sortOrder: order })
+        )
+      );
+    } catch (err: any) {
+      toast.error(err.message || t("menu.saveError"));
+    } finally {
+      setMovingModifierId(null);
+    }
   };
 
   if (isLoading) {
@@ -88,7 +124,7 @@ export function ModifierGroupsPanel() {
         <div className="space-y-2">
           {groupList.map((group: any) => {
             const isExpanded = expandedId === group.id;
-            const modifiers: any[] = group.modifiers ?? [];
+            const modifiers: any[] = sortedModifiers(group.modifiers ?? []);
             return (
               <div
                 key={group.id}
@@ -155,14 +191,38 @@ export function ModifierGroupsPanel() {
                 {isExpanded && modifiers.length > 0 && (
                   <div className="border-t border-border bg-muted/20 px-4 py-2">
                     <div className="space-y-1">
-                      {modifiers.map((mod: any) => (
+                      {modifiers.map((mod: any, idx: number) => (
                         <div
                           key={mod.id}
                           className="flex items-center justify-between py-1.5 text-sm"
                         >
                           <div className="flex items-center gap-2">
-                            <GripVertical className="h-3 w-3 text-muted-foreground/50" />
+                            <div className="flex items-center gap-0.5">
+                              <button
+                                type="button"
+                                onClick={() => handleMoveModifier(modifiers, idx, -1)}
+                                disabled={idx === 0 || movingModifierId === mod.id}
+                                className="rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                                title="Đưa lên"
+                              >
+                                <ChevronUp className="h-3.5 w-3.5" />
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleMoveModifier(modifiers, idx, 1)}
+                                disabled={idx === modifiers.length - 1 || movingModifierId === mod.id}
+                                className="rounded p-0.5 text-muted-foreground hover:bg-background hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30"
+                                title="Đưa xuống"
+                              >
+                                <ChevronDownIcon className="h-3.5 w-3.5" />
+                              </button>
+                            </div>
                             <span>{mod.name}</span>
+                            {idx === 0 && (
+                              <Badge variant="outline" className="h-4 px-1 text-[9px]">
+                                Mặc định
+                              </Badge>
+                            )}
                           </div>
                           <span className="text-muted-foreground">
                             {mod.price > 0

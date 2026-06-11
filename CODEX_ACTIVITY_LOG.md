@@ -1,5 +1,29 @@
 # Codex Activity Log
 
+## 2026-06-11 18:08 +07
+
+Task: Make modifier options orderable and preserve display order in POS/customer option dialogs.
+
+### Summary
+
+- Read and followed `AGENTS.md`.
+- Confirmed local `master` was clean and synced with `origin/master` before editing.
+- Added up/down controls directly in the modifier groups panel so option order can be changed from the expanded list.
+- Ensured item-specific modifier group APIs return options ordered by `sort_order`, then name.
+- Kept the existing DB schema; no migration was needed because `modifiers.sort_order` already exists.
+
+### Files Changed By Codex In This Task
+
+- `apps/api/src/routes/menu.ts`
+- `apps/api/src/routes/customer.ts`
+- `apps/web/src/app/(dashboard)/menu/_components/modifier-groups-panel.tsx`
+- `CODEX_ACTIVITY_LOG.md`
+
+### Notes For Claude
+
+- Codex only touched modifier option ordering for the menu/POS option flow in this task.
+- Codex did not edit POS layout, table layout, table operations, product image AI, or database migrations.
+
 ## 2026-06-11 17:40 +07
 
 Task: Compact POS ordering UI after owner feedback that the screen still felt unoptimized.

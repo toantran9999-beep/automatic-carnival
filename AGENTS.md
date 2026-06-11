@@ -1,5 +1,6 @@
 # AGENTS.md — Quy trình chuẩn cho mọi AI/agent (Codex, Claude…) làm việc trên TODA POS
-n> 🗺️ Bản đồ codebase + log tính năng: đọc [ARCHITECTURE.md](ARCHITECTURE.md) trước khi sửa (đỡ phải quét hết code).
+
+> 🗺️ Bản đồ codebase + log tính năng: đọc [ARCHITECTURE.md](ARCHITECTURE.md) trước khi sửa (đỡ phải quét hết code).
 
 > ⚠️ ĐỌC TRƯỚC KHI SỬA BẤT KỲ FILE NÀO. Dự án này có **nhiều agent + nhiều máy** cùng sửa
 > (Codex sửa trực tiếp trên VPS, Claude sửa trên máy local Windows). Nếu không theo quy trình

@@ -3,6 +3,8 @@ import {
   PutObjectCommand,
   DeleteObjectCommand,
 } from "@aws-sdk/client-s3";
+import { mkdir, writeFile, unlink } from "node:fs/promises";
+import path from "node:path";
 
 const R2_ACCOUNT_ID = process.env.R2_ACCOUNT_ID!;
 const R2_ACCESS_KEY_ID = process.env.R2_ACCESS_KEY_ID!;
@@ -45,4 +47,44 @@ export async function deleteFromR2(key: string) {
 
 export function getPublicUrl(key: string): string {
   return `${R2_PUBLIC_URL}/${key}`;
+}
+
+export function hasR2Config(): boolean {
+  return !!(R2_ACCOUNT_ID && R2_ACCESS_KEY_ID && R2_SECRET_ACCESS_KEY && R2_PUBLIC_URL);
+}
+
+function localBaseDir(): string {
+  return process.env.LOCAL_UPLOAD_DIR || path.join("apps", "web", "public", "uploads");
+}
+
+/**
+ * Lưu file ảnh: dùng R2 nếu đã cấu hình, ngược lại lưu CỤC BỘ (volume uploads)
+ * và phục vụ qua PUBLIC_UPLOAD_URL (Caddy /uploads). Trả về URL công khai.
+ */
+export async function storeUpload(
+  key: string,
+  body: Uint8Array,
+  contentType: string,
+): Promise<string> {
+  if (hasR2Config()) {
+    await uploadToR2(key, body, contentType);
+    return getPublicUrl(key);
+  }
+  const abs = path.join(localBaseDir(), key);
+  await mkdir(path.dirname(abs), { recursive: true });
+  await writeFile(abs, body);
+  const publicBase = process.env.PUBLIC_UPLOAD_URL || "/uploads";
+  return `${publicBase}/${key}`;
+}
+
+export async function deleteUpload(key: string): Promise<void> {
+  if (hasR2Config()) {
+    await deleteFromR2(key);
+    return;
+  }
+  try {
+    await unlink(path.join(localBaseDir(), key));
+  } catch {
+    // file không tồn tại — bỏ qua
+  }
 }

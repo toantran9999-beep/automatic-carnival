@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware } from "../middleware/tenant.js";
-import { uploadToR2, deleteFromR2, getPublicUrl } from "../lib/r2.js";
+import { storeUpload, deleteUpload } from "../lib/r2.js";
 import { t } from "../lib/i18n.js";
 
 const ALLOWED_TYPES = new Set([
@@ -93,9 +93,7 @@ uploads.post("/", async (c) => {
   const key = `${tenant.organizationId}/${uploadType}/${uuid}.${ext}`;
 
   const buffer = new Uint8Array(await file.arrayBuffer());
-  await uploadToR2(key, buffer, file.type);
-
-  const url = getPublicUrl(key);
+  const url = await storeUpload(key, buffer, file.type);
   return c.json({ success: true, data: { url, key } });
 });
 
@@ -112,7 +110,7 @@ uploads.delete("/*", async (c) => {
     );
   }
 
-  await deleteFromR2(key);
+  await deleteUpload(key);
   return c.json({ success: true, data: { deleted: key } });
 });
 

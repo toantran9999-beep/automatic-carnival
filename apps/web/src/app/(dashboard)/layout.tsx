@@ -50,7 +50,7 @@ interface Branch {
 
 const allowedPaths = {
   org_admin: new Set([
-    "/",
+    "/dashboard",
     "/pos",
     "/orders",
     "/tables",
@@ -65,7 +65,7 @@ const allowedPaths = {
     "/settings",
   ]),
   branch_manager: new Set([
-    "/",
+    "/dashboard",
     "/pos",
     "/orders",
     "/tables",
@@ -78,16 +78,16 @@ const allowedPaths = {
     "/loyalty",
     "/reports",
   ]),
-  cashier: new Set(["/", "/pos", "/orders", "/tables", "/payments"]),
-  waiter: new Set(["/", "/pos", "/orders", "/tables", "/connections", "/kitchen"]),
-  kitchen: new Set(["/", "/kitchen"]),
+  cashier: new Set(["/dashboard","/pos", "/orders", "/tables", "/payments"]),
+  waiter: new Set(["/dashboard","/pos", "/orders", "/tables", "/connections", "/kitchen"]),
+  kitchen: new Set(["/dashboard","/kitchen"]),
 };
 
 function getTranslatedNavGroups(t: any): NavGroup[] {
   return [
     {
       label: t("nav.general"),
-      items: [{ href: "/", label: t("nav.dashboard"), icon: LayoutDashboard }],
+      items: [{ href: "/dashboard", label: t("nav.dashboard"), icon: LayoutDashboard }],
     },
     {
       label: t("nav.operations"),

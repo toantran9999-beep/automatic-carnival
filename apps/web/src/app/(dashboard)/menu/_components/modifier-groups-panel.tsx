@@ -18,6 +18,7 @@ import {
   useModifierGroups,
   useDeleteModifierGroup,
   useUpdateModifier,
+  useUpdateModifierGroup,
 } from "@/hooks/use-menu";
 import { toast } from "sonner";
 import { ConfirmDialog } from "@/components/confirm-dialog";
@@ -34,6 +35,7 @@ export function ModifierGroupsPanel() {
   const { data: groups, isLoading } = useModifierGroups();
   const deleteGroup = useDeleteModifierGroup();
   const updateModifier = useUpdateModifier();
+  const updateGroup = useUpdateModifierGroup();
   const { t } = useTranslation();
 
   const [editGroup, setEditGroup] = useState<any>(null);
@@ -41,8 +43,32 @@ export function ModifierGroupsPanel() {
   const [confirmDelete, setConfirmDelete] = useState<any>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [movingModifierId, setMovingModifierId] = useState<string | null>(null);
+  const [movingGroupId, setMovingGroupId] = useState<string | null>(null);
 
-  const groupList: any[] = groups ?? [];
+  const groupList: any[] = [...(groups ?? [])].sort(
+    (a, b) => (a.sort_order ?? 0) - (b.sort_order ?? 0) || a.name.localeCompare(b.name)
+  );
+
+  const handleMoveGroup = async (idx: number, dir: -1 | 1) => {
+    const targetIdx = idx + dir;
+    if (targetIdx < 0 || targetIdx >= groupList.length) return;
+    const next = [...groupList];
+    [next[idx], next[targetIdx]] = [next[targetIdx], next[idx]];
+    setMovingGroupId(next[targetIdx].id);
+    try {
+      await Promise.all(
+        next.map((g, order) =>
+          (g.sort_order ?? 0) === order
+            ? Promise.resolve()
+            : updateGroup.mutateAsync({ id: g.id, sortOrder: order })
+        )
+      );
+    } catch (err: any) {
+      toast.error(err.message || t("menu.saveError"));
+    } finally {
+      setMovingGroupId(null);
+    }
+  };
 
   const sortedModifiers = (modifiers: any[]) =>
     [...modifiers].sort(
@@ -122,7 +148,7 @@ export function ModifierGroupsPanel() {
         </div>
       ) : (
         <div className="space-y-2">
-          {groupList.map((group: any) => {
+          {groupList.map((group: any, gidx: number) => {
             const isExpanded = expandedId === group.id;
             const modifiers: any[] = sortedModifiers(group.modifiers ?? []);
             return (
@@ -168,6 +194,27 @@ export function ModifierGroupsPanel() {
                     className="flex items-center gap-1"
                     onClick={(e) => e.stopPropagation()}
                   >
+                    {/* Đổi thứ tự nhóm */}
+                    <div className="flex flex-col mr-1">
+                      <button
+                        type="button"
+                        onClick={() => handleMoveGroup(gidx, -1)}
+                        disabled={gidx === 0 || movingGroupId === group.id}
+                        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Đưa nhóm lên"
+                      >
+                        <ChevronUp className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleMoveGroup(gidx, 1)}
+                        disabled={gidx === groupList.length - 1 || movingGroupId === group.id}
+                        className="rounded p-0.5 text-muted-foreground hover:bg-muted hover:text-foreground disabled:opacity-30 disabled:cursor-not-allowed"
+                        title="Đưa nhóm xuống"
+                      >
+                        <ChevronDownIcon className="h-3.5 w-3.5" />
+                      </button>
+                    </div>
                     <Button
                       variant="ghost"
                       size="sm"

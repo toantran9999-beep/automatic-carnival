@@ -30,7 +30,8 @@ const GROUPS: {
 async function setupForBranch(orgId: string, branchId: string) {
   // 1) Tạo / lấy các nhóm tùy chọn
   const groupIdByName: Record<string, string> = {};
-  for (const g of GROUPS) {
+  for (let gi = 0; gi < GROUPS.length; gi++) {
+    const g = GROUPS[gi];
     const [existing] = await db
       .select({ id: schema.modifierGroups.id })
       .from(schema.modifierGroups)
@@ -39,14 +40,18 @@ async function setupForBranch(orgId: string, branchId: string) {
 
     if (existing) {
       groupIdByName[g.name] = existing.id;
-      // Cập nhật thứ tự tùy chọn theo định nghĩa (sửa data cũ sort_order=0).
+      // Cập nhật thứ tự nhóm + thứ tự tùy chọn (sửa data cũ sort_order=0).
+      await db
+        .update(schema.modifierGroups)
+        .set({ sort_order: gi })
+        .where(eq(schema.modifierGroups.id, existing.id));
       for (let i = 0; i < g.mods.length; i++) {
         await db
           .update(schema.modifiers)
           .set({ sort_order: i })
           .where(and(eq(schema.modifiers.group_id, existing.id), eq(schema.modifiers.name, g.mods[i][0])));
       }
-      console.log(`  • Nhóm "${g.name}" đã có — cập nhật thứ tự tùy chọn.`);
+      console.log(`  • Nhóm "${g.name}" đã có — cập nhật thứ tự (${gi}) + tùy chọn.`);
       continue;
     }
 
@@ -59,6 +64,7 @@ async function setupForBranch(orgId: string, branchId: string) {
         min_selections: g.min,
         max_selections: g.max,
         is_required: g.required,
+        sort_order: gi,
       })
       .returning({ id: schema.modifierGroups.id });
 

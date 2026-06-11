@@ -61,6 +61,7 @@ export const modifierGroups = pgTable("modifier_groups", {
   min_selections: integer("min_selections").default(0).notNull(),
   max_selections: integer("max_selections").default(1).notNull(),
   is_required: boolean("is_required").default(false).notNull(),
+  sort_order: integer("sort_order").default(0).notNull(),
 });
 
 export const modifiers = pgTable("modifiers", {

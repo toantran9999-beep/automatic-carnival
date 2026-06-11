@@ -81,6 +81,7 @@ export const createModifierGroupSchema = z.object({
   minSelections: z.number().int().min(0).default(0),
   maxSelections: z.number().int().min(1).default(1),
   isRequired: z.boolean().default(false),
+  sortOrder: z.number().int().min(0).optional(),
 });
 
 export const createModifierSchema = z.object({

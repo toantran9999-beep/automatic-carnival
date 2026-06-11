@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, inArray, asc } from "drizzle-orm";
+import { eq, and, inArray, asc, desc } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import {
   createCategorySchema,
@@ -299,6 +299,18 @@ menu.post(
     const body = c.req.valid("json");
     const tenant = c.get("tenant") as any;
 
+    // Tự gán thứ tự = cuối danh sách nếu không truyền sortOrder
+    let sortOrder = body.sortOrder;
+    if (sortOrder === undefined) {
+      const [last] = await db
+        .select({ sort_order: schema.modifierGroups.sort_order })
+        .from(schema.modifierGroups)
+        .where(eq(schema.modifierGroups.branch_id, tenant.branchId))
+        .orderBy(desc(schema.modifierGroups.sort_order))
+        .limit(1);
+      sortOrder = (last?.sort_order ?? -1) + 1;
+    }
+
     const [group] = await db
       .insert(schema.modifierGroups)
       .values({
@@ -308,6 +320,7 @@ menu.post(
         min_selections: body.minSelections,
         max_selections: body.maxSelections,
         is_required: body.isRequired,
+        sort_order: sortOrder,
       })
       .returning();
 
@@ -423,7 +436,8 @@ menu.get("/modifier-groups", requirePermission("menu:read"), async (c) => {
         eq(schema.modifierGroups.branch_id, tenant.branchId),
         eq(schema.modifierGroups.organization_id, tenant.organizationId),
       ),
-    );
+    )
+    .orderBy(asc(schema.modifierGroups.sort_order), asc(schema.modifierGroups.name));
 
   // Fetch modifiers for each group
   const groupIds = groups.map((g) => g.id);
@@ -464,6 +478,7 @@ menu.patch(
     if (body.minSelections !== undefined) updateData.min_selections = body.minSelections;
     if (body.maxSelections !== undefined) updateData.max_selections = body.maxSelections;
     if (body.isRequired !== undefined) updateData.is_required = body.isRequired;
+    if (body.sortOrder !== undefined) updateData.sort_order = body.sortOrder;
 
     const [updated] = await db
       .update(schema.modifierGroups)
@@ -675,7 +690,8 @@ menu.get(
           eq(schema.modifierGroups.branch_id, tenant.branchId),
           eq(schema.modifierGroups.organization_id, tenant.organizationId),
         )
-      );
+      )
+      .orderBy(asc(schema.modifierGroups.sort_order), asc(schema.modifierGroups.name));
 
     // Also fetch modifiers for these groups
     let allModifiers: any[] = [];

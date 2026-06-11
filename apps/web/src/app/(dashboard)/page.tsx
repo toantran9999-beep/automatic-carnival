@@ -38,32 +38,35 @@ export default function DashboardPage() {
   const { data: tables, isLoading: tablesLoading } = useTables();
   const { t } = useTranslation();
 
+  const ds: any = dashboardStats ?? {};
   const stats = dashboardStats
     ? [
         {
           title: t("dashboard.ordersToday"),
-          value: dashboardStats.ordersToday ?? 0,
+          value: ds.totalOrders ?? 0,
           icon: ClipboardList,
-          description: dashboardStats.ordersChange ?? "",
+          description: "",
         },
         {
           title: t("dashboard.revenueToday"),
-          value: dashboardStats.revenueToday ?? 0,
+          value: ds.totalRevenue ?? 0,
           icon: DollarSign,
-          description: dashboardStats.revenueChange ?? "",
+          description: ds.averageOrderValue
+            ? `${t("dashboard.avgOrder", "TB/đơn")}: ${formatCurrency(ds.averageOrderValue)}`
+            : "",
           isCurrency: true,
         },
         {
           title: t("dashboard.activeOrders"),
-          value: dashboardStats.activeOrders ?? 0,
+          value: ds.activeOrders ?? 0,
           icon: TrendingUp,
-          description: dashboardStats.activeOrdersDetail ?? "",
+          description: "",
         },
         {
           title: t("dashboard.occupiedTables"),
-          value: dashboardStats.tablesOccupied ?? "0/0",
+          value: `${ds.occupiedTables ?? 0}/${ds.totalTables ?? 0}`,
           icon: Grid3X3,
-          description: dashboardStats.tablesDetail ?? "",
+          description: "",
         },
       ]
     : [];

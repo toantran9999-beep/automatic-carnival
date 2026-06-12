@@ -73,7 +73,8 @@ settings.patch("/branch", requirePermission("settings:*"), zValidator("json", up
   if (
     body.inventoryEnabled !== undefined ||
     body.waiterTableAssignmentEnabled !== undefined ||
-    body.printMode !== undefined
+    body.printMode !== undefined ||
+    body.printDriver !== undefined
   ) {
     // Fetch current settings to merge
     const [existing] = await db.select({ settings: schema.branches.settings })
@@ -85,6 +86,7 @@ settings.patch("/branch", requirePermission("settings:*"), zValidator("json", up
     if (body.inventoryEnabled !== undefined) merged.inventory_enabled = body.inventoryEnabled;
     if (body.waiterTableAssignmentEnabled !== undefined) merged.waiter_table_assignment_enabled = body.waiterTableAssignmentEnabled;
     if (body.printMode !== undefined) merged.print_mode = body.printMode;
+    if (body.printDriver !== undefined) merged.print_driver = body.printDriver;
     updateData.settings = merged;
   }
 

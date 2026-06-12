@@ -298,3 +298,45 @@ Implement bank-transfer payment flow where POS prints a temporary bill with a 60
 Verification:
 - `bunx tsc --noEmit -p apps/web/tsconfig.json` succeeded.
 - `bunx tsc --noEmit -p apps/api/tsconfig.json` succeeded.
+
+---
+
+## 2026-06-13 - Codex - Android POS fast print driver
+
+### Goal
+
+Stop Android Chrome from printing the whole PWA as an A4 page. Add configurable print drivers so Android POS can send ESC/POS directly through RawBT or a future native bridge, while desktop keeps browser print fallback.
+
+### Files Touched By Codex
+
+- `apps/web/src/components/print-ticket.tsx`
+  - Added ESC/POS builders for kitchen tickets, receipts, and temporary transfer bills with QR command support.
+  - Added `browser_print`, `rawbt_intent`, and `android_bridge` driver routing.
+  - RawBT mode opens a `rawbt:base64,...` payload only on Android; desktop falls back to browser print.
+- `apps/web/src/app/(dashboard)/settings/_components/branch-tab.tsx`
+  - Added branch-level print driver selector.
+- `apps/api/src/routes/settings.ts`
+  - Persists `branches.settings.print_driver`.
+- `packages/validators/src/index.ts`
+  - Validates `printDriver`.
+- `apps/web/src/lib/translations.ts`
+  - Added print driver labels/help text.
+- `ARCHITECTURE.md`
+  - Documented `print_driver` and Android print path.
+
+### Files Not Touched By Codex In This Task
+
+- POS layout/product grid/sidebar behavior
+- Payment QR/webhook logic
+- Table operations
+- Native Android APK project, because no Android/Capacitor project exists in this repo yet
+
+### Verification Run
+
+- `bunx tsc --noEmit -p apps/web/tsconfig.json` succeeded.
+- `bunx tsc --noEmit -p apps/api/tsconfig.json` succeeded.
+
+### Notes For Claude
+
+- To test on the iPOS Android device, set Settings -> Branch -> Print driver to `RawBT / ESC-POS nhanh` and install/configure RawBT with the USB Gprinter.
+- `android_bridge` is a protocol hook for a future native wrapper: `window.TodaPrintBridge.printBase64(...)` or local `POST http://127.0.0.1:18180/print`.

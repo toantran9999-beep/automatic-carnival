@@ -1,8 +1,9 @@
 "use client";
 
-import { useRef, useCallback } from "react";
+import { useCallback } from "react";
 import { useLangStore } from "@/stores/lang-store";
 import { useAuthStore } from "@/stores/auth-store";
+import { useBranchSettings } from "@/hooks/use-settings";
 
 interface OrderItem {
   name: string;
@@ -61,6 +62,7 @@ interface KitchenTicketData {
 }
 
 export type PrintMode = "combined" | "per_item";
+type PrintDriver = "browser_print" | "rawbt_intent" | "android_bridge";
 
 interface ReceiptTicketData {
   businessName: string;
@@ -101,6 +103,160 @@ interface TemporaryTransferBillData {
     amountVnd?: number;
     addInfo?: string;
   };
+}
+
+function removeVietnameseMarks(value: string): string {
+  return value
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/đ/g, "d")
+    .replace(/Đ/g, "D");
+}
+
+function plainLine(value = "", width = 42): string {
+  const clean = removeVietnameseMarks(value).replace(/\s+/g, " ").trim();
+  return clean.length > width ? clean.slice(0, width) : clean;
+}
+
+function moneyPlain(cents: number): string {
+  return `${Math.round(cents / 100).toLocaleString("vi-VN")} d`;
+}
+
+function textBytes(text: string): number[] {
+  return Array.from(new TextEncoder().encode(text));
+}
+
+function bytesToBase64(bytes: number[]): string {
+  let binary = "";
+  for (const byte of bytes) binary += String.fromCharCode(byte);
+  return btoa(binary);
+}
+
+function twoCol(left: string, right: string, width = 42): string {
+  const l = plainLine(left, width);
+  const r = plainLine(right, width);
+  return `${l}${" ".repeat(Math.max(1, width - l.length - r.length))}${r}`;
+}
+
+function escposQrBytes(value: string): number[] {
+  const data = textBytes(value);
+  const len = data.length + 3;
+  const pL = len % 256;
+  const pH = Math.floor(len / 256);
+  return [
+    0x1d, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00,
+    0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, 0x06,
+    0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31,
+    0x1d, 0x28, 0x6b, pL, pH, 0x31, 0x50, 0x30,
+    ...data,
+    0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x51, 0x30,
+  ];
+}
+
+function buildEscPos(lines: Array<string | number[]>): number[] {
+  const bytes: number[] = [0x1b, 0x40, 0x1b, 0x74, 0x00];
+  for (const item of lines) {
+    if (Array.isArray(item)) {
+      bytes.push(...item);
+    } else {
+      bytes.push(...textBytes(`${item}\n`));
+    }
+  }
+  bytes.push(0x0a, 0x0a, 0x1d, 0x56, 0x42, 0x00);
+  return bytes;
+}
+
+function buildKitchenEscPos(data: KitchenTicketData): number[] {
+  const { time, date } = vnTimeParts(data.createdAt);
+  const staff = currentStaffName();
+  const subtitle = data.tableNumber ? `BAN ${data.tableNumber}` : "MANG VE";
+  const rows: string[] = [
+    "        PHIEU DAT DO",
+    `          ${subtitle}`,
+    data.ticketLabel ? `          Phieu ${data.ticketLabel}` : "",
+    "------------------------------------------",
+    twoCol(`Gio: ${time}`, `Ngay: ${date}`),
+    `Nhan vien: ${plainLine(staff || data.customerName || "-", 30)}`,
+    `So thu tu: #${data.orderNumber}`,
+    "------------------------------------------",
+  ].filter(Boolean);
+
+  for (const item of data.items) {
+    rows.push(`${item.quantity} x ${plainLine(item.name, 34)} ${plainLine(item.unit || "", 4)}`);
+    if (item.notes) rows.push(`  * ${plainLine(item.notes, 36)}`);
+  }
+
+  if (data.notes) rows.push("------------------------------------------", `Ghi chu: ${plainLine(data.notes, 34)}`);
+  rows.push("------------------------------------------", "              Toda Cafe");
+  return buildEscPos(rows);
+}
+
+function buildReceiptEscPos(data: ReceiptTicketData): number[] {
+  const rows: Array<string | number[]> = [
+    `          ${plainLine(data.businessName, 22)}`,
+    data.address ? `   ${plainLine(data.address, 36)}` : "",
+    "------------------------------------------",
+    "              HOA DON",
+    `Don hang: #${data.orderNumber}`,
+    formatDateTime(data.createdAt),
+    data.customerName ? `Khach: ${plainLine(data.customerName, 34)}` : "",
+    "------------------------------------------",
+  ].filter(Boolean);
+
+  for (const item of data.items) {
+    rows.push(twoCol(`${item.quantity}x ${plainLine(item.name, 26)}`, moneyPlain(item.total)));
+  }
+
+  rows.push(
+    "------------------------------------------",
+    twoCol("Tam tinh", moneyPlain(data.subtotal)),
+    twoCol("VAT", moneyPlain(data.tax)),
+    twoCol("TONG CONG", moneyPlain(data.total)),
+    data.paymentMethod ? `Thanh toan: ${plainLine(data.paymentMethod, 28)}` : "",
+    "------------------------------------------",
+    "        Cam on quy khach!",
+  );
+  return buildEscPos(rows.filter(Boolean));
+}
+
+function buildTemporaryTransferEscPos(data: TemporaryTransferBillData): number[] {
+  const expires = new Date(data.expiresAt).toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Ho_Chi_Minh",
+  });
+  const rows: Array<string | number[]> = [
+    `          ${plainLine(data.businessName, 22)}`,
+    data.address ? `   ${plainLine(data.address, 36)}` : "",
+    "------------------------------------------",
+    "           PHIEU TAM TINH",
+    `Don: #${data.orderNumber}`,
+    data.tableNumber ? `Ban: ${data.tableNumber}` : "",
+    data.customerName ? `Khach: ${plainLine(data.customerName, 34)}` : "",
+    "------------------------------------------",
+  ].filter(Boolean);
+
+  for (const item of data.items) {
+    rows.push(twoCol(`${item.quantity}x ${plainLine(item.name, 26)}`, moneyPlain(item.total)));
+  }
+
+  rows.push(
+    "------------------------------------------",
+    twoCol("Tam tinh", moneyPlain(data.subtotal)),
+    twoCol("VAT", moneyPlain(data.tax)),
+    twoCol("TONG CAN TRA", moneyPlain(data.total)),
+    "------------------------------------------",
+    "       QUET QR CHUYEN KHOAN",
+    escposQrBytes(data.qrPayload || data.paymentCode),
+    data.bank?.accountName ? `Nguoi nhan: ${plainLine(data.bank.accountName, 30)}` : "",
+    data.bank?.bankCode ? `Ngan hang: ${plainLine(data.bank.bankCode, 30)}` : "",
+    data.bank?.accountNumber ? `STK: ${plainLine(data.bank.accountNumber, 34)}` : "",
+    `Noi dung: ${data.paymentCode}`,
+    `Hieu luc den: ${expires}`,
+    "Ma qua han vui long xin phieu moi.",
+  );
+  return buildEscPos(rows.filter(Boolean));
 }
 
 function formatCents(cents: number): string {
@@ -457,6 +613,65 @@ function isAndroid(): boolean {
   return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
 }
 
+function currentPrintDriver(branchSettings: any): PrintDriver {
+  const driver = branchSettings?.settings?.print_driver;
+  if (driver === "rawbt_intent" || driver === "android_bridge") return driver;
+  return "browser_print";
+}
+
+async function printEscPosWithBridge(bytes: number[]): Promise<void> {
+  const base64 = bytesToBase64(bytes);
+  const bridge = (window as any).TodaPrintBridge || (window as any).AndroidPrintBridge;
+  if (bridge?.printBase64) {
+    bridge.printBase64(base64);
+    return;
+  }
+  if (bridge?.print) {
+    bridge.print(JSON.stringify({ encoding: "base64", format: "escpos", data: base64 }));
+    return;
+  }
+
+  try {
+    const res = await fetch("http://127.0.0.1:18180/print", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ encoding: "base64", format: "escpos", data: base64 }),
+    });
+    if (res.ok) return;
+  } catch {
+    // Local bridge is optional; fall through to a clear error.
+  }
+
+  throw new Error("Chưa kết nối Android print bridge");
+}
+
+function printEscPosWithRawBt(bytes: number[]): Promise<void> {
+  return new Promise((resolve) => {
+    const base64 = bytesToBase64(bytes);
+    const iframe = document.createElement("iframe");
+    iframe.style.display = "none";
+    iframe.src = `rawbt:base64,${encodeURIComponent(base64)}`;
+    document.body.appendChild(iframe);
+    setTimeout(() => {
+      iframe.remove();
+      resolve();
+    }, 900);
+  });
+}
+
+async function printEscPos(bytes: number[], driver: PrintDriver): Promise<boolean> {
+  if (driver === "android_bridge") {
+    await printEscPosWithBridge(bytes);
+    return true;
+  }
+  if (driver === "rawbt_intent") {
+    if (!isAndroid()) return false;
+    await printEscPosWithRawBt(bytes);
+    return true;
+  }
+  return false;
+}
+
 /**
  * Android Chrome bỏ qua lệnh in từ iframe ẩn và in TRANG CHA thay thế
  * (đó là lý do RawBT từng in ra màn hình app + popup thông báo).
@@ -555,33 +770,52 @@ async function printHtmlSequential(htmls: string[]): Promise<void> {
  *   labelled "1/3", "2/3"... and printed sequentially.
  */
 export function usePrintKitchenTicket() {
+  const { data: branchSettings } = useBranchSettings();
   return useCallback(async (data: KitchenTicketData, mode: PrintMode = "combined") => {
+    const driver = currentPrintDriver(branchSettings);
     if (mode === "per_item" && data.items.length > 1) {
       const total = data.items.length;
-      const htmls = data.items.map((item, idx) =>
-        buildKitchenTicketHtml({
+      const tickets = data.items.map((item, idx) => ({
           ...data,
           items: [item],
           ticketLabel: `${idx + 1}/${total}`,
-        }),
-      );
-      await printHtmlSequential(htmls);
+        }));
+      if (driver !== "browser_print") {
+        for (const ticket of tickets) {
+          if (!(await printEscPos(buildKitchenEscPos(ticket), driver))) break;
+        }
+        if (driver !== "rawbt_intent" || isAndroid()) return;
+      }
+      await printHtmlSequential(tickets.map((ticket) => buildKitchenTicketHtml(ticket)));
       return;
     }
+    if (driver !== "browser_print") {
+      if (await printEscPos(buildKitchenEscPos(data), driver)) return;
+    }
     await printHtml(buildKitchenTicketHtml(data));
-  }, []);
+  }, [branchSettings]);
 }
 
 export function usePrintReceipt() {
-  return useCallback((data: ReceiptTicketData) => {
+  const { data: branchSettings } = useBranchSettings();
+  return useCallback(async (data: ReceiptTicketData) => {
+    const driver = currentPrintDriver(branchSettings);
+    if (driver !== "browser_print") {
+      if (await printEscPos(buildReceiptEscPos(data), driver)) return;
+    }
     const html = buildReceiptTicketHtml(data);
     printHtml(html);
-  }, []);
+  }, [branchSettings]);
 }
 
 export function usePrintTemporaryTransferBill() {
-  return useCallback((data: TemporaryTransferBillData) => {
+  const { data: branchSettings } = useBranchSettings();
+  return useCallback(async (data: TemporaryTransferBillData) => {
+    const driver = currentPrintDriver(branchSettings);
+    if (driver !== "browser_print") {
+      if (await printEscPos(buildTemporaryTransferEscPos(data), driver)) return;
+    }
     const html = buildTemporaryTransferBillHtml(data);
     printHtml(html);
-  }, []);
+  }, [branchSettings]);
 }

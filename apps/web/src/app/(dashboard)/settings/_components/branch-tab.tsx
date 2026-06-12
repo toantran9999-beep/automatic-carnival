@@ -38,6 +38,7 @@ export function BranchTab() {
     inventoryEnabled: false,
     waiterTableAssignmentEnabled: false,
     printMode: "combined" as "combined" | "per_item",
+    printDriver: "browser_print" as "browser_print" | "rawbt_intent" | "android_bridge",
   });
 
   useEffect(() => {
@@ -52,6 +53,9 @@ export function BranchTab() {
         inventoryEnabled: branchData.settings?.inventory_enabled ?? false,
         waiterTableAssignmentEnabled: branchData.settings?.waiter_table_assignment_enabled ?? false,
         printMode: branchData.settings?.print_mode === "per_item" ? "per_item" : "combined",
+        printDriver: ["rawbt_intent", "android_bridge"].includes(branchData.settings?.print_driver)
+          ? branchData.settings.print_driver
+          : "browser_print",
       });
     }
   }, [branchData]);
@@ -69,6 +73,7 @@ export function BranchTab() {
         inventoryEnabled: branchForm.inventoryEnabled,
         waiterTableAssignmentEnabled: branchForm.waiterTableAssignmentEnabled,
         printMode: branchForm.printMode,
+        printDriver: branchForm.printDriver,
       });
       toast.success(t("settings.branchSuccess"));
     } catch (err: any) {
@@ -228,6 +233,28 @@ export function BranchTab() {
               </Select>
               <p className="text-xs text-muted-foreground">
                 {t("settings.printModeHelp")}
+              </p>
+            </div>
+            <div className="space-y-2 rounded-lg border p-4">
+              <Label>{t("settings.printDriverLabel")}</Label>
+              <Select
+                value={branchForm.printDriver}
+                onValueChange={(v) => setBranchForm({
+                  ...branchForm,
+                  printDriver: v as "browser_print" | "rawbt_intent" | "android_bridge",
+                })}
+              >
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="browser_print">{t("settings.printDriverBrowser")}</SelectItem>
+                  <SelectItem value="rawbt_intent">{t("settings.printDriverRawbt")}</SelectItem>
+                  <SelectItem value="android_bridge">{t("settings.printDriverBridge")}</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">
+                {t("settings.printDriverHelp")}
               </p>
             </div>
             <Button onClick={handleBranchSave} disabled={updateBranch.isPending}>

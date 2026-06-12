@@ -55,7 +55,7 @@
 ## 5. Mô hình dữ liệu — điểm cần nhớ
 
 - Đa tenant: `organizations → branches`; mọi bảng nghiệp vụ có `branch_id` + `organization_id`. `user_branches` (n-n) gán nhân viên ↔ chi nhánh.
-- `branches.settings` (jsonb) chứa flag: `print_mode` (combined/per_item), `inventory_enabled`, `waiter_table_assignment_enabled`.
+- `branches.settings` (jsonb) chứa flag: `print_mode` (combined/per_item), `print_driver` (browser_print/rawbt_intent/android_bridge), `inventory_enabled`, `waiter_table_assignment_enabled`.
 - `menu_items.unit` (ĐVT), `order_items.unit` (snapshot). `modifiers.price` cho phép **âm** (giảm giá). `modifiers.sort_order` + `modifier_groups.sort_order` (thứ tự nhóm/tùy chọn). `menu_item_modifier_groups` = bảng nối (item ↔ nhóm).
 - `table_session_events` = nhật ký gộp/tách/chuyển/void bàn (action: transfer/merge/split/void).
 - Tiền lưu **cents** (×100). VAT inclusive 10% (`branches.tax_rate=1000`).
@@ -88,10 +88,11 @@
 - **Upload logo/ảnh món**: `storeUpload` lưu **cục bộ** (volume `uploadsdata` → Caddy `/uploads`) khi chưa cấu hình R2. `logoUrl`/`imageUrl` chấp nhận path tương đối (`publicImageUrlSchema`).
 - **Bảng điều khiển** sửa: map đúng field API + chuyển sang route `/dashboard` (tránh `app/page.tsx` redirect `/orders`).
 - **Codex**: thanh toán chuyển khoản qua **phiếu tạm tính QR 60 phút** (`payment_requests`, `payment_webhook_events`, `POST /api/payments/requests`, `POST /api/payments/webhooks/sepay`). POS in phiếu tạm tính có QR/mã hết hạn, webhook SePay mới tạo `payments.method=transfer`; cấu hình ngân hàng theo chi nhánh ở Settings → Chi nhánh (`branches.settings.payment.sepay`).
+- **Codex**: thêm **print driver nhanh cho Android POS** (`branches.settings.print_driver`). `browser_print` giữ `window.print()` fallback, `rawbt_intent` gửi ESC/POS base64 qua RawBT trên Android, `android_bridge` gửi payload ESC/POS cho bridge/WebView native. Phiếu bếp, hóa đơn, tạm tính QR đều có đường ESC/POS.
 
 ## 7. Gotchas (đọc kỹ trước khi sửa)
 
-- **In**: client-side `window.print()`. Máy in phải gắn ở thiết bị mở web. Android cần RawBT (in dạng ảnh để đúng tiếng Việt).
+- **In**: máy in phải gắn ở thiết bị mở web. Desktop/browser fallback dùng `window.print()`. Android POS USB nên đổi `branches.settings.print_driver` sang `rawbt_intent` hoặc `android_bridge` để bỏ dialog A4 Chrome.
 - **seed.ts TRUNCATE** sạch DB — chỉ cho DB trống. Backup `pg_dump` trước khi đụng DB (`/root/menu-backups`, `/root/db-backup-*`).
 - **Phân quyền**: server ở `packages/config/src/index.ts` (`PERMISSIONS`); ẩn nav ở `(dashboard)/layout.tsx` (`allowedPaths`). Sửa 1 vai trò nhớ sửa cả 2 nơi.
 - **Upload**: `lib/r2.ts` `storeUpload`/`deleteUpload`. Volume `uploadsdata` mount api(rw)/web(ro)/caddy(ro `/srv/uploads`).

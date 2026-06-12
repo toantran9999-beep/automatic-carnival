@@ -251,6 +251,7 @@ export const updateBranchSettingsSchema = z.object({
   inventoryEnabled: z.boolean().optional(),
   waiterTableAssignmentEnabled: z.boolean().optional(),
   printMode: z.enum(["combined", "per_item"]).optional(),
+  printDriver: z.enum(["browser_print", "rawbt_intent", "android_bridge"]).optional(),
 });
 
 // Query validators for GET endpoints

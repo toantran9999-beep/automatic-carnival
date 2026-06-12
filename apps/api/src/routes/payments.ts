@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, desc, gte, lte, sql, sum } from "drizzle-orm";
+import { eq, and, desc, gte, lte, gt, sql, sum } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import { createPaymentRequestSchema, createPaymentSchema, idParamSchema } from "@restai/validators";
 import { authMiddleware } from "../middleware/auth.js";
@@ -634,7 +634,7 @@ payments.post(
         and(
           eq(schema.paymentRequests.order_id, order.id),
           eq(schema.paymentRequests.status, "pending"),
-          sql`${schema.paymentRequests.expires_at} <= ${now}`,
+          lte(schema.paymentRequests.expires_at, now),
         ),
       );
 
@@ -663,7 +663,7 @@ payments.post(
           eq(schema.paymentRequests.order_id, order.id),
           eq(schema.paymentRequests.branch_id, tenant.branchId),
           eq(schema.paymentRequests.status, "pending"),
-          sql`${schema.paymentRequests.expires_at} > ${now}`,
+          gt(schema.paymentRequests.expires_at, now),
         ),
       )
       .orderBy(desc(schema.paymentRequests.created_at))

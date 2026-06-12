@@ -396,12 +396,12 @@ export function CartSidebar({
               Tạm tính
             </Button>
           <Button
-            className="flex h-11 items-center justify-center gap-2 bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700"
+            className="flex h-11 min-w-0 items-center justify-center gap-1.5 bg-emerald-600 px-2 text-xs font-semibold text-white hover:bg-emerald-700"
             disabled={isPending}
             onClick={onPayUnpaidOrders}
           >
             <Check className="h-4 w-4" />
-            {lang === "vi" ? "Thanh toán bàn" : "Pay Table"} · {formatCurrency(unpaidTotal)}
+            <span className="truncate">{lang === "vi" ? "Thanh toán" : "Pay"}</span>
           </Button>
           </div>
         ) : (

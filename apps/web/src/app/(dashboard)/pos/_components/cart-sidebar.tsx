@@ -44,6 +44,7 @@ export function CartSidebar({
   onRemove,
   onClearCart,
   onCreateOrder,
+  onPrintTemporaryBill,
   activeSession,
   onPayUnpaidOrders,
   className,
@@ -65,6 +66,7 @@ export function CartSidebar({
   onRemove: (lineId: string) => void;
   onClearCart: () => void;
   onCreateOrder: (payImmediately: boolean) => void;
+  onPrintTemporaryBill: () => void;
   activeSession?: any;
   onPayUnpaidOrders?: () => void;
   className?: string;
@@ -383,14 +385,25 @@ export function CartSidebar({
 
       {cart.length === 0 ? (
         hasUnpaid ? (
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              className="h-11 text-sm font-semibold"
+              disabled={isPending}
+              onClick={onPrintTemporaryBill}
+            >
+              <Printer className="mr-1.5 h-4 w-4" />
+              Tạm tính
+            </Button>
           <Button
-            className="flex h-11 w-full items-center justify-center gap-2 bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700"
+            className="flex h-11 items-center justify-center gap-2 bg-emerald-600 text-sm font-semibold text-white hover:bg-emerald-700"
             disabled={isPending}
             onClick={onPayUnpaidOrders}
           >
             <Check className="h-4 w-4" />
             {lang === "vi" ? "Thanh toán bàn" : "Pay Table"} · {formatCurrency(unpaidTotal)}
           </Button>
+          </div>
         ) : (
           <Button className="h-11 w-full text-sm font-semibold" disabled>
             <Check className="mr-2 h-4 w-4" />
@@ -398,10 +411,10 @@ export function CartSidebar({
           </Button>
         )
       ) : (
-        <div className="flex gap-2">
+        <div className="grid grid-cols-[1fr_1fr_1.35fr] gap-2">
           <Button
             variant="outline"
-            className="h-11 flex-1 text-sm font-semibold"
+            className="h-11 text-sm font-semibold"
             disabled={isPending}
             onClick={() => onCreateOrder(false)}
           >
@@ -415,7 +428,22 @@ export function CartSidebar({
             )}
           </Button>
           <Button
-            className="h-11 flex-[1.5] text-sm font-semibold"
+            variant="outline"
+            className="h-11 text-sm font-semibold"
+            disabled={isPending}
+            onClick={onPrintTemporaryBill}
+          >
+            {isPending ? (
+              <Loader2 className="h-4 w-4 animate-spin" />
+            ) : (
+              <>
+                <Printer className="mr-1.5 h-4 w-4" />
+                Tạm tính
+              </>
+            )}
+          </Button>
+          <Button
+            className="h-11 text-sm font-semibold"
             disabled={isPending}
             onClick={() => onCreateOrder(true)}
           >

@@ -56,7 +56,7 @@ export function useBranches(options?: { enabled?: boolean }) {
 export function useCreateBranch() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { name: string; slug: string; address?: string; phone?: string; timezone?: string; currency?: string; taxRate?: number }) =>
+    mutationFn: (data: { name: string; slug: string; address?: string; phone?: string; timezone?: string; currency?: string; taxRate?: number; settings?: Record<string, unknown> }) =>
       apiFetch("/api/branches", {
         method: "POST",
         body: JSON.stringify(data),
@@ -69,7 +69,7 @@ export function useCreateBranch() {
 export function useUpdateBranchById() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ id, ...data }: { id: string; name?: string; slug?: string; address?: string; phone?: string }) =>
+    mutationFn: ({ id, ...data }: { id: string; name?: string; slug?: string; address?: string; phone?: string; settings?: Record<string, unknown> }) =>
       apiFetch(`/api/branches/${id}`, {
         method: "PATCH",
         body: JSON.stringify(data),

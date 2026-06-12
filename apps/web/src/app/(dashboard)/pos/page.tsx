@@ -11,6 +11,7 @@ import {
 import { formatCurrency } from "@/lib/utils";
 import { useCategories, useMenuItems } from "@/hooks/use-menu";
 import { useCreateOrder } from "@/hooks/use-orders";
+import { useCreatePaymentRequest } from "@/hooks/use-payments";
 import { useTables } from "@/hooks/use-tables";
 import { toast } from "sonner";
 import { useTranslation } from "@/stores/lang-store";
@@ -19,7 +20,7 @@ import { CartSidebar } from "./_components/cart-sidebar";
 import { ModifierDialog, type CartModifier } from "./_components/modifier-dialog";
 import { SuccessDialog } from "./_components/success-dialog";
 import { useBranchSettings } from "@/hooks/use-settings";
-import { usePrintKitchenTicket } from "@/components/print-ticket";
+import { usePrintKitchenTicket, usePrintTemporaryTransferBill } from "@/components/print-ticket";
 import { PosPaymentDialog } from "./_components/pos-payment-dialog";
 import { useTableActiveSession } from "@/hooks/use-tables";
 import { useQueryClient } from "@tanstack/react-query";
@@ -97,9 +98,11 @@ export default function PosPage() {
   const { data: menuItems, isLoading: itemsLoading } = useMenuItems();
   const { data: tablesData } = useTables();
   const createOrder = useCreateOrder();
+  const createPaymentRequest = useCreatePaymentRequest();
 
   const { data: branchSettings } = useBranchSettings();
   const printKitchenTicket = usePrintKitchenTicket();
+  const printTemporaryTransferBill = usePrintTemporaryTransferBill();
   const qc = useQueryClient();
 
   const { data: activeSessionData } = useTableActiveSession(tableId);
@@ -166,6 +169,129 @@ export default function PosPage() {
 
   const removeFromCart = (lineId: string) => {
     setCart((prev) => prev.filter((c) => c.lineId !== lineId));
+  };
+
+  const mapTicketItems = (items: PosCartItem[]) =>
+    items.map((i) => {
+      const modTotal = i.modifiers.reduce((sum, m) => sum + m.price, 0);
+      const nameWithMods = i.modifiers.length > 0
+        ? `${i.name} (${i.modifiers.map((m) => m.name).join(", ")})`
+        : i.name;
+      return {
+        name: nameWithMods,
+        quantity: i.quantity,
+        unit_price: i.unitPrice + modTotal,
+        total: (i.unitPrice + modTotal) * i.quantity,
+        notes: i.notes,
+        unit: i.unit,
+      };
+    });
+
+  const printTemporaryBill = async (args: {
+    orderId: string;
+    orderNumber: string;
+    total: number;
+    tax: number;
+    items: PosCartItem[];
+  }) => {
+    const request = await createPaymentRequest.mutateAsync({
+      orderId: args.orderId,
+      amount: args.total,
+    }) as any;
+
+    printTemporaryTransferBill({
+      businessName: (branchSettings as any)?.name || "TODA POS",
+      address: (branchSettings as any)?.address || undefined,
+      orderNumber: args.orderNumber,
+      tableNumber,
+      customerName: customerName || undefined,
+      createdAt: new Date().toISOString(),
+      expiresAt: request.expires_at,
+      items: mapTicketItems(args.items),
+      subtotal: args.total - args.tax,
+      tax: args.tax,
+      total: args.total,
+      paymentCode: request.payment_code,
+      qrUrl: request.qr_url,
+      qrPayload: request.qr_payload || request.payment_code,
+      bank: request.bank,
+    });
+  };
+
+  const handlePrintTemporaryBill = async () => {
+    try {
+      const taxRate = branchSettings?.tax_rate ?? 1000;
+
+      if (cart.length > 0) {
+        const result = await createOrder.mutateAsync({
+          type: orderType,
+          customerName: customerName || t("pos.customerPOS"),
+          items: cart.map((item) => ({
+            menuItemId: item.menuItemId,
+            quantity: item.quantity,
+            notes: item.notes || undefined,
+            modifiers: item.modifiers.map((m) => ({ modifierId: m.modifierId })),
+          })),
+          notes: orderNotes || undefined,
+          tableId: orderType === "dine_in" ? (tableId || undefined) : undefined,
+        });
+
+        const subtotal = cart.reduce((sum, item) => {
+          const modTotal = item.modifiers.reduce((ms, m) => ms + m.price, 0);
+          return sum + (item.unitPrice + modTotal) * item.quantity;
+        }, 0);
+        const taxAmount = Math.round(subtotal - subtotal / (1 + taxRate / 10000));
+
+        await printTemporaryBill({
+          orderId: result.id,
+          orderNumber: result.order_number || result.orderNumber || "",
+          total: subtotal,
+          tax: taxAmount,
+          items: cart,
+        });
+
+        setCart([]);
+        setCustomerName("");
+        setOrderNotes("");
+        qc.invalidateQueries({ queryKey: ["tables"] });
+        qc.invalidateQueries({ queryKey: ["sessions"] });
+        toast.success("Đã in phiếu tạm tính");
+        return;
+      }
+
+      const unpaidOrders = activeSession?.orders?.filter(
+        (o: any) => o.status !== "completed" && o.status !== "cancelled",
+      ) || [];
+      if (unpaidOrders.length === 0) return;
+
+      const unpaidTotal = unpaidOrders.reduce((sum: number, o: any) => sum + o.total, 0);
+      const unpaidTax = Math.round(unpaidTotal - unpaidTotal / (1 + taxRate / 10000));
+      const targetOrder = unpaidOrders[0];
+      const allOrderedItems: PosCartItem[] = unpaidOrders.flatMap((order: any) =>
+        order.items.map((item: any) => ({
+          lineId: item.id,
+          menuItemId: item.menu_item_id,
+          name: item.name,
+          imageUrl: item.image_url || null,
+          unitPrice: item.unit_price,
+          quantity: item.quantity,
+          notes: item.notes || undefined,
+          unit: item.unit || undefined,
+          modifiers: item.modifiers || [],
+        })),
+      );
+
+      await printTemporaryBill({
+        orderId: targetOrder.id,
+        orderNumber: targetOrder.order_number,
+        total: unpaidTotal,
+        tax: unpaidTax,
+        items: allOrderedItems,
+      });
+      toast.success("Đã in phiếu tạm tính");
+    } catch (err: any) {
+      toast.error(err.message || "Không in được phiếu tạm tính");
+    }
   };
 
   const handleCreateOrder = async (payImmediately = false) => {
@@ -349,6 +475,7 @@ export default function PosPage() {
     onUpdateQty: updateCartQty,
     onRemove: removeFromCart,
     onClearCart: () => setCart([]),
+    onPrintTemporaryBill: handlePrintTemporaryBill,
     activeSession,
   };
 

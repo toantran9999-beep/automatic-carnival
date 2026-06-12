@@ -24,6 +24,30 @@ export function useCreatePayment() {
   });
 }
 
+export function useCreatePaymentRequest() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (data: { orderId: string; amount?: number }) =>
+      apiFetch("/api/payments/requests", {
+        method: "POST",
+        body: JSON.stringify(data),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["payments"] });
+      qc.invalidateQueries({ queryKey: ["orders"] });
+    },
+  });
+}
+
+export function usePaymentRequest(id?: string) {
+  return useQuery({
+    queryKey: ["payments", "requests", id],
+    queryFn: () => apiFetch(`/api/payments/requests/${id}`),
+    enabled: Boolean(id),
+    refetchInterval: 5000,
+  });
+}
+
 export function usePaymentSummary() {
   return useQuery({
     queryKey: ["payments", "summary"],

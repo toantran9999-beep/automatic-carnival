@@ -226,3 +226,75 @@ Task: Implement "Gop/Tach/Chuyen Ban Tren Dien Thoai Nhan Vien".
 - The only frontend layout-adjacent changes are scoped to the `/tables` page and table card components.
 - If a broader dashboard/sidebar/app layout changed, that was not from this Codex table-operations task.
 - The new UI entrypoint is intentionally small: an icon button on occupied table cards opens the operation dialog.
+
+---
+
+## 2026-06-12 - Codex - Bank transfer temporary bill QR (SePay)
+
+### Goal
+
+Implement bank-transfer payment flow where POS prints a temporary bill with a 60-minute VietQR/payment code. SePay webhook confirms the transfer and only then creates the real `payments.method=transfer` record.
+
+### Files Touched By Codex
+
+- `packages/db/src/schema/payments.ts`
+  - Added `paymentRequests` and `paymentWebhookEvents` schema.
+- `packages/db/drizzle/0006_payment_requests.sql`
+  - Added migration for transfer payment requests and webhook event audit log.
+- `packages/db/drizzle/meta/_journal.json`
+  - Registered migration `0006_payment_requests`.
+- `packages/validators/src/index.ts`
+  - Added `createPaymentRequestSchema`; allowed branch settings payload.
+- `apps/api/src/routes/payments.ts`
+  - Added public `POST /api/payments/webhooks/sepay`.
+  - Added `POST /api/payments/requests` and `GET /api/payments/requests/:id`.
+  - Webhook matches by `TODA-*` payment code, enforces 60-minute expiry, logs stale/underpaid/duplicate events, and publishes payment WS events.
+- `apps/api/src/routes/branches.ts`
+  - Allowed branch `settings` updates for payment configuration.
+- `apps/web/src/hooks/use-payments.ts`
+  - Added hooks for creating/polling payment requests.
+- `apps/web/src/components/print-ticket.tsx`
+  - Added 80mm temporary transfer bill printer with QR/payment code/expiry.
+- `apps/web/src/app/(dashboard)/pos/_components/pos-payment-dialog.tsx`
+  - Transfer method now prints a temporary QR bill instead of completing payment immediately.
+  - Shows pending/paid/underpaid/expired transfer status.
+- `apps/web/src/hooks/use-settings.ts`
+  - Allowed branch settings payload in update hooks.
+- `apps/web/src/app/(dashboard)/settings/_components/sedes-tab.tsx`
+  - Added per-branch SePay/VietQR bank configuration fields.
+- `ARCHITECTURE.md`
+  - Documented migration and feature log.
+
+### Files Not Touched By Codex In This Task
+
+- `apps/web/src/app/(dashboard)/layout.tsx`
+- Sidebar/navigation layout files
+- Menu/product card layout
+- Table operation UI and APIs
+- Kitchen ticket order creation flow
+
+### Verification Run
+
+- `bunx tsc --noEmit -p apps/api/tsconfig.json` succeeded.
+- `bunx tsc --noEmit -p apps/web/tsconfig.json` succeeded.
+
+### Notes For Claude
+
+- This task intentionally touches Settings branch dialog only to configure `branches.settings.payment.sepay`.
+- The transfer button no longer marks an order paid directly; webhook confirmation or the existing manual payment path must create the final payment.
+- Temporary bills reuse active pending codes within 60 minutes and create a fresh code after expiry.
+
+### Follow-up Same Feature
+
+- `apps/web/src/app/(dashboard)/pos/_components/cart-sidebar.tsx`
+  - Added visible `Tạm tính` button in the POS cart action row.
+  - Added `Tạm tính` for occupied-table/unpaid-order state when cart is empty.
+- `apps/web/src/app/(dashboard)/pos/page.tsx`
+  - Added handler to create/reuse a 60-minute transfer payment request and print the temporary QR bill directly from POS.
+  - If cart has unsent items, it creates the order first, then prints the temporary bill without reprinting kitchen tickets.
+- `apps/api/src/routes/payments.ts`
+  - Adjusted webhook stale-amount validation so a payment request for a whole table session can cover multiple unpaid orders.
+
+Verification:
+- `bunx tsc --noEmit -p apps/web/tsconfig.json` succeeded.
+- `bunx tsc --noEmit -p apps/api/tsconfig.json` succeeded.

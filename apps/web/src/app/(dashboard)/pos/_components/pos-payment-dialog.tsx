@@ -1,7 +1,8 @@
 "use client";
 
 import { useState, useEffect } from "react";
-import { Printer, CheckCircle2, Loader2, Banknote, CreditCard, Landmark } from "lucide-react";
+import { Printer, CheckCircle2, Loader2, Banknote, CreditCard, Landmark, Clock3 } from "lucide-react";
+import { QRCodeSVG } from "qrcode.react";
 import { Input } from "@restai/ui/components/input";
 import { Label } from "@restai/ui/components/label";
 import { Button } from "@restai/ui/components/button";
@@ -13,9 +14,9 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@restai/ui/components/dialog";
-import { useCreatePayment } from "@/hooks/use-payments";
+import { useCreatePayment, useCreatePaymentRequest, usePaymentRequest } from "@/hooks/use-payments";
 import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
-import { usePrintReceipt, usePrintKitchenTicket } from "@/components/print-ticket";
+import { usePrintReceipt, usePrintKitchenTicket, usePrintTemporaryTransferBill } from "@/components/print-ticket";
 import { formatCurrency } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
 import type { PosCartItem } from "../page";
@@ -55,12 +56,16 @@ export function PosPaymentDialog({
   const [amountTendered, setAmountTendered] = useState("");
   const [processing, setProcessing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  const [paymentRequestId, setPaymentRequestId] = useState<string | undefined>();
 
   const { data: orgSettings } = useOrgSettings();
   const { data: branchSettings } = useBranchSettings();
   const createPayment = useCreatePayment();
+  const createPaymentRequest = useCreatePaymentRequest();
+  const { data: paymentRequest } = usePaymentRequest(paymentRequestId);
   const printReceipt = usePrintReceipt();
   const printKitchenTicket = usePrintKitchenTicket();
+  const printTemporaryTransferBill = usePrintTemporaryTransferBill();
 
   const currency = (branchSettings as any)?.currency || "VND";
 
@@ -73,8 +78,19 @@ export function PosPaymentDialog({
       setDocType("boleta_simple");
       setDocNumber("");
       setDocHolderName("");
+      setPaymentRequestId(undefined);
     }
   }, [open, totalAmount]);
+
+  useEffect(() => {
+    const request = paymentRequest as any;
+    if (!request || request.status !== "paid" || paymentSuccess) return;
+    setPaymentSuccess(true);
+    setTimeout(() => {
+      onSuccess();
+      onOpenChange(false);
+    }, 1500);
+  }, [paymentRequest, paymentSuccess, onSuccess, onOpenChange]);
 
   const isFormValid = () => {
     if (docType === "boleta_simple") return true;
@@ -89,8 +105,61 @@ export function PosPaymentDialog({
     setDocHolderName("");
   };
 
+  const mappedItems = cart.map((i) => {
+    const modTotal = i.modifiers.reduce((sum, m) => sum + m.price, 0);
+    const nameWithMods = i.modifiers.length > 0
+      ? `${i.name} (${i.modifiers.map((m) => m.name).join(", ")})`
+      : i.name;
+    return {
+      name: nameWithMods,
+      quantity: i.quantity,
+      unit_price: i.unitPrice + modTotal,
+      total: (i.unitPrice + modTotal) * i.quantity,
+      notes: i.notes,
+      unit: i.unit,
+    };
+  });
+
+  const handleTransferBill = async () => {
+    if (!orderId || !isFormValid() || processing) return;
+    setProcessing(true);
+    try {
+      const request = await createPaymentRequest.mutateAsync({
+        orderId,
+        amount: totalAmount,
+      }) as any;
+      setPaymentRequestId(request.id);
+
+      const org = orgSettings as any;
+      const branch = branchSettings as any;
+      printTemporaryTransferBill({
+        businessName: org?.name || "TODA POS",
+        address: branch?.address || undefined,
+        orderNumber,
+        tableNumber,
+        customerName,
+        createdAt: new Date().toISOString(),
+        expiresAt: request.expires_at,
+        items: mappedItems,
+        subtotal: totalAmount - taxAmount,
+        tax: taxAmount,
+        total: totalAmount,
+        paymentCode: request.payment_code,
+        qrUrl: request.qr_url,
+        qrPayload: request.qr_payload || request.payment_code,
+        bank: request.bank,
+      });
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const handlePaymentSubmit = async () => {
     if (!orderId || !isFormValid() || processing) return;
+    if (method === "transfer") {
+      await handleTransferBill();
+      return;
+    }
     setProcessing(true);
 
     try {
@@ -103,22 +172,6 @@ export function PosPaymentDialog({
       });
 
       setPaymentSuccess(true);
-
-      // 2. Map items for thermal printing
-      const mappedItems = cart.map((i) => {
-        const modTotal = i.modifiers.reduce((sum, m) => sum + m.price, 0);
-        const nameWithMods = i.modifiers.length > 0
-          ? `${i.name} (${i.modifiers.map((m) => m.name).join(", ")})`
-          : i.name;
-        return {
-          name: nameWithMods,
-          quantity: i.quantity,
-          unit_price: i.unitPrice + modTotal,
-          total: (i.unitPrice + modTotal) * i.quantity,
-          notes: i.notes,
-          unit: i.unit,
-        };
-      });
 
       // 3. Print Kitchen Preparation Ticket
       const printMode = (branchSettings as any)?.settings?.print_mode === "per_item" ? "per_item" : "combined";
@@ -166,6 +219,18 @@ export function PosPaymentDialog({
   const tenderedCents = Math.round((parseFloat(amountTendered) || 0) * 100);
   const showChange = method === "cash" && tenderedCents > totalAmount;
   const changeAmount = showChange ? tenderedCents - totalAmount : 0;
+  const transferRequest = paymentRequest as any;
+  const expiresAt = transferRequest?.expires_at ? new Date(transferRequest.expires_at) : null;
+  const isExpired = Boolean(expiresAt && Date.now() > expiresAt.getTime());
+  const transferStatus = transferRequest?.status === "paid"
+    ? "Đã nhận tiền"
+    : transferRequest?.paid_amount > 0 && transferRequest.paid_amount < transferRequest.amount
+      ? "Thiếu tiền"
+      : isExpired || transferRequest?.status === "expired"
+        ? "Quá hạn"
+        : transferRequest
+          ? "Đang chờ chuyển khoản"
+          : "";
 
   return (
     <Dialog open={open} onOpenChange={(val) => !processing && onOpenChange(val)}>
@@ -326,6 +391,41 @@ export function PosPaymentDialog({
                 />
               </div>
             )}
+
+            {method === "transfer" && transferRequest && (
+              <div className="space-y-3 rounded-xl border bg-muted/20 p-4 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between gap-3">
+                  <div className="font-semibold flex items-center gap-2">
+                    <Clock3 className="h-4 w-4 text-primary" />
+                    {transferStatus}
+                  </div>
+                  <Button
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={handleTransferBill}
+                    disabled={processing}
+                  >
+                    {transferRequest.status === "expired" || isExpired ? "In phiếu mới" : "In lại phiếu"}
+                  </Button>
+                </div>
+                <div className="flex items-center gap-3">
+                  <div className="rounded-lg bg-white p-2">
+                    <QRCodeSVG value={transferRequest.qr_payload || transferRequest.payment_code} size={96} level="M" />
+                  </div>
+                  <div className="min-w-0 text-xs space-y-1">
+                    <div>Mã: <span className="font-mono font-bold">{transferRequest.payment_code}</span></div>
+                    <div>
+                      Hết hạn: {expiresAt ? expiresAt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "-"}
+                    </div>
+                    <div>Số tiền: {formatCurrency(transferRequest.amount)}</div>
+                    {transferRequest.paid_amount > 0 && transferRequest.paid_amount < transferRequest.amount && (
+                      <div className="text-destructive">Đã nhận: {formatCurrency(transferRequest.paid_amount)}</div>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
@@ -348,7 +448,9 @@ export function PosPaymentDialog({
                 ) : (
                   <>
                     <Printer className="h-4 w-4 mr-2" />
-                    {lang === "vi" ? "Xác nhận & In Hóa đơn" : "Confirm & Print Receipt"}
+                    {method === "transfer"
+                      ? "In phiếu tạm tính QR"
+                      : (lang === "vi" ? "Xác nhận & In Hóa đơn" : "Confirm & Print Receipt")}
                   </>
                 )}
               </Button>

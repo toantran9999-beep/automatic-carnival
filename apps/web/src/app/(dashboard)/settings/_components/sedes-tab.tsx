@@ -46,23 +46,41 @@ export function SedesTab() {
     slug: "",
     address: "",
     phone: "",
+    bankCode: "",
+    accountNumber: "",
+    accountName: "",
+    webhookSecret: "",
   });
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
 
   const openCreateBranchDialog = () => {
     setEditingBranch(null);
-    setBranchDialogForm({ name: "", slug: "", address: "", phone: "" });
+    setBranchDialogForm({
+      name: "",
+      slug: "",
+      address: "",
+      phone: "",
+      bankCode: "",
+      accountNumber: "",
+      accountName: "",
+      webhookSecret: "",
+    });
     setSlugManuallyEdited(false);
     setBranchDialogOpen(true);
   };
 
   const openEditBranchDialog = (branch: any) => {
+    const sepay = branch.settings?.payment?.sepay || branch.settings?.sepay || {};
     setEditingBranch(branch);
     setBranchDialogForm({
       name: branch.name || "",
       slug: branch.slug || "",
       address: branch.address || "",
       phone: branch.phone || "",
+      bankCode: sepay.bank_code || sepay.bankCode || "",
+      accountNumber: sepay.account_number || sepay.accountNumber || "",
+      accountName: sepay.account_name || sepay.accountName || "",
+      webhookSecret: sepay.webhook_secret || sepay.webhookSecret || sepay.api_key || sepay.apiKey || "",
     });
     setSlugManuallyEdited(true);
     setBranchDialogOpen(true);
@@ -70,6 +88,20 @@ export function SedesTab() {
 
   const handleBranchDialogSave = async () => {
     try {
+      const currentSettings = editingBranch?.settings || {};
+      const paymentSettings = {
+        ...(currentSettings.payment || {}),
+        sepay: {
+          bank_code: branchDialogForm.bankCode.trim(),
+          account_number: branchDialogForm.accountNumber.trim(),
+          account_name: branchDialogForm.accountName.trim(),
+          webhook_secret: branchDialogForm.webhookSecret.trim(),
+        },
+      };
+      const settings = {
+        ...currentSettings,
+        payment: paymentSettings,
+      };
       if (editingBranch) {
         await updateBranchById.mutateAsync({
           id: editingBranch.id,
@@ -77,6 +109,7 @@ export function SedesTab() {
           slug: branchDialogForm.slug,
           address: branchDialogForm.address,
           phone: branchDialogForm.phone,
+          settings,
         });
         toast.success(t("settings.branchSuccess"));
       } else {
@@ -85,6 +118,7 @@ export function SedesTab() {
           slug: branchDialogForm.slug,
           address: branchDialogForm.address || undefined,
           phone: branchDialogForm.phone || undefined,
+          settings,
         });
         toast.success(t("settings.createBranchSuccess"));
       }
@@ -157,7 +191,7 @@ export function SedesTab() {
       )}
 
       <Dialog open={branchDialogOpen} onOpenChange={setBranchDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] overflow-y-auto sm:max-w-2xl">
           <DialogHeader>
             <DialogTitle>{editingBranch ? t("settings.editBranch") : t("settings.newBranch")}</DialogTitle>
             <DialogDescription>
@@ -213,6 +247,51 @@ export function SedesTab() {
                 value={branchDialogForm.phone}
                 onChange={(e) => setBranchDialogForm({ ...branchDialogForm, phone: e.target.value })}
               />
+            </div>
+            <div className="rounded-lg border p-3 space-y-3">
+              <div>
+                <p className="text-sm font-semibold">Thanh toán chuyển khoản</p>
+                <p className="text-xs text-muted-foreground">Dùng cho QR tạm tính và webhook SePay của chi nhánh này.</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-2">
+                <div className="space-y-2">
+                  <Label htmlFor="dialogBankCode">Mã ngân hàng VietQR</Label>
+                  <Input
+                    id="dialogBankCode"
+                    placeholder="VD: MBBank, VCB, ACB"
+                    value={branchDialogForm.bankCode}
+                    onChange={(e) => setBranchDialogForm({ ...branchDialogForm, bankCode: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="dialogAccountNumber">Số tài khoản</Label>
+                  <Input
+                    id="dialogAccountNumber"
+                    placeholder="0123456789"
+                    value={branchDialogForm.accountNumber}
+                    onChange={(e) => setBranchDialogForm({ ...branchDialogForm, accountNumber: e.target.value })}
+                  />
+                </div>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dialogAccountName">Tên người nhận</Label>
+                <Input
+                  id="dialogAccountName"
+                  placeholder="CONG TY / CHU TAI KHOAN"
+                  value={branchDialogForm.accountName}
+                  onChange={(e) => setBranchDialogForm({ ...branchDialogForm, accountName: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="dialogWebhookSecret">SePay webhook secret/API key</Label>
+                <Input
+                  id="dialogWebhookSecret"
+                  type="password"
+                  placeholder="Dán secret dùng ở header webhook"
+                  value={branchDialogForm.webhookSecret}
+                  onChange={(e) => setBranchDialogForm({ ...branchDialogForm, webhookSecret: e.target.value })}
+                />
+              </div>
             </div>
           </div>
           <DialogFooter>

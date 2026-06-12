@@ -79,6 +79,30 @@ interface ReceiptTicketData {
   docHolderName?: string;
 }
 
+interface TemporaryTransferBillData {
+  businessName: string;
+  address?: string;
+  orderNumber: string;
+  tableNumber?: string | number | null;
+  customerName?: string;
+  createdAt: string;
+  expiresAt: string;
+  items: OrderItem[];
+  subtotal: number;
+  tax: number;
+  total: number;
+  paymentCode: string;
+  qrUrl?: string | null;
+  qrPayload: string;
+  bank?: {
+    bankCode?: string;
+    accountNumber?: string;
+    accountName?: string;
+    amountVnd?: number;
+    addInfo?: string;
+  };
+}
+
 function formatCents(cents: number): string {
   let lang = "vi";
   try {
@@ -368,6 +392,67 @@ function buildReceiptTicketHtml(data: ReceiptTicketData): string {
 </html>`;
 }
 
+function buildTemporaryTransferBillHtml(data: TemporaryTransferBillData): string {
+  const itemsHtml = data.items
+    .map(
+      (item) =>
+        `<tr>
+          <td style="text-align:left;padding:1px 0;">${item.quantity}x ${escapeHtml(item.name)}</td>
+          <td style="text-align:right;padding:1px 0;white-space:nowrap;">${formatCents(item.total)}</td>
+        </tr>`,
+    )
+    .join("");
+  const expires = new Date(data.expiresAt).toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Ho_Chi_Minh",
+  });
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Phiếu tạm tính #${data.orderNumber}</title>
+  <style>
+    ${thermalStyles(80)}
+    .totals td { padding: 1px 0; }
+    .qr { width: 42mm; height: 42mm; object-fit: contain; margin: 4px auto; display: block; }
+    .box { border: 1px solid #000; padding: 4px; margin-top: 4px; }
+  </style>
+</head>
+<body>
+  <div class="center bold" style="font-size:14px;">${escapeHtml(data.businessName)}</div>
+  ${data.address ? `<div class="center" style="font-size:10px;">${escapeHtml(data.address)}</div>` : ""}
+  <div class="divider"></div>
+  <div class="center bold" style="font-size:15px;">PHIẾU TẠM TÍNH</div>
+  <div class="center" style="font-size:10px;">${formatDateTime(data.createdAt)}</div>
+  <div class="center">Đơn: #${escapeHtml(data.orderNumber)}</div>
+  ${data.tableNumber ? `<div class="center bold">Bàn: ${escapeHtml(String(data.tableNumber))}</div>` : ""}
+  ${data.customerName ? `<div>Khách: ${escapeHtml(data.customerName)}</div>` : ""}
+  <div class="divider"></div>
+  <table>${itemsHtml}</table>
+  <div class="divider"></div>
+  <table class="totals">
+    <tr><td>Tạm tính:</td><td style="text-align:right;">${formatCents(data.subtotal)}</td></tr>
+    <tr><td>VAT:</td><td style="text-align:right;">${formatCents(data.tax)}</td></tr>
+    <tr class="bold"><td style="font-size:14px;">TỔNG CẦN TRẢ:</td><td style="text-align:right;font-size:14px;">${formatCents(data.total)}</td></tr>
+  </table>
+  <div class="divider"></div>
+  <div class="center bold">QUÉT QR CHUYỂN KHOẢN</div>
+  ${data.qrUrl ? `<img class="qr" src="${escapeHtml(data.qrUrl)}" />` : `<div class="box center">${escapeHtml(data.qrPayload)}</div>`}
+  <div class="box">
+    ${data.bank?.accountName ? `<div><b>Người nhận:</b> ${escapeHtml(data.bank.accountName)}</div>` : ""}
+    ${data.bank?.bankCode ? `<div><b>Ngân hàng:</b> ${escapeHtml(data.bank.bankCode)}</div>` : ""}
+    ${data.bank?.accountNumber ? `<div><b>STK:</b> ${escapeHtml(data.bank.accountNumber)}</div>` : ""}
+    <div><b>Nội dung:</b> ${escapeHtml(data.paymentCode)}</div>
+    <div><b>Hiệu lực đến:</b> ${expires}</div>
+  </div>
+  <div class="center" style="font-size:10px;margin-top:4px;">Mã quá hạn vui lòng xin phiếu mới.</div>
+</body>
+</html>`;
+}
+
 function isAndroid(): boolean {
   return typeof navigator !== "undefined" && /Android/i.test(navigator.userAgent);
 }
@@ -490,6 +575,13 @@ export function usePrintKitchenTicket() {
 export function usePrintReceipt() {
   return useCallback((data: ReceiptTicketData) => {
     const html = buildReceiptTicketHtml(data);
+    printHtml(html);
+  }, []);
+}
+
+export function usePrintTemporaryTransferBill() {
+  return useCallback((data: TemporaryTransferBillData) => {
+    const html = buildTemporaryTransferBillHtml(data);
     printHtml(html);
   }, []);
 }

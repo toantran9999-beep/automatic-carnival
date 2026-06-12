@@ -47,6 +47,7 @@ export const createBranchSchema = z.object({
   timezone: z.string().default("Asia/Ho_Chi_Minh"),
   currency: z.string().length(3).default("VND"),
   taxRate: z.number().int().min(0).max(10000).default(1000),
+  settings: z.record(z.unknown()).optional(),
 });
 
 export const updateBranchSchema = createBranchSchema.partial();
@@ -165,6 +166,11 @@ export const createPaymentSchema = z.object({
   amount: z.number().int().min(1),
   reference: z.string().max(255).optional(),
   tip: z.number().int().min(0).default(0),
+});
+
+export const createPaymentRequestSchema = z.object({
+  orderId: z.string().uuid(),
+  amount: z.number().int().min(1).optional(),
 });
 
 // Invoice validators

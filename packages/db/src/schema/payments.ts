@@ -8,6 +8,7 @@ import {
   jsonb,
   index,
   unique,
+  boolean,
 } from "drizzle-orm/pg-core";
 import {
   paymentMethodEnum,
@@ -38,6 +39,56 @@ export const payments = pgTable("payments", {
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
   index("idx_payments_order").on(table.order_id),
+]);
+
+export const paymentRequests = pgTable("payment_requests", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  order_id: uuid("order_id")
+    .notNull()
+    .references(() => orders.id, { onDelete: "cascade" }),
+  organization_id: uuid("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  branch_id: uuid("branch_id")
+    .notNull()
+    .references(() => branches.id, { onDelete: "cascade" }),
+  provider: varchar("provider", { length: 30 }).default("sepay").notNull(),
+  payment_code: varchar("payment_code", { length: 50 }).notNull(),
+  amount: integer("amount").notNull(), // in cents
+  status: varchar("status", { length: 20 }).default("pending").notNull(),
+  qr_payload: text("qr_payload"),
+  qr_url: text("qr_url"),
+  paid_amount: integer("paid_amount").default(0).notNull(), // in cents
+  provider_transaction_id: varchar("provider_transaction_id", { length: 255 }),
+  provider_payload: jsonb("provider_payload"),
+  expires_at: timestamp("expires_at", { withTimezone: true }).notNull(),
+  paid_at: timestamp("paid_at", { withTimezone: true }),
+  cancelled_at: timestamp("cancelled_at", { withTimezone: true }),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  unique("uq_payment_requests_code").on(table.payment_code),
+  unique("uq_payment_requests_provider_tx").on(table.provider, table.provider_transaction_id),
+  index("idx_payment_requests_order").on(table.order_id),
+  index("idx_payment_requests_branch_status").on(table.branch_id, table.status),
+]);
+
+export const paymentWebhookEvents = pgTable("payment_webhook_events", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  provider: varchar("provider", { length: 30 }).default("sepay").notNull(),
+  provider_transaction_id: varchar("provider_transaction_id", { length: 255 }),
+  payment_request_id: uuid("payment_request_id").references(() => paymentRequests.id, { onDelete: "set null" }),
+  branch_id: uuid("branch_id").references(() => branches.id, { onDelete: "set null" }),
+  amount: integer("amount").default(0).notNull(), // in cents
+  content: text("content"),
+  matched: boolean("matched").default(false).notNull(),
+  reason: varchar("reason", { length: 100 }),
+  payload: jsonb("payload"),
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  unique("uq_payment_webhook_provider_tx").on(table.provider, table.provider_transaction_id),
+  index("idx_payment_webhook_request").on(table.payment_request_id),
+  index("idx_payment_webhook_branch").on(table.branch_id),
 ]);
 
 export const invoices = pgTable("invoices", {

@@ -3,7 +3,7 @@ import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
 import { eq, and, desc, gte, lte, sql, sum } from "drizzle-orm";
 import { db, schema } from "@restai/db";
-import { createPaymentSchema, idParamSchema } from "@restai/validators";
+import { createPaymentRequestSchema, createPaymentSchema, idParamSchema } from "@restai/validators";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
@@ -12,6 +12,476 @@ import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
 
 const payments = new Hono<AppEnv>();
+const PAYMENT_REQUEST_TTL_MS = 60 * 60 * 1000;
+
+function centsToVnd(cents: number) {
+  return Math.round(cents / 100);
+}
+
+function normalizeText(value: unknown) {
+  return String(value ?? "").trim();
+}
+
+function randomPaymentCode(orderNumber: string) {
+  const cleanedOrder = orderNumber.replace(/[^A-Z0-9]/gi, "").slice(-8).toUpperCase() || "ORDER";
+  const random = Math.random().toString(36).slice(2, 8).toUpperCase();
+  return `TODA-${cleanedOrder}-${random}`;
+}
+
+function paymentSettings(branch: any) {
+  const settings = (branch?.settings || {}) as Record<string, any>;
+  return settings.payment?.sepay || settings.sepay || {};
+}
+
+function buildTransferPayload(branch: any, paymentCode: string, amount: number) {
+  const sepay = paymentSettings(branch);
+  const bankCode = normalizeText(sepay.bank_code || sepay.bankCode);
+  const accountNumber = normalizeText(sepay.account_number || sepay.accountNumber);
+  const accountName = normalizeText(sepay.account_name || sepay.accountName || branch?.name);
+  const amountVnd = centsToVnd(amount);
+  const addInfo = paymentCode;
+  const query = new URLSearchParams({
+    amount: String(amountVnd),
+    addInfo,
+    accountName,
+  });
+  const qrUrl = bankCode && accountNumber
+    ? `https://img.vietqr.io/image/${encodeURIComponent(bankCode)}-${encodeURIComponent(accountNumber)}-compact2.png?${query.toString()}`
+    : null;
+
+  return {
+    bankCode,
+    accountNumber,
+    accountName,
+    addInfo,
+    amountVnd,
+    qrPayload: qrUrl || `${accountName}|${accountNumber}|${amountVnd}|${addInfo}`,
+    qrUrl,
+  };
+}
+
+function extractPaymentCode(content: string) {
+  return content.match(/\bTODA-[A-Z0-9-]+\b/i)?.[0]?.toUpperCase() || "";
+}
+
+function webhookTransactionId(body: any) {
+  return normalizeText(
+    body.id ||
+    body.transactionId ||
+    body.transaction_id ||
+    body.referenceCode ||
+    body.reference_code ||
+    body.gatewayTransactionId ||
+    body.gateway_transaction_id,
+  );
+}
+
+function webhookAmountCents(body: any) {
+  const raw = body.transferAmount ?? body.transfer_amount ?? body.amount ?? body.value ?? 0;
+  const parsed = Number(String(raw).replace(/[^\d.-]/g, ""));
+  return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
+}
+
+function webhookContent(body: any) {
+  return normalizeText(
+    body.content ||
+    body.description ||
+    body.transactionContent ||
+    body.transaction_content ||
+    body.referenceCode ||
+    body.reference_code,
+  );
+}
+
+async function logWebhookEvent(data: {
+  providerTransactionId: string;
+  paymentRequestId?: string | null;
+  branchId?: string | null;
+  amount: number;
+  content: string;
+  matched: boolean;
+  reason: string;
+  payload: unknown;
+}) {
+  if (data.providerTransactionId) {
+    const [existing] = await db
+      .select({ id: schema.paymentWebhookEvents.id })
+      .from(schema.paymentWebhookEvents)
+      .where(
+        and(
+          eq(schema.paymentWebhookEvents.provider, "sepay"),
+          eq(schema.paymentWebhookEvents.provider_transaction_id, data.providerTransactionId),
+        ),
+      )
+      .limit(1);
+    if (existing) return;
+  }
+
+  await db.insert(schema.paymentWebhookEvents).values({
+    provider: "sepay",
+    provider_transaction_id: data.providerTransactionId || null,
+    payment_request_id: data.paymentRequestId || null,
+    branch_id: data.branchId || null,
+    amount: data.amount,
+    content: data.content,
+    matched: data.matched,
+    reason: data.reason,
+    payload: data.payload as any,
+  });
+}
+
+async function completePaymentForOrder(tx: any, args: {
+  orderId: string;
+  organizationId: string;
+  branchId: string;
+  amount: number;
+  reference?: string;
+}) {
+  const [order] = await tx
+    .select()
+    .from(schema.orders)
+    .where(and(eq(schema.orders.id, args.orderId), eq(schema.orders.branch_id, args.branchId)))
+    .limit(1);
+
+  if (!order) throw new Error("ORDER_NOT_FOUND");
+
+  let amountToDistribute = args.amount;
+  const paymentsCreated: any[] = [];
+  let fullyPaid = false;
+
+  const payOrder = async (o: any) => {
+    if (amountToDistribute <= 0) return;
+
+    const [prevOPayments] = await tx
+      .select({ total_paid: sum(schema.payments.amount) })
+      .from(schema.payments)
+      .where(and(eq(schema.payments.order_id, o.id), eq(schema.payments.status, "completed")));
+
+    const oPreviouslyPaid = Number(prevOPayments?.total_paid || 0);
+    const orderRemaining = o.total - oPreviouslyPaid;
+    if (orderRemaining <= 0) return;
+
+    const payAmount = Math.min(amountToDistribute, orderRemaining);
+    amountToDistribute -= payAmount;
+
+    const [payment] = await tx
+      .insert(schema.payments)
+      .values({
+        order_id: o.id,
+        organization_id: args.organizationId,
+        branch_id: args.branchId,
+        method: "transfer",
+        amount: payAmount,
+        reference: args.reference,
+        tip: 0,
+        status: "completed",
+      })
+      .returning();
+    paymentsCreated.push(payment);
+
+    if (oPreviouslyPaid + payAmount >= o.total) {
+      await tx
+        .update(schema.orders)
+        .set({ status: "completed", updated_at: new Date() })
+        .where(eq(schema.orders.id, o.id));
+    }
+  };
+
+  if (order.table_session_id) {
+    const sessionOrders = await tx
+      .select()
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.table_session_id, order.table_session_id),
+          sql`orders.status NOT IN ('completed', 'cancelled')`,
+        ),
+      )
+      .orderBy(schema.orders.created_at);
+
+    const sortedOrders = [order, ...sessionOrders.filter((o: any) => o.id !== order.id)];
+    for (const o of sortedOrders) {
+      await payOrder(o);
+    }
+
+    const otherUncompletedOrders = await tx
+      .select()
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.table_session_id, order.table_session_id),
+          sql`orders.status NOT IN ('completed', 'cancelled')`,
+        ),
+      );
+
+    if (otherUncompletedOrders.length === 0) {
+      fullyPaid = true;
+      const [session] = await tx
+        .select({ table_id: schema.tableSessions.table_id })
+        .from(schema.tableSessions)
+        .where(eq(schema.tableSessions.id, order.table_session_id))
+        .limit(1);
+
+      await tx
+        .update(schema.tableSessions)
+        .set({ status: "completed", ended_at: new Date() })
+        .where(eq(schema.tableSessions.id, order.table_session_id));
+
+      if (session) {
+        await tx.update(schema.tables).set({ status: "available" }).where(eq(schema.tables.id, session.table_id));
+      }
+
+      return { order, paymentsCreated, fullyPaid, tableSessionId: order.table_session_id, tableId: session?.table_id };
+    }
+  } else {
+    await payOrder(order);
+
+    const [prevPayments] = await tx
+      .select({ total_paid: sum(schema.payments.amount) })
+      .from(schema.payments)
+      .where(and(eq(schema.payments.order_id, order.id), eq(schema.payments.status, "completed")));
+    fullyPaid = Number(prevPayments?.total_paid || 0) >= order.total;
+  }
+
+  return { order, paymentsCreated, fullyPaid };
+}
+
+// Public SePay webhook. This must stay before auth middleware.
+payments.post("/webhooks/sepay", async (c) => {
+  const body = await c.req.json().catch(() => ({}));
+  const providerTransactionId = webhookTransactionId(body);
+  const amount = webhookAmountCents(body);
+  const content = webhookContent(body);
+  const paymentCode = extractPaymentCode(content);
+  const transferType = normalizeText(body.transferType || body.transfer_type).toLowerCase();
+
+  if (transferType && transferType !== "in") {
+    await logWebhookEvent({ providerTransactionId, amount, content, matched: false, reason: "ignored_transfer_type", payload: body });
+    return c.json({ success: true });
+  }
+
+  if (!paymentCode) {
+    await logWebhookEvent({ providerTransactionId, amount, content, matched: false, reason: "missing_payment_code", payload: body });
+    return c.json({ success: true });
+  }
+
+  const [request] = await db
+    .select()
+    .from(schema.paymentRequests)
+    .where(eq(schema.paymentRequests.payment_code, paymentCode))
+    .limit(1);
+
+  if (!request) {
+    await logWebhookEvent({ providerTransactionId, amount, content, matched: false, reason: "payment_request_not_found", payload: body });
+    return c.json({ success: true });
+  }
+
+  const [branch] = await db
+    .select()
+    .from(schema.branches)
+    .where(eq(schema.branches.id, request.branch_id))
+    .limit(1);
+  const sepay = paymentSettings(branch);
+  const expectedSecret = normalizeText(sepay.webhook_secret || sepay.webhookSecret || sepay.api_key || sepay.apiKey);
+  const providedSecret = normalizeText(
+    c.req.header("x-sepay-api-key") ||
+    c.req.header("x-api-key") ||
+    c.req.header("authorization")?.replace(/^Bearer\s+/i, ""),
+  );
+
+  if (expectedSecret && providedSecret !== expectedSecret) {
+    await logWebhookEvent({
+      providerTransactionId,
+      paymentRequestId: request.id,
+      branchId: request.branch_id,
+      amount,
+      content,
+      matched: false,
+      reason: "invalid_webhook_secret",
+      payload: body,
+    });
+    return c.json({ success: false, error: "invalid secret" }, 401);
+  }
+
+  if (request.status === "paid") {
+    await logWebhookEvent({
+      providerTransactionId,
+      paymentRequestId: request.id,
+      branchId: request.branch_id,
+      amount,
+      content,
+      matched: true,
+      reason: "already_paid",
+      payload: body,
+    });
+    return c.json({ success: true });
+  }
+
+  const now = new Date();
+  if (request.status !== "pending" || now > request.expires_at) {
+    if (request.status === "pending") {
+      await db
+        .update(schema.paymentRequests)
+        .set({ status: "expired", updated_at: now })
+        .where(eq(schema.paymentRequests.id, request.id));
+    }
+    await logWebhookEvent({
+      providerTransactionId,
+      paymentRequestId: request.id,
+      branchId: request.branch_id,
+      amount,
+      content,
+      matched: false,
+      reason: "expired_or_cancelled",
+      payload: body,
+    });
+    return c.json({ success: true });
+  }
+
+  const [order] = await db
+    .select({
+      total: schema.orders.total,
+      status: schema.orders.status,
+      table_session_id: schema.orders.table_session_id,
+    })
+    .from(schema.orders)
+    .where(eq(schema.orders.id, request.order_id))
+    .limit(1);
+
+  let currentDue = 0;
+  if (order?.table_session_id) {
+    const sessionDueRows = await db
+      .select({
+        total: schema.orders.total,
+        total_paid: sql<number>`COALESCE((SELECT SUM(amount)::int FROM payments WHERE payments.order_id = ${schema.orders.id} AND payments.status = 'completed'), 0)`,
+      })
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.table_session_id, order.table_session_id),
+          sql`orders.status != 'cancelled'`,
+        ),
+      );
+    currentDue = sessionDueRows.reduce(
+      (sum, row) => sum + Math.max(0, row.total - Number(row.total_paid || 0)),
+      0,
+    );
+  } else if (order) {
+    const [paid] = await db
+      .select({ total_paid: sum(schema.payments.amount) })
+      .from(schema.payments)
+      .where(and(eq(schema.payments.order_id, request.order_id), eq(schema.payments.status, "completed")));
+    currentDue = Math.max(0, order.total - Number(paid?.total_paid || 0));
+  }
+
+  if (!order || order.status === "cancelled" || currentDue !== request.amount) {
+    await db
+      .update(schema.paymentRequests)
+      .set({ status: "cancelled", cancelled_at: now, updated_at: now })
+      .where(eq(schema.paymentRequests.id, request.id));
+    await logWebhookEvent({
+      providerTransactionId,
+      paymentRequestId: request.id,
+      branchId: request.branch_id,
+      amount,
+      content,
+      matched: false,
+      reason: "stale_order_amount",
+      payload: body,
+    });
+    return c.json({ success: true });
+  }
+
+  if (amount < request.amount) {
+    await db
+      .update(schema.paymentRequests)
+      .set({
+        paid_amount: amount,
+        provider_transaction_id: providerTransactionId || null,
+        provider_payload: body,
+        updated_at: now,
+      })
+      .where(eq(schema.paymentRequests.id, request.id));
+    await logWebhookEvent({
+      providerTransactionId,
+      paymentRequestId: request.id,
+      branchId: request.branch_id,
+      amount,
+      content,
+      matched: false,
+      reason: "underpaid",
+      payload: body,
+    });
+    await wsManager.publish(`branch:${request.branch_id}`, {
+      type: "payment:underpaid",
+      payload: { paymentRequestId: request.id, orderId: request.order_id, amount, expectedAmount: request.amount },
+      timestamp: Date.now(),
+    });
+    return c.json({ success: true });
+  }
+
+  const result = await db.transaction(async (tx) => {
+    const completed = await completePaymentForOrder(tx, {
+      orderId: request.order_id,
+      organizationId: request.organization_id,
+      branchId: request.branch_id,
+      amount: request.amount,
+      reference: paymentCode,
+    });
+
+    await tx
+      .update(schema.paymentRequests)
+      .set({
+        status: "paid",
+        paid_amount: amount,
+        provider_transaction_id: providerTransactionId || null,
+        provider_payload: body,
+        paid_at: now,
+        updated_at: now,
+      })
+      .where(eq(schema.paymentRequests.id, request.id));
+
+    return completed;
+  });
+
+  await logWebhookEvent({
+    providerTransactionId,
+    paymentRequestId: request.id,
+    branchId: request.branch_id,
+    amount,
+    content,
+    matched: true,
+    reason: amount > request.amount ? "overpaid" : "paid",
+    payload: body,
+  });
+
+  await wsManager.publish(`branch:${request.branch_id}`, {
+    type: "payment:confirmed",
+    payload: {
+      paymentRequestId: request.id,
+      orderId: request.order_id,
+      amount,
+      expectedAmount: request.amount,
+      fullyPaid: result.fullyPaid,
+    },
+    timestamp: Date.now(),
+  });
+
+  if (result.tableSessionId && result.tableId) {
+    await wsManager.publish(`branch:${request.branch_id}`, {
+      type: "session:ended",
+      payload: { sessionId: result.tableSessionId, tableId: result.tableId },
+      timestamp: Date.now(),
+    });
+    await wsManager.publish(`branch:${request.branch_id}`, {
+      type: "table:status",
+      payload: { tableId: result.tableId, status: "available" },
+      timestamp: Date.now(),
+    });
+  }
+
+  return c.json({ success: true });
+});
 
 payments.use("*", authMiddleware);
 payments.use("*", tenantMiddleware);
@@ -105,6 +575,184 @@ payments.get("/unpaid-orders", requirePermission("payments:read"), async (c) => 
     }));
 
   return c.json({ success: true, data: unpaid });
+});
+
+// POST /requests - Create or reuse a 60-minute bank transfer QR payment request.
+payments.post(
+  "/requests",
+  requirePermission("payments:create"),
+  zValidator("json", createPaymentRequestSchema),
+  async (c) => {
+    const body = c.req.valid("json");
+    const tenant = c.get("tenant") as any;
+    const now = new Date();
+
+    const [order] = await db
+      .select()
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.id, body.orderId),
+          eq(schema.orders.branch_id, tenant.branchId),
+          eq(schema.orders.organization_id, tenant.organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (!order) {
+      return c.json(
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
+        404,
+      );
+    }
+
+    if (order.status === "completed" || order.status === "cancelled") {
+      return c.json(
+        { success: false, error: { code: "BAD_REQUEST", message: t(c, "order_paid") } },
+        400,
+      );
+    }
+
+    const [paid] = await db
+      .select({ total_paid: sum(schema.payments.amount) })
+      .from(schema.payments)
+      .where(and(eq(schema.payments.order_id, order.id), eq(schema.payments.status, "completed")));
+    const remaining = Math.max(0, order.total - Number(paid?.total_paid || 0));
+    const amount = body.amount || remaining || order.total;
+
+    if (amount <= 0) {
+      return c.json(
+        { success: false, error: { code: "BAD_REQUEST", message: t(c, "order_paid") } },
+        400,
+      );
+    }
+
+    await db
+      .update(schema.paymentRequests)
+      .set({ status: "expired", updated_at: now })
+      .where(
+        and(
+          eq(schema.paymentRequests.order_id, order.id),
+          eq(schema.paymentRequests.status, "pending"),
+          sql`${schema.paymentRequests.expires_at} <= ${now}`,
+        ),
+      );
+
+    await db
+      .update(schema.paymentRequests)
+      .set({ status: "cancelled", cancelled_at: now, updated_at: now })
+      .where(
+        and(
+          eq(schema.paymentRequests.order_id, order.id),
+          eq(schema.paymentRequests.status, "pending"),
+          sql`${schema.paymentRequests.amount} <> ${amount}`,
+        ),
+      );
+
+    const [branch] = await db
+      .select()
+      .from(schema.branches)
+      .where(eq(schema.branches.id, tenant.branchId))
+      .limit(1);
+
+    const [active] = await db
+      .select()
+      .from(schema.paymentRequests)
+      .where(
+        and(
+          eq(schema.paymentRequests.order_id, order.id),
+          eq(schema.paymentRequests.branch_id, tenant.branchId),
+          eq(schema.paymentRequests.status, "pending"),
+          sql`${schema.paymentRequests.expires_at} > ${now}`,
+        ),
+      )
+      .orderBy(desc(schema.paymentRequests.created_at))
+      .limit(1);
+
+    if (active) {
+      const transfer = buildTransferPayload(branch, active.payment_code, active.amount);
+      return c.json({
+        success: true,
+        data: {
+          ...active,
+          reused: true,
+          bank: {
+            bankCode: transfer.bankCode,
+            accountNumber: transfer.accountNumber,
+            accountName: transfer.accountName,
+            amountVnd: transfer.amountVnd,
+            addInfo: transfer.addInfo,
+          },
+        },
+      });
+    }
+
+    const paymentCode = randomPaymentCode(order.order_number);
+    const transfer = buildTransferPayload(branch, paymentCode, amount);
+    const expiresAt = new Date(now.getTime() + PAYMENT_REQUEST_TTL_MS);
+
+    const [created] = await db
+      .insert(schema.paymentRequests)
+      .values({
+        order_id: order.id,
+        organization_id: tenant.organizationId,
+        branch_id: tenant.branchId,
+        provider: "sepay",
+        payment_code: paymentCode,
+        amount,
+        status: "pending",
+        qr_payload: transfer.qrPayload,
+        qr_url: transfer.qrUrl,
+        expires_at: expiresAt,
+      })
+      .returning();
+
+    return c.json({
+      success: true,
+      data: {
+        ...created,
+        reused: false,
+        bank: {
+          bankCode: transfer.bankCode,
+          accountNumber: transfer.accountNumber,
+          accountName: transfer.accountName,
+          amountVnd: transfer.amountVnd,
+          addInfo: transfer.addInfo,
+        },
+      },
+    }, 201);
+  },
+);
+
+// GET /requests/:id - Get payment request status.
+payments.get("/requests/:id", requirePermission("payments:read"), async (c) => {
+  const tenant = c.get("tenant") as any;
+  const id = c.req.param("id");
+  const now = new Date();
+
+  const [request] = await db
+    .select()
+    .from(schema.paymentRequests)
+    .where(and(eq(schema.paymentRequests.id, id), eq(schema.paymentRequests.branch_id, tenant.branchId)))
+    .limit(1);
+
+  if (!request) {
+    return c.json(
+      { success: false, error: { code: "NOT_FOUND", message: "Payment request not found" } },
+      404,
+    );
+  }
+
+  if (request.status === "pending" && now > request.expires_at) {
+    const [expired] = await db
+      .update(schema.paymentRequests)
+      .set({ status: "expired", updated_at: now })
+      .where(eq(schema.paymentRequests.id, request.id))
+      .returning();
+    return c.json({ success: true, data: expired });
+  }
+
+  return c.json({ success: true, data: request });
 });
 
 // GET / - List payments for branch with optional filters

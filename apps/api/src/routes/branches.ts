@@ -65,6 +65,7 @@ branches.post(
         timezone: body.timezone,
         currency: body.currency,
         tax_rate: body.taxRate,
+        settings: body.settings,
       })
       .returning();
 
@@ -122,6 +123,7 @@ branches.patch(
     if (body.timezone !== undefined) updateData.timezone = body.timezone;
     if (body.currency !== undefined) updateData.currency = body.currency;
     if (body.taxRate !== undefined) updateData.tax_rate = body.taxRate;
+    if (body.settings !== undefined) updateData.settings = body.settings;
 
     const [updated] = await db
       .update(schema.branches)

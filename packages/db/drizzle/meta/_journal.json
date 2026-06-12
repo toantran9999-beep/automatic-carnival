@@ -43,6 +43,13 @@
       "when": 1781182634056,
       "tag": "0005_modifier_group_sort",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1781265600000,
+      "tag": "0006_payment_requests",
+      "breakpoints": true
     }
   ]
 }

@@ -68,6 +68,7 @@
 | 0003 | `menu_items.unit` + `order_items.unit`. |
 | 0004 | `modifiers.sort_order` + `order_item_modifiers.modifier_id` FK → ON DELETE SET NULL (để xóa nhóm/modifier không vướng đơn cũ). |
 | 0005 | `modifier_groups.sort_order`. |
+| 0006 | `payment_requests` + `payment_webhook_events` cho QR chuyển khoản tạm tính 60 phút và đối soát webhook SePay. |
 
 > ⚠️ `drizzle-kit generate` đôi khi sinh dư (re-create bảng đã có) do snapshot lệch → **rút gọn migration chỉ giữ ALTER cần thiết** + thêm `IF EXISTS/IF NOT EXISTS`.
 
@@ -86,6 +87,7 @@
 - **Modifier thông minh**: tách nhóm **Độ đậm/Đá/Đường/Sữa/Loại hạt**; "(nhẹ)" gộp vào Độ đậm; giá **+/-** (giảm giá); POS **tự chọn mặc định** (tùy chọn đầu nhóm bắt buộc); **đổi thứ tự nhóm & tùy chọn** (nút ↑↓ ở `modifier-groups-panel`).
 - **Upload logo/ảnh món**: `storeUpload` lưu **cục bộ** (volume `uploadsdata` → Caddy `/uploads`) khi chưa cấu hình R2. `logoUrl`/`imageUrl` chấp nhận path tương đối (`publicImageUrlSchema`).
 - **Bảng điều khiển** sửa: map đúng field API + chuyển sang route `/dashboard` (tránh `app/page.tsx` redirect `/orders`).
+- **Codex**: thanh toán chuyển khoản qua **phiếu tạm tính QR 60 phút** (`payment_requests`, `payment_webhook_events`, `POST /api/payments/requests`, `POST /api/payments/webhooks/sepay`). POS in phiếu tạm tính có QR/mã hết hạn, webhook SePay mới tạo `payments.method=transfer`; cấu hình ngân hàng theo chi nhánh ở Settings → Chi nhánh (`branches.settings.payment.sepay`).
 
 ## 7. Gotchas (đọc kỹ trước khi sửa)
 

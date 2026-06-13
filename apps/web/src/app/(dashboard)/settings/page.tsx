@@ -2,16 +2,17 @@
 
 import { useState } from "react";
 import { Button } from "@restai/ui/components/button";
-import { RefreshCw, Building2, MapPin, Store } from "lucide-react";
+import { RefreshCw, Building2, MapPin, Store, Printer } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
 import { OrgTab } from "./_components/org-tab";
 import { BranchTab } from "./_components/branch-tab";
 import { SedesTab } from "./_components/sedes-tab";
+import { DeviceTab } from "./_components/device-tab";
 import { useTranslation } from "@/stores/lang-store";
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<"org" | "branch" | "sedes">("org");
+  const [activeTab, setActiveTab] = useState<"org" | "branch" | "sedes" | "device">("org");
   const { t } = useTranslation();
 
   const { error: orgError, refetch: refetchOrg } = useOrgSettings();
@@ -65,11 +66,20 @@ export default function SettingsPage() {
           <Store className="h-4 w-4 mr-2" />
           {t("settings.tabBranches")}
         </Button>
+        <Button
+          variant={activeTab === "device" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("device")}
+        >
+          <Printer className="h-4 w-4 mr-2" />
+          {t("settings.tabDevice")}
+        </Button>
       </div>
 
       {activeTab === "org" && <OrgTab />}
       {activeTab === "branch" && <BranchTab />}
       {activeTab === "sedes" && <SedesTab />}
+      {activeTab === "device" && <DeviceTab />}
     </div>
   );
 }

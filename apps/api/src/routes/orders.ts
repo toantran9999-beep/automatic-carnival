@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, desc, sql, getTableColumns } from "drizzle-orm";
+import { eq, and, desc, sql, inArray, getTableColumns } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import {
   createOrderSchema,
@@ -194,6 +194,38 @@ orders.post(
 
     const { order, items: createdItems } = result;
 
+    // Enrich the broadcast so the counter print-station can auto-print a full
+    // kitchen ticket from the WS event alone (no extra fetch needed):
+    //  - table number (from the session, if any)
+    //  - modifier names per item (e.g. "Cà phê đá (nhẹ, ít đường)")
+    let ticketTableNumber: number | null = null;
+    if (order.table_session_id) {
+      const [tbl] = await db
+        .select({ number: schema.tables.number })
+        .from(schema.tableSessions)
+        .innerJoin(schema.tables, eq(schema.tableSessions.table_id, schema.tables.id))
+        .where(eq(schema.tableSessions.id, order.table_session_id))
+        .limit(1);
+      ticketTableNumber = tbl?.number ?? null;
+    }
+
+    const createdItemIds = createdItems.map((i) => i.id);
+    const itemModifiers = createdItemIds.length
+      ? await db
+          .select({
+            order_item_id: schema.orderItemModifiers.order_item_id,
+            name: schema.orderItemModifiers.name,
+          })
+          .from(schema.orderItemModifiers)
+          .where(inArray(schema.orderItemModifiers.order_item_id, createdItemIds))
+      : [];
+    const modsByItem = new Map<string, string[]>();
+    for (const m of itemModifiers) {
+      const arr = modsByItem.get(m.order_item_id) ?? [];
+      arr.push(m.name);
+      modsByItem.set(m.order_item_id, arr);
+    }
+
     // Broadcast new order to branch and kitchen
     const orderPayload = {
       type: "order:new",
@@ -201,13 +233,21 @@ orders.post(
         orderId: order.id,
         orderNumber: order.order_number,
         status: order.status,
-        items: createdItems.map((i) => ({
-          id: i.id,
-          name: i.name,
-          quantity: i.quantity,
-          status: i.status,
-          notes: i.notes,
-        })),
+        tableNumber: ticketTableNumber,
+        customerName: order.customer_name,
+        createdAt: order.created_at,
+        orderType: order.type,
+        items: createdItems.map((i) => {
+          const mods = modsByItem.get(i.id) ?? [];
+          return {
+            id: i.id,
+            name: mods.length ? `${i.name} (${mods.join(", ")})` : i.name,
+            quantity: i.quantity,
+            status: i.status,
+            notes: i.notes,
+            unit: i.unit ?? null,
+          };
+        }),
       },
       timestamp: Date.now(),
     };

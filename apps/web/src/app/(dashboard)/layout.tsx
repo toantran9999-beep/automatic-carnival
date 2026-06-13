@@ -35,6 +35,8 @@ import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { ClockNow } from "@/components/clock-now";
 import { TodaMark } from "@/components/toda-mark";
+import { StationToggle } from "@/components/station-toggle";
+import { StationProvider } from "@/components/station-provider";
 
 interface NavGroup {
   label: string;
@@ -224,6 +226,8 @@ export default function DashboardLayout({
 
   return (
     <div className="h-screen flex overflow-hidden">
+      {/* Trạm in tại quầy: nghe order:new & tự in (chỉ khi máy này bật trạm) */}
+      <StationProvider />
       {/* Desktop Sidebar */}
       <aside
         className={cn(
@@ -402,6 +406,8 @@ export default function DashboardLayout({
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Trạm in tại quầy (theo thiết bị) */}
+              <StationToggle />
               {/* Real-time clock */}
               <ClockNow />
               {/* Appearance (theme + accent) */}

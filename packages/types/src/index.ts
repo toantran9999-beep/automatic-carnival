@@ -29,6 +29,13 @@ export interface WsOrderPayload {
   orderNumber: string;
   status: string;
   tableName?: string;
+  /** Số bàn (cho trạm in tại quầy tự in phiếu). null = mang về/khách lẻ. */
+  tableNumber?: number | null;
+  customerName?: string | null;
+  /** ISO time đơn được tạo. */
+  createdAt?: string;
+  /** dine_in | takeout */
+  orderType?: string;
   items?: WsOrderItemPayload[];
 }
 
@@ -38,6 +45,8 @@ export interface WsOrderItemPayload {
   quantity: number;
   status: string;
   notes?: string;
+  /** Đơn vị tính (Ly, Phần...) — cho phiếu bếp. */
+  unit?: string | null;
 }
 
 export interface WsTablePayload {

@@ -40,8 +40,8 @@
 | Thực đơn | `app/(dashboard)/menu/page.tsx` + `_components/`: `products-panel`, `product-dialog`, `category-dialog`, `modifier-groups-panel`, `modifier-group-dialog`, `image-upload-button`. |
 | Khác | `orders, kitchen, inventory, staff, payments, loyalty, reports, settings, connections`. |
 | Khách QR | `app/(customer)/...` — tồn tại nhưng **đã ẩn** trong luồng bàn (`showCustomerQrFlow=false`). |
-| Components dùng chung | `print-ticket` (phiếu bếp + in Android), `theme-switcher`, `toda-mark` (emblem), `clock-now`, `sw-register`, `page-header`, `confirm-dialog`. |
-| Stores (Zustand) | `auth-store`, `cart-store`, `customer-store`, `lang-store`, `theme-store`. |
+| Components dùng chung | `print-ticket` (phiếu bếp + in Android), `station-provider` (nghe `order:new` → tự in tại quầy), `station-toggle` (bật/tắt Trạm quầy theo thiết bị), `theme-switcher`, `toda-mark` (emblem), `clock-now`, `sw-register`, `page-header`, `confirm-dialog`. |
+| Stores (Zustand) | `auth-store`, `cart-store`, `customer-store`, `lang-store`, `theme-store`, `station-store` (cờ Trạm quầy + chuông, lưu theo thiết bị). |
 | Hooks | `use-menu`, `use-tables`, `use-orders`, `use-payments`, `use-reports`, `use-dashboard`, `use-settings`, `use-uploads`, `use-ai-images`, `use-kitchen/inventory/loyalty/staff/coupons`, `use-websocket`, `use-auth`. |
 | Lib | `api-client`, `fetcher` (`apiFetch` tự gắn `x-branch-id`), `translations` (VI/EN), `utils` (`formatCurrency`). |
 
@@ -88,6 +88,7 @@
 - **Upload logo/ảnh món**: `storeUpload` lưu **cục bộ** (volume `uploadsdata` → Caddy `/uploads`) khi chưa cấu hình R2. `logoUrl`/`imageUrl` chấp nhận path tương đối (`publicImageUrlSchema`).
 - **Bảng điều khiển** sửa: map đúng field API + chuyển sang route `/dashboard` (tránh `app/page.tsx` redirect `/orders`).
 - **Codex**: thanh toán chuyển khoản qua **phiếu tạm tính QR 60 phút** (`payment_requests`, `payment_webhook_events`, `POST /api/payments/requests`, `POST /api/payments/webhooks/sepay`). POS in phiếu tạm tính có QR/mã hết hạn, webhook SePay mới tạo `payments.method=transfer`; cấu hình ngân hàng theo chi nhánh ở Settings → Chi nhánh (`branches.settings.payment.sepay`).
+- **Trạm in tại quầy (in tập trung qua WebSocket)**: nhân viên order bằng điện thoại (không có máy in) → máy POS ở quầy **tự in phiếu bếp + kêu chuông + toast**. Máy POS bật cờ **"Trạm quầy"** (`station-store`, lưu localStorage **theo thiết bị** — không phải branch settings), `station-provider` (mount trong `(dashboard)/layout.tsx`) nghe `branch:<id>` → khi `order:new` thì in qua `usePrintKitchenTicket` (driver theo `print_driver`). `order:new` ở `routes/orders.ts` đã được bơm thêm **số bàn + tên khách + giờ + tên modifier + ĐVT** để in đủ phiếu mà không cần fetch thêm. **POS không còn in cục bộ lúc tạo đơn** (`pos/page.tsx`) — mọi lệnh in phiếu bếp đi 1 đường qua Trạm quầy. ⚠️ Phải bật Trạm quầy trên ĐÚNG 1 máy có máy in, nếu không sẽ không máy nào in.
 - **Codex**: thêm **print driver nhanh cho Android POS** (`branches.settings.print_driver`). `browser_print` giữ `window.print()` fallback, `rawbt_intent` gửi ESC/POS base64 qua RawBT trên Android, `android_bridge` gửi payload ESC/POS cho bridge/WebView native. Phiếu bếp, hóa đơn, tạm tính QR đều có đường ESC/POS.
 
 ## 7. Gotchas (đọc kỹ trước khi sửa)

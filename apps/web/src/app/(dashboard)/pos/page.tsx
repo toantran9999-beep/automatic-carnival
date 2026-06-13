@@ -20,7 +20,7 @@ import { CartSidebar } from "./_components/cart-sidebar";
 import { ModifierDialog, type CartModifier } from "./_components/modifier-dialog";
 import { SuccessDialog } from "./_components/success-dialog";
 import { useBranchSettings } from "@/hooks/use-settings";
-import { usePrintKitchenTicket, usePrintTemporaryTransferBill } from "@/components/print-ticket";
+import { usePrintTemporaryTransferBill } from "@/components/print-ticket";
 import { PosPaymentDialog } from "./_components/pos-payment-dialog";
 import { useTableActiveSession } from "@/hooks/use-tables";
 import { useQueryClient } from "@tanstack/react-query";
@@ -101,7 +101,6 @@ export default function PosPage() {
   const createPaymentRequest = useCreatePaymentRequest();
 
   const { data: branchSettings } = useBranchSettings();
-  const printKitchenTicket = usePrintKitchenTicket();
   const printTemporaryTransferBill = usePrintTemporaryTransferBill();
   const qc = useQueryClient();
 
@@ -332,31 +331,10 @@ export default function PosPage() {
         setPaymentCart(cart);
         setPaymentDialogOpen(true);
       } else {
-        // Just kitchen print
-        const mappedItems = cart.map((i) => {
-          const modTotal = i.modifiers.reduce((sum, m) => sum + m.price, 0);
-          const nameWithMods = i.modifiers.length > 0
-            ? `${i.name} (${i.modifiers.map((m) => m.name).join(", ")})`
-            : i.name;
-          return {
-            name: nameWithMods,
-            quantity: i.quantity,
-            unit_price: i.unitPrice + modTotal,
-            total: (i.unitPrice + modTotal) * i.quantity,
-            notes: i.notes,
-            unit: i.unit,
-          };
-        });
-
-        const printMode = branchSettings?.settings?.print_mode === "per_item" ? "per_item" : "combined";
-        void printKitchenTicket({
-          orderNumber: oNumber,
-          tableNumber: tableNumber || undefined,
-          customerName: customerName || undefined,
-          createdAt: new Date().toISOString(),
-          items: mappedItems,
-          notes: orderNotes || undefined,
-        }, printMode);
+        // KHÔNG in tại đây. Phiếu bếp được in tập trung ở "Trạm quầy" (máy POS
+        // có máy in) khi nó nhận sự kiện WS `order:new`. Nhờ vậy nhân viên order
+        // bằng điện thoại (không có máy in) vẫn đẩy được phiếu về quầy.
+        // Xem StationProvider + StationToggle.
 
         // Clear state and cart
         setCart([]);

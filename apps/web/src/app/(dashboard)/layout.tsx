@@ -10,7 +10,6 @@ import {
   UtensilsCrossed,
   ClipboardList,
   Grid3X3,
-  ChefHat,
   Package,
   Wifi,
   Heart,
@@ -97,7 +96,7 @@ function getTranslatedNavGroups(t: any): NavGroup[] {
         { href: "/pos", label: t("nav.pos"), icon: Smartphone },
         { href: "/orders", label: t("nav.orders"), icon: ClipboardList },
         { href: "/tables", label: t("nav.tables"), icon: Grid3X3 },
-        { href: "/kitchen", label: t("nav.kitchen"), icon: ChefHat },
+        // Quán không có bếp — chạy theo phiếu in + Trạm in tại quầy, nên ẩn màn KDS.
         { href: "/connections", label: t("nav.connections"), icon: Wifi },
         { href: "/menu", label: t("nav.menu"), icon: UtensilsCrossed },
       ],

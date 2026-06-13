@@ -63,6 +63,8 @@ interface KitchenTicketData {
 
 export type PrintMode = "combined" | "per_item";
 type PrintDriver = "browser_print" | "rawbt_intent" | "android_bridge";
+const ESC_POS_WIDTH = 38;
+const ESC_POS_SEPARATOR = "-".repeat(ESC_POS_WIDTH);
 
 interface ReceiptTicketData {
   businessName: string;
@@ -113,9 +115,15 @@ function removeVietnameseMarks(value: string): string {
     .replace(/Đ/g, "D");
 }
 
-function plainLine(value = "", width = 42): string {
+function plainLine(value = "", width = ESC_POS_WIDTH): string {
   const clean = removeVietnameseMarks(value).replace(/\s+/g, " ").trim();
   return clean.length > width ? clean.slice(0, width) : clean;
+}
+
+function centerLine(value = "", width = ESC_POS_WIDTH): string {
+  const clean = plainLine(value, width);
+  const left = Math.max(0, Math.floor((width - clean.length) / 2));
+  return `${" ".repeat(left)}${clean}`;
 }
 
 function moneyPlain(cents: number): string {
@@ -132,10 +140,15 @@ function bytesToBase64(bytes: number[]): string {
   return btoa(binary);
 }
 
-function twoCol(left: string, right: string, width = 42): string {
+function twoCol(left: string, right: string, width = ESC_POS_WIDTH): string {
   const l = plainLine(left, width);
   const r = plainLine(right, width);
   return `${l}${" ".repeat(Math.max(1, width - l.length - r.length))}${r}`;
+}
+
+function escposAlign(position: "left" | "center" | "right"): number[] {
+  const value = position === "center" ? 1 : position === "right" ? 2 : 0;
+  return [0x1b, 0x61, value];
 }
 
 function escposQrBytes(value: string): number[] {
@@ -145,7 +158,7 @@ function escposQrBytes(value: string): number[] {
   const pH = Math.floor(len / 256);
   return [
     0x1d, 0x28, 0x6b, 0x04, 0x00, 0x31, 0x41, 0x32, 0x00,
-    0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, 0x06,
+    0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x43, 0x05,
     0x1d, 0x28, 0x6b, 0x03, 0x00, 0x31, 0x45, 0x31,
     0x1d, 0x28, 0x6b, pL, pH, 0x31, 0x50, 0x30,
     ...data,
@@ -154,7 +167,7 @@ function escposQrBytes(value: string): number[] {
 }
 
 function buildEscPos(lines: Array<string | number[]>): number[] {
-  const bytes: number[] = [0x1b, 0x40, 0x1b, 0x74, 0x00];
+  const bytes: number[] = [0x1b, 0x40, 0x1b, 0x74, 0x00, ...escposAlign("left")];
   for (const item of lines) {
     if (Array.isArray(item)) {
       bytes.push(...item);
@@ -171,36 +184,36 @@ function buildKitchenEscPos(data: KitchenTicketData): number[] {
   const staff = currentStaffName();
   const subtitle = data.tableNumber ? `BAN ${data.tableNumber}` : "MANG VE";
   const rows: string[] = [
-    "        PHIEU DAT DO",
-    `          ${subtitle}`,
-    data.ticketLabel ? `          Phieu ${data.ticketLabel}` : "",
-    "------------------------------------------",
+    centerLine("PHIEU DAT DO"),
+    centerLine(subtitle),
+    data.ticketLabel ? centerLine(`Phieu ${data.ticketLabel}`) : "",
+    ESC_POS_SEPARATOR,
     twoCol(`Gio: ${time}`, `Ngay: ${date}`),
     `Nhan vien: ${plainLine(staff || data.customerName || "-", 30)}`,
     `So thu tu: #${data.orderNumber}`,
-    "------------------------------------------",
+    ESC_POS_SEPARATOR,
   ].filter(Boolean);
 
   for (const item of data.items) {
-    rows.push(`${item.quantity} x ${plainLine(item.name, 34)} ${plainLine(item.unit || "", 4)}`);
+    rows.push(`${item.quantity} x ${plainLine(item.name, 30)} ${plainLine(item.unit || "", 4)}`);
     if (item.notes) rows.push(`  * ${plainLine(item.notes, 36)}`);
   }
 
-  if (data.notes) rows.push("------------------------------------------", `Ghi chu: ${plainLine(data.notes, 34)}`);
-  rows.push("------------------------------------------", "              Toda Cafe");
+  if (data.notes) rows.push(ESC_POS_SEPARATOR, `Ghi chu: ${plainLine(data.notes, 34)}`);
+  rows.push(ESC_POS_SEPARATOR, centerLine("Toda Cafe"));
   return buildEscPos(rows);
 }
 
 function buildReceiptEscPos(data: ReceiptTicketData): number[] {
   const rows: Array<string | number[]> = [
-    `          ${plainLine(data.businessName, 22)}`,
-    data.address ? `   ${plainLine(data.address, 36)}` : "",
-    "------------------------------------------",
-    "              HOA DON",
+    centerLine(data.businessName),
+    data.address ? centerLine(data.address) : "",
+    ESC_POS_SEPARATOR,
+    centerLine("HOA DON"),
     `Don hang: #${data.orderNumber}`,
     formatDateTime(data.createdAt),
     data.customerName ? `Khach: ${plainLine(data.customerName, 34)}` : "",
-    "------------------------------------------",
+    ESC_POS_SEPARATOR,
   ].filter(Boolean);
 
   for (const item of data.items) {
@@ -208,13 +221,13 @@ function buildReceiptEscPos(data: ReceiptTicketData): number[] {
   }
 
   rows.push(
-    "------------------------------------------",
+    ESC_POS_SEPARATOR,
     twoCol("Tam tinh", moneyPlain(data.subtotal)),
     twoCol("VAT", moneyPlain(data.tax)),
     twoCol("TONG CONG", moneyPlain(data.total)),
     data.paymentMethod ? `Thanh toan: ${plainLine(data.paymentMethod, 28)}` : "",
-    "------------------------------------------",
-    "        Cam on quy khach!",
+    ESC_POS_SEPARATOR,
+    centerLine("Cam on quy khach!"),
   );
   return buildEscPos(rows.filter(Boolean));
 }
@@ -227,14 +240,14 @@ function buildTemporaryTransferEscPos(data: TemporaryTransferBillData): number[]
     timeZone: "Asia/Ho_Chi_Minh",
   });
   const rows: Array<string | number[]> = [
-    `          ${plainLine(data.businessName, 22)}`,
-    data.address ? `   ${plainLine(data.address, 36)}` : "",
-    "------------------------------------------",
-    "           PHIEU TAM TINH",
+    centerLine(data.businessName),
+    data.address ? centerLine(data.address) : "",
+    ESC_POS_SEPARATOR,
+    centerLine("PHIEU TAM TINH"),
     `Don: #${data.orderNumber}`,
     data.tableNumber ? `Ban: ${data.tableNumber}` : "",
     data.customerName ? `Khach: ${plainLine(data.customerName, 34)}` : "",
-    "------------------------------------------",
+    ESC_POS_SEPARATOR,
   ].filter(Boolean);
 
   for (const item of data.items) {
@@ -242,13 +255,15 @@ function buildTemporaryTransferEscPos(data: TemporaryTransferBillData): number[]
   }
 
   rows.push(
-    "------------------------------------------",
+    ESC_POS_SEPARATOR,
     twoCol("Tam tinh", moneyPlain(data.subtotal)),
     twoCol("VAT", moneyPlain(data.tax)),
     twoCol("TONG CAN TRA", moneyPlain(data.total)),
-    "------------------------------------------",
-    "       QUET QR CHUYEN KHOAN",
+    ESC_POS_SEPARATOR,
+    centerLine("QUET QR CHUYEN KHOAN"),
+    escposAlign("center"),
     escposQrBytes(data.qrPayload || data.paymentCode),
+    escposAlign("left"),
     data.bank?.accountName ? `Nguoi nhan: ${plainLine(data.bank.accountName, 30)}` : "",
     data.bank?.bankCode ? `Ngan hang: ${plainLine(data.bank.bankCode, 30)}` : "",
     data.bank?.accountNumber ? `STK: ${plainLine(data.bank.accountNumber, 34)}` : "",

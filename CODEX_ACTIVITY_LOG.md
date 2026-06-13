@@ -340,3 +340,32 @@ Stop Android Chrome from printing the whole PWA as an A4 page. Add configurable 
 
 - To test on the iPOS Android device, set Settings -> Branch -> Print driver to `RawBT / ESC-POS nhanh` and install/configure RawBT with the USB Gprinter.
 - `android_bridge` is a protocol hook for a future native wrapper: `window.TodaPrintBridge.printBase64(...)` or local `POST http://127.0.0.1:18180/print`.
+
+---
+
+## 2026-06-13 - Codex - Align Android ESC/POS receipts
+
+### Goal
+
+Fix the first real RawBT print sample where the temporary transfer bill text was too wide and the QR block was left-aligned on 80mm paper.
+
+### Files Touched By Codex
+
+- `apps/web/src/components/print-ticket.tsx`
+  - Reduced ESC/POS text width from 42 to 38 safe columns.
+  - Added centered line helper for receipt titles/header/footer.
+  - Added ESC/POS alignment commands around QR printing.
+  - Reduced QR module size from 6 to 5 so it sits better on narrow 80mm printable area.
+- `CODEX_ACTIVITY_LOG.md`
+  - Added this attribution note.
+
+### Files Not Touched By Codex In This Task
+
+- POS layout/sidebar/product grid
+- Payment request creation/webhook logic
+- Branch settings schema/API
+
+### Verification Run
+
+- `bunx tsc --noEmit -p apps/web/tsconfig.json` succeeded.
+- `bunx tsc --noEmit -p apps/api/tsconfig.json` succeeded.

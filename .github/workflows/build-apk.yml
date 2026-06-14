@@ -7,6 +7,9 @@ on:
       - 'pos-android/**'
       - '.github/workflows/build-apk.yml'
 
+permissions:
+  contents: write
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -37,3 +40,12 @@ jobs:
           name: toda-pos-quay-apk
           path: pos-android/app/build/outputs/apk/debug/app-debug.apk
           if-no-files-found: error
+
+      - name: Publish APK to Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: pos-apk-latest
+          name: TODA POS Quầy — APK mới nhất
+          body: "Bản APK máy POS quầy (in USB Gprinter). Tải app-debug.apk, cài lên iPOS."
+          files: pos-android/app/build/outputs/apk/debug/app-debug.apk
+          fail_on_unmatched_files: true

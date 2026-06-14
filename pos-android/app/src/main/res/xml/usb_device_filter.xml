@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Máy in nhiệt thường thuộc USB class 7 (Printer). Khi cắm sẽ tự cấp
+         quyền cho app (đỡ phải bấm cho phép USB mỗi lần). -->
+    <usb-device class="7" />
+</resources>

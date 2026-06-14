@@ -94,6 +94,24 @@ orders.post(
     const tenant = c.get("tenant") as any;
     const user = c.get("user") as any;
 
+    // Phải có ca đang mở mới được tạo đơn (mở ca mới xài được chức năng).
+    const [openShift] = await db
+      .select({ id: schema.registerShifts.id })
+      .from(schema.registerShifts)
+      .where(
+        and(
+          eq(schema.registerShifts.branch_id, tenant.branchId),
+          eq(schema.registerShifts.status, "open"),
+        ),
+      )
+      .limit(1);
+    if (!openShift) {
+      return c.json(
+        { success: false, error: { code: "NO_OPEN_SHIFT", message: "Chưa mở ca làm việc. Vui lòng mở ca trước khi bán hàng." } },
+        409,
+      );
+    }
+
     // Determine table_session_id
     let tableSessionId: string | null = body.tableSessionId || null;
     if (user.role === "customer") {

@@ -173,6 +173,17 @@ export const createPaymentRequestSchema = z.object({
   amount: z.number().int().min(1).optional(),
 });
 
+// Cash register shift validators (tiền lưu dạng cents)
+export const openShiftSchema = z.object({
+  openingCash: z.number().int().min(0).default(0),
+  note: z.string().max(500).optional(),
+});
+
+export const closeShiftSchema = z.object({
+  closingCash: z.number().int().min(0),
+  note: z.string().max(500).optional(),
+});
+
 // Invoice validators
 export const createInvoiceSchema = z.object({
   orderId: z.string().uuid(),

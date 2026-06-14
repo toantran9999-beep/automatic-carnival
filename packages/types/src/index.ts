@@ -14,6 +14,10 @@ export type WsMessageType =
   | "session:approved"
   | "session:rejected"
   | "kitchen:alert"
+  | "shift:opened"
+  | "shift:closed"
+  | "payment:confirmed"
+  | "payment:underpaid"
   | "ping"
   | "pong"
   | "auth:success";

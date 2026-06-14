@@ -47,6 +47,7 @@ export function CartSidebar({
   onPrintTemporaryBill,
   activeSession,
   onPayUnpaidOrders,
+  needsTable = false,
   className,
 }: {
   cart: PosCartItem[];
@@ -69,6 +70,7 @@ export function CartSidebar({
   onPrintTemporaryBill: () => void;
   activeSession?: any;
   onPayUnpaidOrders?: () => void;
+  needsTable?: boolean;
   className?: string;
 }) {
   const { t, lang } = useTranslation();
@@ -293,7 +295,7 @@ export function CartSidebar({
               <div className="mt-2 space-y-1.5 border-t pt-2">
                 <h3 className="flex items-center gap-1.5 pl-1 text-[11px] font-bold uppercase text-muted-foreground">
                   <UtensilsCrossed className="h-3.5 w-3.5 text-primary" />
-                  {lang === "vi" ? "Món đã gửi bếp" : "Sent to Kitchen"}
+                  {lang === "vi" ? "Món đã gửi" : "Sent"}
                 </h3>
                 {allOrderedItems.map((item: any) => {
                   const modTotal = item.modifiers.reduce((s: number, m: any) => s + m.price, 0);
@@ -411,49 +413,60 @@ export function CartSidebar({
           </Button>
         )
       ) : (
-        <div className="grid grid-cols-[1fr_1fr_1.35fr] gap-2">
+        <div className="space-y-2">
+          {needsTable && (
+            <p className="text-center text-xs font-medium text-amber-600">
+              {lang === "vi"
+                ? "Chọn bàn để gửi đơn (ăn tại bàn)"
+                : "Select a table to send the order (dine-in)"}
+            </p>
+          )}
+          <div className="grid grid-cols-2 gap-2">
+            <Button
+              variant="outline"
+              className="h-11 min-w-0 text-sm font-semibold"
+              disabled={isPending || needsTable}
+              onClick={() => onCreateOrder(false)}
+            >
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <span className="flex min-w-0 items-center justify-center gap-1.5">
+                  <Printer className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{lang === "vi" ? "Gửi & in phiếu" : "Send & print"}</span>
+                </span>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              className="h-11 min-w-0 text-sm font-semibold"
+              disabled={isPending || needsTable}
+              onClick={onPrintTemporaryBill}
+            >
+              {isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <span className="flex min-w-0 items-center justify-center gap-1.5">
+                  <Printer className="h-4 w-4 shrink-0" />
+                  <span className="truncate">{lang === "vi" ? "Tạm tính" : "Pre-bill"}</span>
+                </span>
+              )}
+            </Button>
+          </div>
           <Button
-            variant="outline"
-            className="h-11 text-sm font-semibold"
-            disabled={isPending}
-            onClick={() => onCreateOrder(false)}
-          >
-            {isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                <Printer className="mr-1.5 h-4 w-4" />
-                {lang === "vi" ? "Gửi bếp" : "Send Kitchen"}
-              </>
-            )}
-          </Button>
-          <Button
-            variant="outline"
-            className="h-11 text-sm font-semibold"
-            disabled={isPending}
-            onClick={onPrintTemporaryBill}
-          >
-            {isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
-            ) : (
-              <>
-                <Printer className="mr-1.5 h-4 w-4" />
-                Tạm tính
-              </>
-            )}
-          </Button>
-          <Button
-            className="h-11 text-sm font-semibold"
-            disabled={isPending}
+            className="h-12 w-full text-base font-bold"
+            disabled={isPending || needsTable}
             onClick={() => onCreateOrder(true)}
           >
             {isPending ? (
-              <Loader2 className="h-4 w-4 animate-spin" />
+              <Loader2 className="h-5 w-5 animate-spin" />
             ) : (
-              <>
-                <Check className="mr-1.5 h-4 w-4" />
-                {lang === "vi" ? "Thanh toán" : "Pay now"} · {formatCurrency(total)}
-              </>
+              <span className="flex min-w-0 items-center justify-center gap-2">
+                <Check className="h-5 w-5 shrink-0" />
+                <span className="truncate">
+                  {lang === "vi" ? "Thanh toán" : "Pay"} · {formatCurrency(total)}
+                </span>
+              </span>
             )}
           </Button>
         </div>

@@ -22,7 +22,10 @@ import { SuccessDialog } from "./_components/success-dialog";
 import { useBranchSettings } from "@/hooks/use-settings";
 import { usePrintTemporaryTransferBill } from "@/components/print-ticket";
 import { PosPaymentDialog } from "./_components/pos-payment-dialog";
+import { ShiftBar, ShiftClosedBlocker } from "./_components/shift-controls";
 import { useTableActiveSession } from "@/hooks/use-tables";
+import { useCurrentShift } from "@/hooks/use-shifts";
+import { useAuthStore } from "@/stores/auth-store";
 import { useQueryClient } from "@tanstack/react-query";
 
 // ---------------------------------------------------------------------------
@@ -60,7 +63,11 @@ export default function PosPage() {
   const [successDialog, setSuccessDialog] = useState(false);
   const [lastOrderNumber, setLastOrderNumber] = useState("");
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
+  const { user } = useAuthStore();
+  const { data: currentShift, isLoading: shiftLoading } = useCurrentShift();
+  const canManageShift =
+    !!user && ["super_admin", "org_admin", "branch_manager", "cashier"].includes(user.role);
 
   // Selected table state
   const [tableId, setTableId] = useState<string | null>(null);
@@ -222,6 +229,10 @@ export default function PosPage() {
       const taxRate = branchSettings?.tax_rate ?? 1000;
 
       if (cart.length > 0) {
+        if (orderType === "dine_in" && !tableId) {
+          toast.error(lang === "vi" ? "Vui lòng chọn bàn cho đơn ăn tại bàn" : "Please select a table for dine-in");
+          return;
+        }
         const result = await createOrder.mutateAsync({
           type: orderType,
           customerName: customerName || t("pos.customerPOS"),
@@ -295,6 +306,10 @@ export default function PosPage() {
 
   const handleCreateOrder = async (payImmediately = false) => {
     if (cart.length === 0) return;
+    if (orderType === "dine_in" && !tableId) {
+      toast.error(lang === "vi" ? "Vui lòng chọn bàn cho đơn ăn tại bàn" : "Please select a table for dine-in");
+      return;
+    }
     try {
       const result = await createOrder.mutateAsync({
         type: orderType,
@@ -455,29 +470,42 @@ export default function PosPage() {
     onClearCart: () => setCart([]),
     onPrintTemporaryBill: handlePrintTemporaryBill,
     activeSession,
+    needsTable: orderType === "dine_in" && !tableId,
   };
 
-  return (
-    <div className="flex h-[calc(100vh-8rem)] gap-3">
-      <ProductGrid
-        categories={categories ?? []}
-        items={allItems}
-        isLoading={itemsLoading}
-        search={search}
-        onSearchChange={setSearch}
-        selectedCategory={selectedCategory}
-        onCategoryChange={setSelectedCategory}
-        cart={cart}
-        onItemClick={handleItemClick}
-      />
+  // Cổng: chưa mở ca → khóa toàn bộ màn đặt món (mở ca mới xài được chức năng).
+  if (!shiftLoading && !currentShift) {
+    return (
+      <div className="flex h-[calc(100vh-8rem)]">
+        <ShiftClosedBlocker canManage={canManageShift} />
+      </div>
+    );
+  }
 
-      {/* Desktop cart (inline sidebar) */}
-      <CartSidebar
-        {...cartProps}
-        className="hidden w-[332px] flex-col border-l pl-3 md:flex xl:w-[352px]"
-        onCreateOrder={handleCreateOrder}
-        onPayUnpaidOrders={handlePayUnpaidOrders}
-      />
+  return (
+    <div className="flex h-[calc(100vh-8rem)] flex-col gap-2">
+      {currentShift && <ShiftBar shift={currentShift} canManage={canManageShift} />}
+      <div className="flex min-h-0 flex-1 gap-3">
+        <ProductGrid
+          categories={categories ?? []}
+          items={allItems}
+          isLoading={itemsLoading}
+          search={search}
+          onSearchChange={setSearch}
+          selectedCategory={selectedCategory}
+          onCategoryChange={setSelectedCategory}
+          cart={cart}
+          onItemClick={handleItemClick}
+        />
+
+        {/* Desktop cart (inline sidebar) */}
+        <CartSidebar
+          {...cartProps}
+          className="hidden w-[332px] flex-col border-l pl-3 md:flex xl:w-[352px]"
+          onCreateOrder={handleCreateOrder}
+          onPayUnpaidOrders={handlePayUnpaidOrders}
+        />
+      </div>
 
       {/* Mobile floating bar -> opens cart in a bottom sheet */}
       {showMobileBar && (

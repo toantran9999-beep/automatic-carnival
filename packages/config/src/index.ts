@@ -20,6 +20,7 @@ export const PERMISSIONS = {
     "staff:*", "inventory:*", "loyalty:*",
     "customers:*",
     "payments:*", "reports:*", "invoices:*",
+    "shifts:*",
     "settings:*",
   ],
   branch_manager: [
@@ -29,6 +30,7 @@ export const PERMISSIONS = {
     "inventory:*", "loyalty:*",
     "customers:*",
     "payments:*", "reports:read",
+    "shifts:*",
     "invoices:*", "settings:read",
   ],
   cashier: [
@@ -36,12 +38,14 @@ export const PERMISSIONS = {
     "tables:read", "tables:update",
     "orders:read", "orders:create", "orders:update",
     "payments:*", "customers:*",
+    "shifts:*",
     "invoices:create", "invoices:read",
   ],
   waiter: [
     "tables:read", "tables:update",
     "orders:create", "orders:read", "orders:update",
     "menu:read",
+    "shifts:read",
   ],
   kitchen: [
     "orders:read",

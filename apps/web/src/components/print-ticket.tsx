@@ -834,3 +834,84 @@ export function usePrintTemporaryTransferBill() {
     printHtml(html);
   }, [branchSettings]);
 }
+
+export interface ShiftReportData {
+  businessName: string;
+  openedAt: string;
+  closedAt: string;
+  openingCash: number;
+  cashSales: number;
+  totalSales: number;
+  orderCount: number;
+  expectedCash: number;
+  closingCash: number;
+  difference: number;
+  byMethod: Record<string, number>;
+}
+
+function methodLabelVi(method: string): string {
+  const map: Record<string, string> = {
+    cash: "Tiền mặt",
+    card: "Thẻ",
+    transfer: "Chuyển khoản",
+    yape: "QR ngân hàng",
+    plin: "Ví điện tử",
+    other: "Khác",
+  };
+  return map[method] || method;
+}
+
+function buildShiftReportHtml(data: ShiftReportData): string {
+  const methodRows = Object.entries(data.byMethod)
+    .map(
+      ([m, amt]) =>
+        `<tr><td style="text-align:left;padding:1px 0;">${methodLabelVi(m)}</td><td style="text-align:right;padding:1px 0;">${formatCents(amt)}</td></tr>`,
+    )
+    .join("");
+
+  const diffLabel = data.difference === 0 ? "Khớp" : data.difference > 0 ? "Thừa" : "Thiếu";
+
+  return `<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <title>Phiếu cuối ca</title>
+  <style>
+    ${thermalStyles(80)}
+    .totals td { padding: 1px 0; }
+  </style>
+</head>
+<body>
+  <div class="center bold" style="font-size:14px;">${escapeHtml(data.businessName)}</div>
+  <div class="center bold" style="font-size:15px;margin-top:2px;">PHIẾU CUỐI CA</div>
+  <div class="divider"></div>
+  <div style="font-size:11px;">Mở ca: ${formatDateTime(data.openedAt)}</div>
+  <div style="font-size:11px;">Đóng ca: ${formatDateTime(data.closedAt)}</div>
+  <div class="divider"></div>
+  <div class="center bold">DOANH THU THEO PHƯƠNG THỨC</div>
+  <table>${methodRows || `<tr><td>Chưa có giao dịch</td><td></td></tr>`}</table>
+  <div class="divider"></div>
+  <table class="totals">
+    <tr><td>Số đơn:</td><td style="text-align:right;">${data.orderCount}</td></tr>
+    <tr class="bold"><td>Tổng doanh thu:</td><td style="text-align:right;">${formatCents(data.totalSales)}</td></tr>
+  </table>
+  <div class="divider"></div>
+  <div class="center bold">ĐỐI SOÁT TIỀN MẶT</div>
+  <table class="totals">
+    <tr><td>Tiền đầu ca:</td><td style="text-align:right;">${formatCents(data.openingCash)}</td></tr>
+    <tr><td>Thu tiền mặt:</td><td style="text-align:right;">${formatCents(data.cashSales)}</td></tr>
+    <tr><td>Kỳ vọng:</td><td style="text-align:right;">${formatCents(data.expectedCash)}</td></tr>
+    <tr><td>Đếm thực tế:</td><td style="text-align:right;">${formatCents(data.closingCash)}</td></tr>
+    <tr class="bold"><td>Chênh lệch (${diffLabel}):</td><td style="text-align:right;">${formatCents(data.difference)}</td></tr>
+  </table>
+  <div class="divider"></div>
+  <div class="center" style="font-size:10px;margin-top:4px;">Toda Café</div>
+</body>
+</html>`;
+}
+
+export function usePrintShiftReport() {
+  return useCallback((data: ShiftReportData) => {
+    printHtml(buildShiftReportHtml(data));
+  }, []);
+}

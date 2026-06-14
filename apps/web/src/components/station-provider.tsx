@@ -63,7 +63,7 @@ export function StationProvider() {
           ? "per_item"
           : "combined";
 
-      void printKitchenTicket(
+      printKitchenTicket(
         {
           orderNumber: p.orderNumber,
           tableNumber: p.tableNumber ?? undefined,
@@ -79,7 +79,11 @@ export function StationProvider() {
           })),
         },
         mode
-      );
+      ).catch((e: any) => {
+        toast.error(
+          (lang === "vi" ? "Lỗi in phiếu: " : "Print error: ") + (e?.message || "")
+        );
+      });
 
       if (station.soundEnabled) beep();
 

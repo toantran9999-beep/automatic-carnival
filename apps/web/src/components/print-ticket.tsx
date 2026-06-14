@@ -634,30 +634,34 @@ function currentPrintDriver(branchSettings: any): PrintDriver {
   return "browser_print";
 }
 
-async function printEscPosWithBridge(bytes: number[]): Promise<void> {
+async function printEscPosWithBridge(bytes: number[]): Promise<boolean> {
   const base64 = bytesToBase64(bytes);
   const bridge = (window as any).TodaPrintBridge || (window as any).AndroidPrintBridge;
   if (bridge?.printBase64) {
     bridge.printBase64(base64);
-    return;
+    return true;
   }
   if (bridge?.print) {
     bridge.print(JSON.stringify({ encoding: "base64", format: "escpos", data: base64 }));
-    return;
+    return true;
   }
 
+  // Local print bridge (cổng 18180) — có timeout để KHÔNG treo nếu không có bridge.
   try {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 1500);
     const res = await fetch("http://127.0.0.1:18180/print", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ encoding: "base64", format: "escpos", data: base64 }),
+      signal: controller.signal,
     });
-    if (res.ok) return;
+    clearTimeout(timer);
+    if (res.ok) return true;
   } catch {
-    // Local bridge is optional; fall through to a clear error.
+    // Không có bridge → trả về false để caller tự lùi về in trình duyệt.
   }
-
-  throw new Error("Chưa kết nối Android print bridge");
+  return false;
 }
 
 function printEscPosWithRawBt(bytes: number[]): Promise<void> {
@@ -676,8 +680,7 @@ function printEscPosWithRawBt(bytes: number[]): Promise<void> {
 
 async function printEscPos(bytes: number[], driver: PrintDriver): Promise<boolean> {
   if (driver === "android_bridge") {
-    await printEscPosWithBridge(bytes);
-    return true;
+    return await printEscPosWithBridge(bytes);
   }
   if (driver === "rawbt_intent") {
     if (!isAndroid()) return false;
@@ -788,26 +791,28 @@ export function usePrintKitchenTicket() {
   const { data: branchSettings } = useBranchSettings();
   return useCallback(async (data: KitchenTicketData, mode: PrintMode = "combined") => {
     const driver = currentPrintDriver(branchSettings);
-    if (mode === "per_item" && data.items.length > 1) {
-      const total = data.items.length;
-      const tickets = data.items.map((item, idx) => ({
-          ...data,
-          items: [item],
-          ticketLabel: `${idx + 1}/${total}`,
-        }));
-      if (driver !== "browser_print") {
-        for (const ticket of tickets) {
-          if (!(await printEscPos(buildKitchenEscPos(ticket), driver))) break;
-        }
-        if (driver !== "rawbt_intent" || isAndroid()) return;
-      }
-      await printHtmlSequential(tickets.map((ticket) => buildKitchenTicketHtml(ticket)));
-      return;
-    }
+    const tickets =
+      mode === "per_item" && data.items.length > 1
+        ? data.items.map((item, idx) => ({
+            ...data,
+            items: [item],
+            ticketLabel: `${idx + 1}/${data.items.length}`,
+          }))
+        : [data];
+
+    // Thử in qua ESC/POS (RawBT / bridge). Nếu MỌI phiếu in ok thì xong;
+    // nếu lỗi/không có driver → tự lùi về in trình duyệt cho cả lô.
     if (driver !== "browser_print") {
-      if (await printEscPos(buildKitchenEscPos(data), driver)) return;
+      let allOk = true;
+      for (const ticket of tickets) {
+        if (!(await printEscPos(buildKitchenEscPos(ticket), driver))) {
+          allOk = false;
+          break;
+        }
+      }
+      if (allOk) return;
     }
-    await printHtml(buildKitchenTicketHtml(data));
+    await printHtmlSequential(tickets.map((ticket) => buildKitchenTicketHtml(ticket)));
   }, [branchSettings]);
 }
 

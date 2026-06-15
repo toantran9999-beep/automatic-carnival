@@ -12,13 +12,19 @@ import android.hardware.usb.UsbDeviceConnection;
 import android.hardware.usb.UsbEndpoint;
 import android.hardware.usb.UsbInterface;
 import android.hardware.usb.UsbManager;
+import android.net.http.SslError;
 import android.os.Build;
 import android.os.Bundle;
 import android.util.Base64;
 import android.util.Log;
 import android.view.WindowManager;
+import android.webkit.ConsoleMessage;
 import android.webkit.JavascriptInterface;
+import android.webkit.SslErrorHandler;
 import android.webkit.WebChromeClient;
+import android.webkit.WebResourceError;
+import android.webkit.WebResourceRequest;
+import android.webkit.WebResourceResponse;
 import android.webkit.WebSettings;
 import android.webkit.WebView;
 import android.webkit.WebViewClient;
@@ -67,8 +73,40 @@ public class MainActivity extends Activity {
         s.setDatabaseEnabled(true);
         s.setMediaPlaybackRequiresUserGesture(false);
         s.setMixedContentMode(WebSettings.MIXED_CONTENT_COMPATIBILITY_MODE);
-        webView.setWebViewClient(new WebViewClient());
-        webView.setWebChromeClient(new WebChromeClient());
+        s.setCacheMode(WebSettings.LOAD_DEFAULT);
+        s.setLoadsImagesAutomatically(true);
+
+        webView.setWebViewClient(new WebViewClient() {
+            @Override
+            public void onReceivedError(WebView view, WebResourceRequest req, WebResourceError err) {
+                if (req != null && req.isForMainFrame()) {
+                    toast("Lỗi tải trang: " + err.getErrorCode() + " " + err.getDescription());
+                }
+            }
+            @Override
+            public void onReceivedHttpError(WebView view, WebResourceRequest req, WebResourceResponse resp) {
+                if (req != null && req.isForMainFrame()) {
+                    toast("HTTP " + resp.getStatusCode() + " khi tải trang");
+                }
+            }
+            @Override
+            public void onReceivedSslError(WebView view, SslErrorHandler handler, SslError error) {
+                // Báo lỗi SSL (vd đồng hồ máy sai) thay vì im lặng treo trắng.
+                toast("Lỗi bảo mật SSL: " + error.getPrimaryError() + " — kiểm tra ngày giờ máy");
+                handler.cancel();
+            }
+        });
+
+        webView.setWebChromeClient(new WebChromeClient() {
+            @Override
+            public boolean onConsoleMessage(ConsoleMessage cm) {
+                if (cm.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                    String m = cm.message();
+                    toast("JS lỗi: " + (m.length() > 160 ? m.substring(0, 160) : m));
+                }
+                return super.onConsoleMessage(cm);
+            }
+        });
         webView.addJavascriptInterface(new PrintBridge(), "TodaPrintBridge");
 
         setContentView(webView);

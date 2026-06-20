@@ -3,9 +3,8 @@ const config = {
   plugins: {
     "@tailwindcss/postcss": {},
     // Hạ cấp CSS hiện đại cho WebView máy POS cũ (~Chromium 83):
-    // dàn phẳng @layer (cần Chrome 99) + đổi color-mix() tĩnh sang màu thường.
-    "@csstools/postcss-cascade-layers": {},
-    "@csstools/postcss-color-mix-function": { preserve: true },
+    "@csstools/postcss-cascade-layers": {}, // dàn phẳng @layer (Chrome 99)
+    "@restai/postcss-compat": {}, // đổi color-mix() (Chrome 111) sang màu đặc
   },
 };
 

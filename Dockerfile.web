@@ -13,6 +13,7 @@ COPY packages/config/package.json packages/config/package.json
 COPY packages/types/package.json packages/types/package.json
 COPY packages/ui/package.json packages/ui/package.json
 COPY packages/validators/package.json packages/validators/package.json
+COPY packages/postcss-compat/package.json packages/postcss-compat/package.json
 
 RUN bun install --frozen-lockfile
 

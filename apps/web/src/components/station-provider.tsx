@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useRef } from "react";
+import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
 import type { WsMessage, WsOrderPayload } from "@restai/types";
 import { useAuthStore } from "@/stores/auth-store";
@@ -46,6 +46,18 @@ export function StationProvider() {
   const printKitchenTicket = usePrintKitchenTicket();
   const { lang } = useTranslation();
   const printedRef = useRef<Set<string>>(new Set());
+
+  // Chẩn đoán: báo cầu in USB (window.TodaPrintBridge) có được app nạp không.
+  useEffect(() => {
+    if (!isStation) return;
+    const b = (window as any).TodaPrintBridge || (window as any).AndroidPrintBridge;
+    toast(
+      b && typeof b.printBase64 === "function"
+        ? "✅ Cầu in USB sẵn sàng — in ngầm, không hộp thoại"
+        : "⚠️ KHÔNG thấy cầu in USB → sẽ hiện hộp thoại. (Đang mở bằng app TODA POS Quầy chưa?)",
+      { duration: 6000 }
+    );
+  }, [isStation]);
 
   const handleWsMessage = useCallback(
     (msg: WsMessage) => {

@@ -57,12 +57,22 @@ function replaceColorMix(value) {
   return out;
 }
 
-export default function stripColorMix() {
+export default function compat() {
   return {
-    postcssPlugin: "strip-color-mix",
-    // Quét ở pha CHÓT (sau khi cascade-layers phát lại declaration) để không
-    // bỏ sót color-mix nào (kể cả color:color-mix của màu chữ).
+    postcssPlugin: "toda-css-compat",
     OnceExit(root) {
+      // 1) Dàn phẳng @layer cho WebView cũ (Chromium <99 bỏ qua cả khối @layer
+      //    → mất sạch style). Tailwind v4 phát các lớp theo ĐÚNG thứ tự ưu tiên
+      //    (theme → base → components → utilities), nên chỉ cần GỠ VỎ @layer
+      //    (giữ nguyên thứ tự, KHÔNG đụng specificity) — tránh tác dụng phụ của
+      //    polyfill cascade-layers làm vài utility (max-height, gap...) thua
+      //    specificity → vỡ layout (dialog tràn, chữ dính).
+      root.walkAtRules("layer", (at) => {
+        if (at.nodes && at.nodes.length) at.replaceWith(at.nodes);
+        else at.remove(); // câu "@layer a,b,c;" (chỉ khai báo thứ tự)
+      });
+
+      // 2) Đổi color-mix() (Chrome 111) sang màu đặc.
       root.walkDecls((decl) => {
         if (decl.value && decl.value.indexOf("color-mix(") !== -1) {
           decl.value = replaceColorMix(decl.value);
@@ -71,4 +81,4 @@ export default function stripColorMix() {
     },
   };
 }
-stripColorMix.postcss = true;
+compat.postcss = true;

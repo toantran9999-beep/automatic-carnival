@@ -41,7 +41,6 @@
     "zustand": "^5.0.0"
   },
   "devDependencies": {
-    "@csstools/postcss-cascade-layers": "^5.0.1",
     "@restai/postcss-compat": "workspace:*",
     "@tailwindcss/postcss": "^4.1.0",
     "@types/node": "^25.2.1",

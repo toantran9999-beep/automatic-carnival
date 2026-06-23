@@ -61,6 +61,26 @@ export default function compat() {
   return {
     postcssPlugin: "toda-css-compat",
     OnceExit(root) {
+      // 0) @property → giá trị mặc định trên * (QUAN TRỌNG cho WebView ~83).
+      //    Tailwind v4 khai báo --tw-translate/scale/space/ring/shadow... bằng
+      //    @property (cần Chrome 85). WebView cũ bỏ qua @property → các biến đó
+      //    KHÔNG có giá trị đầu → transform/space/shadow thành invalid → vỡ
+      //    (dialog mất translate(-50%,-50%) nên không căn giữa; mất spacing).
+      //    Đổ initial-value xuống * để utilities vẫn ghi đè được (kiểu TW v3).
+      const propDefaults = [];
+      root.walkAtRules("property", (at) => {
+        const name = (at.params || "").trim();
+        if (!name.startsWith("--")) return;
+        let initial = null;
+        at.walkDecls("initial-value", (d) => { initial = d.value; });
+        if (initial !== null && initial.trim() !== "") {
+          propDefaults.push(`${name}:${initial.trim()}`);
+        }
+      });
+      if (propDefaults.length) {
+        root.prepend(`*,::before,::after,::backdrop{${propDefaults.join(";")}}`);
+      }
+
       // 1) Dàn phẳng @layer cho WebView cũ (Chromium <99 bỏ qua cả khối @layer
       //    → mất sạch style). Tailwind v4 phát các lớp theo ĐÚNG thứ tự ưu tiên
       //    (theme → base → components → utilities), nên chỉ cần GỠ VỎ @layer

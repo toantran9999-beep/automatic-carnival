@@ -114,10 +114,13 @@
 }
 
 /* WebView cũ trên máy POS Android (Chrome < 100, class gắn ở layout.tsx):
-   tắt animation/transition để bớt lag + né lỗi animate-in/out của Radix. */
+   tắt animation/transition + backdrop-blur để bớt lag (GPU yếu, mỗi frame
+   cuộn phải blur lại cả vùng nền) + né lỗi animate-in/out của Radix. */
 .legacy-webview *,
 .legacy-webview *::before,
 .legacy-webview *::after {
   animation-duration: 0s !important;
   transition-duration: 0s !important;
+  backdrop-filter: none !important;
+  scroll-behavior: auto !important;
 }

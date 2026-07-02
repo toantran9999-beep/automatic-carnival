@@ -172,6 +172,9 @@ export function ProductGrid({
                       <img
                         src={item.image_url}
                         alt={item.name}
+                        loading="lazy"
+                        decoding="async"
+                        draggable={false}
                         className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
                       />
                     ) : (

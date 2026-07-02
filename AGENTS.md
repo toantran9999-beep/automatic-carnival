@@ -88,6 +88,10 @@ docker compose logs -f api          # nếu cần xem lỗi
 
 - Build Next.js ngốn RAM; đã có swap 2GB. Nếu build chết (OOM), thử lại hoặc tắt bớt container tạm.
 - Không chạy nhiều build song song.
+- **Chỉ sửa web** (không đổi Dockerfile/package.json chung) → dùng 2 bước tách rời, nhẹ hơn `up -d --build web` (tránh kéo theo rebuild api/migrate khi base image đổi):
+  ```bash
+  docker compose build web && docker compose up -d --no-deps web
+  ```
 
 ## 8. Kiến trúc nhanh (để khỏi đoán)
 

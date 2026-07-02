@@ -47,10 +47,11 @@
 
 ## 4. packages
 
-- **db** — `schema/{enums,tenants,auth,tables,menu,orders,loyalty,inventory,payments,staff,coupons}.ts`; `drizzle/` migrations + `meta/`; `seed.ts` (⚠️ TRUNCATE toàn bộ rồi seed — KHÔNG chạy trên prod); `migrate.ts`; `setup-coffee-modifiers.ts` (script một lần dựng nhóm tùy chọn cà phê + gộp "(nhẹ)").
+- **db** — `schema/{enums,tenants,auth,tables,menu,orders,loyalty,inventory,payments,staff,coupons,register}.ts`; `drizzle/` migrations + `meta/`; `seed.ts` (⚠️ TRUNCATE toàn bộ rồi seed — KHÔNG chạy trên prod); `migrate.ts`; `setup-coffee-modifiers.ts` (script một lần dựng nhóm tùy chọn cà phê + gộp "(nhẹ)").
 - **validators** — `index.ts` (zod schema cho mọi input).
 - **config** — `index.ts` chứa **`PERMISSIONS`** (quyền theo vai trò) + state machine trạng thái đơn.
 - **ui** — shadcn components. **types** — kiểu WS dùng chung.
+- **postcss-compat** (`packages/postcss-compat/`) — plugin PostCSS nội bộ **`@restai/postcss-compat`**, hạ cấp CSS build cho WebView cũ trên máy POS Android. Chi tiết ở mục 7.
 
 ## 5. Mô hình dữ liệu — điểm cần nhớ
 
@@ -94,22 +95,57 @@
 - **APK "TODA POS Quầy"** (`pos-android/`): vỏ Android (WebView nạp URL POS) + cầu in native **in thẳng Gprinter qua USB** (ESC/POS thô), phơi `window.TodaPrintBridge.printBase64()` → khớp driver `android_bridge`. Thay cho RawBT (RawBT qua intent chập chờn, không hợp chạy lâu). Build bằng GitHub Actions (`.github/workflows/build-apk.yml`) → tải artifact `app-debug.apk` → sideload lên iPOS. Đổi URL ở `MainActivity.java` (`POS_URL`). Xem `pos-android/README.md`.
 - **Codex**: thêm **print driver nhanh cho Android POS** (`branches.settings.print_driver`). `browser_print` giữ `window.print()` fallback, `rawbt_intent` gửi ESC/POS base64 qua RawBT trên Android, `android_bridge` gửi payload ESC/POS cho bridge/WebView native. Phiếu bếp, hóa đơn, tạm tính QR đều có đường ESC/POS.
 
-## 7. Gotchas (đọc kỹ trước khi sửa)
+## 7. Tương thích WebView cũ trên máy POS Android (⚠️ QUAN TRỌNG — đừng gỡ)
 
-- **In**: máy in phải gắn ở thiết bị mở web. Desktop/browser fallback dùng `window.print()`. Android POS USB nên đổi `branches.settings.print_driver` sang `rawbt_intent` hoặc `android_bridge` để bỏ dialog A4 Chrome.
+Máy POS quầy (iPOS, Android 11) chạy APK `pos-android/` (xem bullet "APK TODA POS Quầy" ở mục 6, và `pos-android/README.md`) — WebView nạp thẳng web POS. **Android System WebView của máy rất cũ (~Chromium 83)** dù bản Android mới, trong khi Next.js 16 / React 19 / Tailwind v4 xuất JS/CSS cho engine hiện đại (Chrome 111+). Chạy thẳng bằng Chrome ngoài thì OK (Chrome tự cập nhật), nhưng **trong APK sẽ vỡ hoàn toàn** nếu không hạ cấp. Đã xử 4 lớp riêng biệt, PHẢI GIỮ NGUYÊN cả 4 — thiếu 1 lớp là tái phát lỗi:
+
+1. **JS — toán tử logic gán mới (`??=`/`||=`/`&&=`, cần Chrome 85):** `apps/web/package.json` có field `"browserslist"` (`chrome >= 74`, `safari >= 13`...) → Next/Turbopack tự biên dịch xuống cú pháp cũ hơn. Thiếu field này → `Uncaught SyntaxError: Unexpected token '='` → app đứng khựng ở màn "Đang tải..." (không load được gì).
+2. **CSS `@layer` (cần Chrome 99):** WebView cũ **bỏ qua cả khối `@layer`** → mất sạch mọi style Tailwind (giao diện thô, không màu, không bo góc). Xử bằng cách **GỠ VỎ `@layer`** (giữ nguyên thứ tự nguồn — Tailwind v4 đã phát đúng thứ tự ưu tiên theme→base→components→utilities, nên gỡ vỏ không đổi kết quả cascade). ĐÃ THỬ và BỎ cách polyfill `@csstools/postcss-cascade-layers` vì nó thêm hack `:not(#\#)` vào specificity, làm vài utility (`max-height`, `gap`) thua độ ưu tiên → vỡ layout khác (dialog tràn ra ngoài, thanh danh mục dính chữ). Bài học: polyfill "đúng chuẩn" không phải lúc nào cũng an toàn hơn cách đơn giản.
+3. **CSS `color-mix()` (cần Chrome 111):** đổi thành **màu đặc** (lấy màu đầu tiên trong hàm trộn, bỏ phần tỉ lệ/độ mờ) — WebView cũ bỏ qua khai báo này nên nền/viền/badge sẽ trong suốt/mất màu nếu không xử.
+4. **CSS `@property` (cần Chrome 85 — thủ phạm khó thấy nhất, gây lỗi "chỉ trên APK"):** Tailwind v4 khai báo `--tw-translate-x/y`, `--tw-scale-*`, `--tw-space-*`, `--tw-shadow`... bằng `@property` để có giá trị mặc định. WebView cũ bỏ qua toàn bộ khối `@property` → các biến đó **không có giá trị** → `transform: translate(-50%,-50%)` (dùng để căn giữa dialog) và `gap`/`space-*` (spacing giữa các item) trở thành **invalid** → dialog lệch ra ngoài màn hình/không chọn được, danh mục dính chữ. Đây là lỗi tinh vi nhất vì UI "gần đúng" (đã có màu, có bo góc từ bước 2–3) khiến dễ tưởng đã xong.
+
+Cả 4 lớp CSS xử trong **1 plugin PostCSS duy nhất**: `packages/postcss-compat/index.mjs` (package workspace `@restai/postcss-compat`, export default 1 hàm `compat()` chạy ở `OnceExit`). Đăng ký ở `apps/web/postcss.config.mjs`:
+```js
+plugins: { "@tailwindcss/postcss": {}, "@restai/postcss-compat": {} }
+```
+⚠️ **Turbopack (Next 16) chỉ nhận plugin PostCSS khai báo theo TÊN PACKAGE** trong `postcss.config.mjs` — KHÔNG nhận đường dẫn tương đối (`"./foo.mjs"`) hay giá trị hàm/mảng import trực tiếp (build lỗi `module not found` / parse config). Vì vậy plugin tùy biến phải đóng gói thành package workspace thật, không phải file rời trong `apps/web/`.
+
+⚠️ **Gotcha Docker khi thêm package workspace mới** (áp dụng cho `postcss-compat` và bất kỳ package mới nào sau này): phải copy `package.json` của package đó trong **CẢ `Dockerfile.web` VÀ `Dockerfile.api`** (đoạn `COPY packages/<tên>/package.json ...` trước dòng `RUN bun install --frozen-lockfile`) — `bun.lock` liệt kê cả workspace nên `bun install --frozen-lockfile` cần thấy đủ mọi `package.json`, kể cả service không dùng tới package đó. Quên 1 trong 2 Dockerfile → lỗi `Workspace dependency "@restai/xxx" not found` / `lockfile had changes, but lockfile is frozen`.
+
+**Cách kiểm tra nhanh trước khi deploy** (đỡ tốn 1 vòng build VPS chậm — VPS 2GB dễ OOM khi build):
+```bash
+bun run --filter @restai/web build
+f=$(find apps/web/.next -name "*.css" | xargs ls -S | head -1)
+grep -oE '@layer [a-z]|color-mix\(' "$f" | sort | uniq -c   # phải ra 0 dòng (hoặc color-mix rất ít, chỉ còn color:currentColor)
+grep -c -- '--tw-translate-x:0' "$f"                         # phải >= 1 (giá trị mặc định đã được đổ)
+```
+
+**Trạng thái (đang chờ xác nhận từ hiện trường):** đã deploy bản xử đủ cả 4 lớp (commit `2c03078`). Đang chờ anh Toàn xác nhận trên máy POS thật: (a) dialog chọn tùy chọn món (modifier) có **căn giữa + cuộn + chọn được** chưa, (b) thanh danh mục hết dính chữ chưa, (c) in phiếu qua APK có ra Gprinter **ngầm, không hộp thoại A4** chưa (lưu ý: hộp thoại A4 CHỈ mất khi mở bằng chính app "TODA POS Quầy", KHÔNG phải Chrome — Chrome luôn bắt buộc hiện hộp thoại in, không sửa được). Nếu còn lỗi UI khác chỉ-trên-WebView-cũ (không tái hiện trên Chrome desktop), nhiều khả năng vẫn là 1 tính năng CSS/JS hiện đại khác chưa hạ cấp — tiếp tục vá trong `packages/postcss-compat/index.mjs` theo cùng nguyên tắc (xác định ngưỡng Chrome version của tính năng CSS, so với Chromium ~83 của máy).
+
+## 8. Gotchas (đọc kỹ trước khi sửa)
+
+- **WebView cũ trên POS Android**: xem mục 7 — đừng gỡ browserslist/postcss-compat, đó là lý do APK chạy được.
+- **In**: máy in phải gắn ở thiết bị mở web. Desktop/browser fallback dùng `window.print()` (luôn hiện hộp thoại, không tắt được — hạn chế của trình duyệt, không phải bug). Android POS dùng APK `pos-android/` với `print_driver=android_bridge` để in ngầm qua USB; `rawbt_intent` (RawBT qua intent) đã THỬ và BỎ vì chập chờn, không hợp chạy lâu dài.
 - **seed.ts TRUNCATE** sạch DB — chỉ cho DB trống. Backup `pg_dump` trước khi đụng DB (`/root/menu-backups`, `/root/db-backup-*`).
 - **Phân quyền**: server ở `packages/config/src/index.ts` (`PERMISSIONS`); ẩn nav ở `(dashboard)/layout.tsx` (`allowedPaths`). Sửa 1 vai trò nhớ sửa cả 2 nơi.
 - **Upload**: `lib/r2.ts` `storeUpload`/`deleteUpload`. Volume `uploadsdata` mount api(rw)/web(ro)/caddy(ro `/srv/uploads`).
 - **Theme**: đổi accent → sửa `--accent-runtime` (globals.css) hoặc `ACCENTS` (theme-store).
 - **CRLF**: `.gitattributes` ép LF; local đặt `git config core.autocrlf false`.
+- **Thêm package workspace mới** (packages/xxx): nhớ copy `package.json` vào cả `Dockerfile.web` và `Dockerfile.api` (xem mục 7).
 
-## 8. Deploy / script nhanh
+## 9. Deploy / script nhanh
 
 ```bash
 # Trên VPS (/root/toda-pos)
 git pull --ff-only origin master
 docker compose up -d --build           # build web+api, migrate tự áp migration mới
 docker compose up -d --build web        # chỉ web (~10p)  | api: nhanh
+
+# ⚠️ VPS chỉ 2GB RAM — build "up -d --build web" đôi khi KÉO THEO rebuild
+# api/migrate (base image chung đổi) → dễ OOM/kẹt. Nếu chỉ sửa web và muốn
+# nhẹ hơn, tách 2 bước (không đụng service khác đang chạy):
+docker compose build web && docker compose up -d --no-deps web
+
 # Chạy script một lần (rebuild image migrate):
 docker compose run --build --rm migrate bun run src/<tên-script>.ts
 ```

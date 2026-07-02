@@ -97,14 +97,34 @@
 
 ## 7. Tương thích WebView cũ trên máy POS Android (⚠️ QUAN TRỌNG — đừng gỡ)
 
-Máy POS quầy (iPOS, Android 11) chạy APK `pos-android/` (xem bullet "APK TODA POS Quầy" ở mục 6, và `pos-android/README.md`) — WebView nạp thẳng web POS. **Android System WebView của máy rất cũ (~Chromium 83)** dù bản Android mới, trong khi Next.js 16 / React 19 / Tailwind v4 xuất JS/CSS cho engine hiện đại (Chrome 111+). Chạy thẳng bằng Chrome ngoài thì OK (Chrome tự cập nhật), nhưng **trong APK sẽ vỡ hoàn toàn** nếu không hạ cấp. Đã xử 4 lớp riêng biệt, PHẢI GIỮ NGUYÊN cả 4 — thiếu 1 lớp là tái phát lỗi:
+Máy POS quầy (iPOS, Android 11) chạy APK `pos-android/` (xem bullet "APK TODA POS Quầy" ở mục 6, và `pos-android/README.md`) — WebView nạp thẳng web POS. **Android System WebView của máy rất cũ (~Chromium 83)** dù bản Android mới, trong khi Next.js 16 / React 19 / Tailwind v4 xuất JS/CSS cho engine hiện đại (Chrome 111+). Chạy thẳng bằng Chrome ngoài thì OK (Chrome tự cập nhật), nhưng **trong APK sẽ vỡ hoàn toàn** nếu không hạ cấp. Đã xử các lớp sau, PHẢI GIỮ NGUYÊN TẤT CẢ — thiếu 1 lớp là tái phát lỗi:
 
 1. **JS — toán tử logic gán mới (`??=`/`||=`/`&&=`, cần Chrome 85):** `apps/web/package.json` có field `"browserslist"` (`chrome >= 74`, `safari >= 13`...) → Next/Turbopack tự biên dịch xuống cú pháp cũ hơn. Thiếu field này → `Uncaught SyntaxError: Unexpected token '='` → app đứng khựng ở màn "Đang tải..." (không load được gì).
-2. **CSS `@layer` (cần Chrome 99):** WebView cũ **bỏ qua cả khối `@layer`** → mất sạch mọi style Tailwind (giao diện thô, không màu, không bo góc). Xử bằng cách **GỠ VỎ `@layer`** (giữ nguyên thứ tự nguồn — Tailwind v4 đã phát đúng thứ tự ưu tiên theme→base→components→utilities, nên gỡ vỏ không đổi kết quả cascade). ĐÃ THỬ và BỎ cách polyfill `@csstools/postcss-cascade-layers` vì nó thêm hack `:not(#\#)` vào specificity, làm vài utility (`max-height`, `gap`) thua độ ưu tiên → vỡ layout khác (dialog tràn ra ngoài, thanh danh mục dính chữ). Bài học: polyfill "đúng chuẩn" không phải lúc nào cũng an toàn hơn cách đơn giản.
-3. **CSS `color-mix()` (cần Chrome 111):** đổi thành **màu đặc** (lấy màu đầu tiên trong hàm trộn, bỏ phần tỉ lệ/độ mờ) — WebView cũ bỏ qua khai báo này nên nền/viền/badge sẽ trong suốt/mất màu nếu không xử.
-4. **CSS `@property` (cần Chrome 85 — thủ phạm khó thấy nhất, gây lỗi "chỉ trên APK"):** Tailwind v4 khai báo `--tw-translate-x/y`, `--tw-scale-*`, `--tw-space-*`, `--tw-shadow`... bằng `@property` để có giá trị mặc định. WebView cũ bỏ qua toàn bộ khối `@property` → các biến đó **không có giá trị** → `transform: translate(-50%,-50%)` (dùng để căn giữa dialog) và `gap`/`space-*` (spacing giữa các item) trở thành **invalid** → dialog lệch ra ngoài màn hình/không chọn được, danh mục dính chữ. Đây là lỗi tinh vi nhất vì UI "gần đúng" (đã có màu, có bo góc từ bước 2–3) khiến dễ tưởng đã xong.
+2. **CSS — toàn bộ xử trong plugin `@restai/postcss-compat`** (bảng lớp bên dưới). Bài học từ đợt đầu: từng THỬ và BỎ polyfill `@csstools/postcss-cascade-layers` vì nó thêm hack `:not(#\#)` vào specificity, làm vài utility (`max-height`, `gap`) thua độ ưu tiên → vỡ layout khác. **Đơn giản (gỡ vỏ / hạ cú pháp tương đương) > polyfill "đúng chuẩn".**
 
-Cả 4 lớp CSS xử trong **1 plugin PostCSS duy nhất**: `packages/postcss-compat/index.mjs` (package workspace `@restai/postcss-compat`, export default 1 hàm `compat()` chạy ở `OnceExit`). Đăng ký ở `apps/web/postcss.config.mjs`:
+Các lớp CSS trong `packages/postcss-compat/index.mjs` (mỗi lớp = 1 tính năng + ngưỡng Chrome cần có):
+
+| Lớp | Tính năng | Cần Chrome | Cách xử | Hậu quả nếu thiếu |
+|---|---|---|---|---|
+| A | `@property` | 85 | Đổ `initial-value` xuống `*` | Biến `--tw-*` không có giá trị đầu → transform/shadow/space invalid |
+| B | `@layer` | 99 | Gỡ vỏ, giữ thứ tự nguồn | Mất sạch style Tailwind |
+| C | `@supports` test color-mix/oklch | — | Gỡ vỏ (điều kiện dương) | Engine cũ evaluate false → vứt cả khối |
+| D | `@media` range syntax `(width >= X)` | 104 | → `(min-width: X)` | **Mất TOÀN BỘ responsive `sm:/md:/lg:`** |
+| E | `:is()` / `:where()` | 88 | Expand thành selector thường (hand-rolled, selector không expand được → tách rule riêng + warn lúc build) | `dark:`, `space-*`, `divide-*`, `group/peer-*` bị vứt nguyên rule → chữ dính |
+| F | `oklch()` / `oklab()` | 111 | Convert toán học tĩnh → `rgb()` | Toàn bộ màu theme invalid |
+| G | `color-mix()` | 111 | Lấy màu đầu tiên (đặc) | Nền/viền/badge trong suốt |
+| H | `dvh`/`svh` | 108 | Chèn fallback `vh` trước decl gốc | Phần tử full-height sai |
+| I | Logical shorthand `padding-inline`/`margin-inline`/`inset-inline`... | 87 | → physical left/right (app LTR) | **`px-*`/`mx-*` mất hết → chữ dính** |
+| J | `inset:` shorthand | 87 | → top/right/bottom/left | Overlay dialog sai vị trí |
+| K | Thuộc tính riêng `translate:`/`rotate:`/`scale:` (TW v4) | 104 | Gộp về 1 decl `transform:` pipeline kiểu TW v3 (var có fallback) | **Dialog mất `translate(-50%,-50%)` → lệch khỏi màn hình** |
+
+> Lưu ý lớp K: đợt vá đầu chỉ đổ default cho `--tw-translate-*` (lớp A) mà không biết Tailwind v4 dùng **thuộc tính `translate:` riêng** (không phải `transform:`) → dialog vẫn lệch. Phải gộp về `transform:` mới ăn trên engine cũ.
+
+Ngoài plugin còn 2 lớp hỗ trợ ở web:
+- **Class `legacy-webview`** (script no-flash trong `app/layout.tsx` gắn khi UA Chrome < 100) + rule trong `globals.css` tắt toàn bộ animation/transition → giảm lag + né lỗi `animate-in/out` của Radix trên engine cũ.
+- **Cài đặt → tab "Thiết bị này"** (`settings/_components/device-tab.tsx`) hiển thị **phiên bản Chromium + UA** của máy — chẩn đoán tại quán không cần adb. Nếu máy báo **Chromium < 84** thì `gap` trong flexbox cũng không chạy → cần vá thêm lớp gap-fallback (chưa làm, chờ xác nhận version).
+
+Plugin là package workspace `@restai/postcss-compat` (export default 1 hàm `compat()` chạy ở `OnceExit`). Đăng ký ở `apps/web/postcss.config.mjs`:
 ```js
 plugins: { "@tailwindcss/postcss": {}, "@restai/postcss-compat": {} }
 ```
@@ -115,12 +135,17 @@ plugins: { "@tailwindcss/postcss": {}, "@restai/postcss-compat": {} }
 **Cách kiểm tra nhanh trước khi deploy** (đỡ tốn 1 vòng build VPS chậm — VPS 2GB dễ OOM khi build):
 ```bash
 bun run --filter @restai/web build
-f=$(find apps/web/.next -name "*.css" | xargs ls -S | head -1)
-grep -oE '@layer [a-z]|color-mix\(' "$f" | sort | uniq -c   # phải ra 0 dòng (hoặc color-mix rất ít, chỉ còn color:currentColor)
-grep -c -- '--tw-translate-x:0' "$f"                         # phải >= 1 (giá trị mặc định đã được đổ)
+f=$(find apps/web/.next -name "*.css" -size +10k | xargs ls -S | head -1)
+# TẤT CẢ phải ra 0 (padding-inline:/inset: chỉ tính shorthand thật, --tw-ring-inset không tính):
+for p in 'oklch\(' 'oklab\(' 'color-mix\(' '@layer' ':is\(' ':where\(' \
+         '(width|height)\s*[<>]' 'padding-inline:' 'margin-inline:' \
+         'translate:var' 'rotate:var' 'scale:var' '@container'; do
+  echo "$p => $(grep -oE "$p" "$f" | wc -l)"
+done
+grep -c -- '--tw-translate-x:0' "$f"   # phải >= 1 (default đã đổ xuống *)
 ```
 
-**Trạng thái (đang chờ xác nhận từ hiện trường):** đã deploy bản xử đủ cả 4 lớp (commit `2c03078`). Đang chờ anh Toàn xác nhận trên máy POS thật: (a) dialog chọn tùy chọn món (modifier) có **căn giữa + cuộn + chọn được** chưa, (b) thanh danh mục hết dính chữ chưa, (c) in phiếu qua APK có ra Gprinter **ngầm, không hộp thoại A4** chưa (lưu ý: hộp thoại A4 CHỈ mất khi mở bằng chính app "TODA POS Quầy", KHÔNG phải Chrome — Chrome luôn bắt buộc hiện hộp thoại in, không sửa được). Nếu còn lỗi UI khác chỉ-trên-WebView-cũ (không tái hiện trên Chrome desktop), nhiều khả năng vẫn là 1 tính năng CSS/JS hiện đại khác chưa hạ cấp — tiếp tục vá trong `packages/postcss-compat/index.mjs` theo cùng nguyên tắc (xác định ngưỡng Chrome version của tính năng CSS, so với Chromium ~83 của máy).
+**Trạng thái (2026-07-02):** sau commit `2c03078` (4 lớp đầu) máy thật VẪN lỗi (dialog lệch khỏi màn hình, chữ dính, lag) → khảo sát lại phát hiện thêm 7 lớp thiếu (D, E, F, H, I, J, K ở bảng trên — nặng nhất là K `translate:`, D media range, I `padding-inline`) và đã vá đủ + build check sạch 100% + smoke-test Chrome desktop OK. Đang chờ anh Toàn xác nhận trên máy POS thật: (a) dialog modifier **căn giữa + cuộn + chọn được**, (b) thanh danh mục + spacing hết dính chữ, (c) màu theme đúng, (d) đọc **phiên bản Chromium** ở Cài đặt → Thiết bị này để quyết vụ flex-gap (nếu < 84 phải vá thêm), (e) in phiếu qua APK ra Gprinter **ngầm, không hộp thoại A4** (hộp thoại A4 CHỈ mất khi mở bằng app "TODA POS Quầy", KHÔNG phải Chrome). Nếu còn lỗi UI chỉ-trên-WebView-cũ → tiếp tục vá trong `packages/postcss-compat/index.mjs` theo cùng nguyên tắc (tra ngưỡng Chrome version của tính năng, so với ~83).
 
 ## 8. Gotchas (đọc kỹ trước khi sửa)
 

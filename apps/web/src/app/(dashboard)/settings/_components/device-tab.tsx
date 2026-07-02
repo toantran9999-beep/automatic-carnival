@@ -104,6 +104,31 @@ export function DeviceTab() {
           />
         </div>
 
+        {mounted && (
+          <div className="rounded-lg border p-4 text-xs text-muted-foreground space-y-1">
+            <p className="font-medium text-foreground">
+              {vi ? "Thông tin trình duyệt máy này" : "This device's browser"}
+            </p>
+            <p>
+              {(() => {
+                const m = navigator.userAgent.match(/Chrome\/(\d+[\d.]*)/);
+                return m
+                  ? `Chromium ${m[1]}${
+                      parseInt(m[1], 10) < 100
+                        ? vi
+                          ? " (WebView cũ — đang chạy chế độ tương thích)"
+                          : " (old WebView — compatibility mode active)"
+                        : ""
+                    }`
+                  : vi
+                    ? "Không phải nhân Chromium"
+                    : "Not Chromium-based";
+              })()}
+            </p>
+            <p className="break-all opacity-70">{navigator.userAgent}</p>
+          </div>
+        )}
+
         {mounted && isStation && (
           <div className="rounded-lg border border-amber-300 dark:border-amber-700 bg-amber-50/60 dark:bg-amber-950/20 p-4 text-xs text-muted-foreground space-y-1">
             <p className="font-medium text-foreground">

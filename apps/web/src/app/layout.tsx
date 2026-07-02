@@ -43,7 +43,7 @@ export default function RootLayout({
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `(function(){try{var t=localStorage.getItem('toda_theme')||'dark';var a=localStorage.getItem('toda_accent')||'#7aa653';var e=document.documentElement;e.classList.add(t);e.style.setProperty('--accent-runtime',a);}catch(e){document.documentElement.classList.add('dark');}})();`,
+            __html: `(function(){try{var t=localStorage.getItem('toda_theme')||'dark';var a=localStorage.getItem('toda_accent')||'#7aa653';var e=document.documentElement;e.classList.add(t);e.style.setProperty('--accent-runtime',a);var m=navigator.userAgent.match(/Chrome\\/(\\d+)/);if(m&&+m[1]<100){e.classList.add('legacy-webview');}}catch(e){document.documentElement.classList.add('dark');}})();`,
           }}
         />
       </head>

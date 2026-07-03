@@ -9,6 +9,7 @@ import { Badge } from "@restai/ui/components/badge";
 import { useCartStore } from "@/stores/cart-store";
 import { useCustomerStore } from "@/stores/customer-store";
 import { formatCurrency, cn } from "@/lib/utils";
+import { toThumbUrl } from "@/lib/image-thumb";
 import { ShoppingCart, Plus, Minus, Loader2, UtensilsCrossed, Receipt, Bell, CheckCircle2 } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/stores/lang-store";
@@ -326,7 +327,7 @@ export default function CustomerMenuPage({
                         >
                           {item.image_url ? (
                             <Image
-                              src={item.image_url}
+                              src={toThumbUrl(item.image_url)}
                               alt={item.name}
                               fill
                               sizes="(max-width: 768px) 50vw, 200px"

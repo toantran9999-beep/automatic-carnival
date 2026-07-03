@@ -13,6 +13,7 @@ import {
 import { Badge } from "@restai/ui/components/badge";
 import { Check, ChevronDown, Plus, Minus, Loader2, UtensilsCrossed } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
+import { toThumbUrl } from "@/lib/image-thumb";
 import { useItemModifierGroups } from "@/hooks/use-menu";
 import { useTranslation } from "@/stores/lang-store";
 
@@ -140,7 +141,15 @@ export function ModifierDialog({
         <DialogHeader>
           <DialogTitle className="flex items-center gap-3">
             {item.image_url ? (
-              <img src={item.image_url} alt="" className="h-12 w-12 rounded-lg object-cover" />
+              <img
+                src={toThumbUrl(item.image_url)}
+                alt=""
+                onError={(e) => {
+                  e.currentTarget.onerror = null;
+                  e.currentTarget.src = item.image_url!;
+                }}
+                className="h-12 w-12 rounded-lg object-cover"
+              />
             ) : (
               <div className="h-12 w-12 rounded-lg bg-muted flex items-center justify-center">
                 <UtensilsCrossed className="h-5 w-5 text-muted-foreground/50" />

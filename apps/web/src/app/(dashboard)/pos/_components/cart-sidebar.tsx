@@ -3,6 +3,7 @@
 import { Input } from "@restai/ui/components/input";
 import { Button } from "@restai/ui/components/button";
 import { Badge } from "@restai/ui/components/badge";
+import { toThumbUrl } from "@/lib/image-thumb";
 import {
   Select,
   SelectTrigger,
@@ -220,8 +221,12 @@ export function CartSidebar({
                   <div className="flex items-start gap-2">
                     {item.imageUrl ? (
                       <img
-                        src={item.imageUrl}
+                        src={toThumbUrl(item.imageUrl)}
                         alt=""
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = item.imageUrl!;
+                        }}
                         className="mt-0.5 h-8 w-8 flex-shrink-0 rounded object-cover"
                       />
                     ) : (

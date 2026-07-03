@@ -6,6 +6,7 @@ import { Button } from "@restai/ui/components/button";
 import { Badge } from "@restai/ui/components/badge";
 import { Search, Loader2, X } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { toThumbUrl } from "@/lib/image-thumb";
 import { TodaMark } from "@/components/toda-mark";
 import { useTranslation } from "@/stores/lang-store";
 import type { PosCartItem } from "../page";
@@ -170,11 +171,15 @@ export function ProductGrid({
                   <div className="relative h-24 overflow-hidden bg-muted md:h-[88px] xl:h-24">
                     {item.image_url ? (
                       <img
-                        src={item.image_url}
+                        src={toThumbUrl(item.image_url)}
                         alt={item.name}
                         loading="lazy"
                         decoding="async"
                         draggable={false}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = item.image_url!;
+                        }}
                         className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
                       />
                     ) : (

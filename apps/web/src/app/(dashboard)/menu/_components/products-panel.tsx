@@ -12,6 +12,7 @@ import {
   UtensilsCrossed,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { toThumbUrl } from "@/lib/image-thumb";
 import {
   useUpdateMenuItem,
   useDeleteMenuItem,
@@ -392,8 +393,12 @@ export function ProductsPanel({
                   <div className="relative w-full h-36 bg-muted">
                     {imageUrl ? (
                       <img
-                        src={imageUrl}
+                        src={toThumbUrl(imageUrl)}
                         alt={item.name}
+                        onError={(e) => {
+                          e.currentTarget.onerror = null;
+                          e.currentTarget.src = imageUrl;
+                        }}
                         className="w-full h-full object-cover"
                       />
                     ) : (

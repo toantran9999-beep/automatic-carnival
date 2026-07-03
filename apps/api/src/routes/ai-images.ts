@@ -1,13 +1,11 @@
 import { Hono } from "hono";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { mkdir, writeFile } from "node:fs/promises";
-import path from "node:path";
 import type { AppEnv } from "../types.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { getPublicUrl, uploadToR2 } from "../lib/r2.js";
+import { storeUpload, hasR2Config } from "../lib/r2.js";
 
 const generateMenuImageSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -32,15 +30,6 @@ function assertConfigured() {
   if (!process.env.FAL_KEY && !process.env.OPENAI_API_KEY) {
     throw new Error("Missing FAL_KEY or OPENAI_API_KEY");
   }
-}
-
-function hasR2Config() {
-  return Boolean(
-    process.env.R2_ACCOUNT_ID &&
-      process.env.R2_ACCESS_KEY_ID &&
-      process.env.R2_SECRET_ACCESS_KEY &&
-      process.env.R2_PUBLIC_URL,
-  );
 }
 
 function buildPrompt(input: z.infer<typeof generateMenuImageSchema>) {
@@ -257,28 +246,9 @@ async function storeImage(
   organizationId: string,
   imageBytes: Buffer,
 ): Promise<{ url: string; key: string; storage: "r2" | "local" }> {
-  const fileName = `ai-${crypto.randomUUID()}.png`;
-
-  if (hasR2Config()) {
-    const key = `${organizationId}/menu/${fileName}`;
-    await uploadToR2(key, imageBytes, "image/png");
-    return { url: getPublicUrl(key), key, storage: "r2" };
-  }
-
-  const key = `ai/${fileName}`;
-  const uploadDir =
-    process.env.LOCAL_UPLOAD_DIR || path.join("apps", "web", "public", "uploads");
-  const absolutePath = path.join(uploadDir, key);
-
-  await mkdir(path.dirname(absolutePath), { recursive: true });
-  await writeFile(absolutePath, imageBytes);
-
-  const publicBase = process.env.PUBLIC_UPLOAD_URL || "/uploads";
-  return {
-    url: `${publicBase.replace(/\/$/, "")}/${key}`,
-    key,
-    storage: "local",
-  };
+  const key = `${organizationId}/menu/ai-${crypto.randomUUID()}.png`;
+  const url = await storeUpload(key, imageBytes, "image/png");
+  return { url, key, storage: hasR2Config() ? "r2" : "local" };
 }
 
 aiImages.post(

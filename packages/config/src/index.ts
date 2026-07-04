@@ -31,7 +31,7 @@ export const PERMISSIONS = {
     "customers:*",
     "payments:*", "reports:read",
     "shifts:*",
-    "invoices:*", "settings:read",
+    "invoices:*", "settings:read", "settings:update",
   ],
   cashier: [
     "menu:read",

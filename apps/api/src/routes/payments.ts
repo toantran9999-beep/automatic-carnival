@@ -10,6 +10,7 @@ import { requirePermission } from "../middleware/rbac.js";
 import { peruStartOfDay, peruEndOfDay } from "../lib/timezone.js";
 import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
+import { handleOrderCompletion } from "../services/order.service.js";
 
 const payments = new Hono<AppEnv>();
 const PAYMENT_REQUEST_TTL_MS = 60 * 60 * 1000;
@@ -147,6 +148,9 @@ async function completePaymentForOrder(tx: any, args: {
 
   let amountToDistribute = args.amount;
   const paymentsCreated: any[] = [];
+  // Đơn vừa chuyển completed trong tx — caller gọi handleOrderCompletion SAU khi commit
+  // (handleOrderCompletion dùng db global, không được chạy trong tx này).
+  const completedOrders: any[] = [];
   let fullyPaid = false;
 
   const payOrder = async (o: any) => {
@@ -184,6 +188,7 @@ async function completePaymentForOrder(tx: any, args: {
         .update(schema.orders)
         .set({ status: "completed", updated_at: new Date() })
         .where(eq(schema.orders.id, o.id));
+      completedOrders.push(o);
     }
   };
 
@@ -231,7 +236,7 @@ async function completePaymentForOrder(tx: any, args: {
         await tx.update(schema.tables).set({ status: "available" }).where(eq(schema.tables.id, session.table_id));
       }
 
-      return { order, paymentsCreated, fullyPaid, tableSessionId: order.table_session_id, tableId: session?.table_id };
+      return { order, paymentsCreated, completedOrders, fullyPaid, tableSessionId: order.table_session_id, tableId: session?.table_id };
     }
   } else {
     await payOrder(order);
@@ -243,7 +248,22 @@ async function completePaymentForOrder(tx: any, args: {
     fullyPaid = Number(prevPayments?.total_paid || 0) >= order.total;
   }
 
-  return { order, paymentsCreated, fullyPaid };
+  return { order, paymentsCreated, completedOrders, fullyPaid };
+}
+
+/** Chạy side-effect sau thanh toán (trừ kho + tích điểm) cho các đơn vừa completed. */
+async function runCompletionSideEffects(orders: any[], organizationId: string, branchId: string) {
+  for (const o of orders) {
+    await handleOrderCompletion({
+      orderId: o.id,
+      orderNumber: o.order_number,
+      orderTotal: o.total,
+      customerId: o.customer_id,
+      organizationId,
+      branchId,
+      inventoryDeducted: o.inventory_deducted,
+    });
+  }
 }
 
 // Public SePay webhook. This must stay before auth middleware.
@@ -443,6 +463,9 @@ payments.post("/webhooks/sepay", async (c) => {
 
     return completed;
   });
+
+  // Sau khi tx commit: trừ kho + tích điểm cho các đơn vừa hoàn tất (idempotent, tự nuốt lỗi).
+  await runCompletionSideEffects(result.completedOrders || [], request.organization_id, request.branch_id);
 
   await logWebhookEvent({
     providerTransactionId,
@@ -913,6 +936,8 @@ payments.post(
             .update(schema.orders)
             .set({ status: "completed", updated_at: new Date() })
             .where(eq(schema.orders.id, o.id));
+          // Trừ kho + tích điểm (idempotent, tự nuốt lỗi — không fail thanh toán)
+          await runCompletionSideEffects([o], tenant.organizationId, tenant.branchId);
         }
       }
 
@@ -996,6 +1021,8 @@ payments.post(
           .update(schema.orders)
           .set({ status: "completed", updated_at: new Date() })
           .where(eq(schema.orders.id, order.id));
+        // Trừ kho + tích điểm (idempotent, tự nuốt lỗi — không fail thanh toán)
+        await runCompletionSideEffects([order], tenant.organizationId, tenant.branchId);
       }
     }
 

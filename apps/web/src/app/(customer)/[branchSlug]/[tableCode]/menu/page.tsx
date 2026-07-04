@@ -282,7 +282,7 @@ export default function CustomerMenuPage({
               key={cat.id}
               onClick={() => setActiveCategory(cat.id)}
               className={cn(
-                "flex-1 min-w-0 px-3 py-3 text-xs font-medium uppercase tracking-wider whitespace-nowrap text-center transition-colors border-b-2",
+                "shrink-0 px-4 py-3 text-xs font-medium uppercase tracking-wider whitespace-nowrap text-center transition-colors border-b-2",
                 activeCategory === cat.id
                   ? "text-foreground border-foreground"
                   : "text-muted-foreground border-transparent hover:text-foreground/70",
@@ -346,26 +346,26 @@ export default function CustomerMenuPage({
                           <div className="absolute bottom-2 right-2 flex items-center gap-1 bg-black/60 backdrop-blur-sm rounded-lg border border-white/10 px-1.5 py-1">
                             <button
                               type="button"
-                              className="w-7 h-7 flex items-center justify-center text-foreground hover:text-primary transition-colors"
+                              className="w-9 h-9 flex items-center justify-center text-foreground hover:text-primary transition-colors"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 updateQuantity(item.id, qty - 1);
                               }}
                             >
-                              <Minus className="h-3.5 w-3.5" />
+                              <Minus className="h-4 w-4" />
                             </button>
                             <span className="w-5 text-center text-xs font-bold text-foreground">
                               {qty}
                             </span>
                             <button
                               type="button"
-                              className="w-7 h-7 flex items-center justify-center text-foreground hover:text-primary transition-colors"
+                              className="w-9 h-9 flex items-center justify-center text-foreground hover:text-primary transition-colors"
                               onClick={(e) => {
                                 e.stopPropagation();
                                 handleAddItem(item);
                               }}
                             >
-                              <Plus className="h-3.5 w-3.5" />
+                              <Plus className="h-4 w-4" />
                             </button>
                           </div>
                         ) : (

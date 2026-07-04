@@ -519,20 +519,20 @@ export default function CartPage({
                   <Button
                     variant="outline"
                     size="icon"
-                    className="h-8 w-8 rounded-full"
+                    className="h-9 w-9 rounded-full"
                     onClick={() => updateQuantity(item.menuItemId, item.quantity - 1)}
                   >
-                    <Minus className="h-3.5 w-3.5" />
+                    <Minus className="h-4 w-4" />
                   </Button>
                   <span className="w-7 text-center font-bold text-sm">
                     {item.quantity}
                   </span>
                   <Button
                     size="icon"
-                    className="h-8 w-8 rounded-full"
+                    className="h-9 w-9 rounded-full"
                     onClick={() => updateQuantity(item.menuItemId, item.quantity + 1)}
                   >
-                    <Plus className="h-3.5 w-3.5" />
+                    <Plus className="h-4 w-4" />
                   </Button>
                 </div>
                 <div className="text-right shrink-0">
@@ -541,7 +541,7 @@ export default function CartPage({
                   </p>
                   <button
                     onClick={() => removeItem(item.menuItemId)}
-                    className="text-destructive hover:text-destructive/80 mt-1 p-1"
+                    className="text-destructive hover:text-destructive/80 mt-1 p-2 -m-1"
                   >
                     <Trash2 className="h-4 w-4" />
                   </button>
@@ -550,7 +550,7 @@ export default function CartPage({
               <div className="mt-3">
                 <Input
                   placeholder={t("customer.notesPlaceholder")}
-                  className="text-sm h-9"
+                  className="text-base md:text-sm h-9"
                   value={notes[item.menuItemId] || ""}
                   onChange={(e) =>
                     setNotes({ ...notes, [item.menuItemId]: e.target.value })
@@ -643,7 +643,7 @@ export default function CartPage({
                       placeholder={t("loyalty.couponCode")}
                       value={couponCode}
                       onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(null); }}
-                      className="text-sm h-9 font-mono"
+                      className="text-base md:text-sm h-9 font-mono"
                     />
                     <Button
                       size="sm"

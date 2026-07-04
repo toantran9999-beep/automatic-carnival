@@ -476,14 +476,14 @@ export default function PosPage() {
   // Cổng: chưa mở ca → khóa toàn bộ màn đặt món (mở ca mới xài được chức năng).
   if (!shiftLoading && !currentShift) {
     return (
-      <div className="flex h-[calc(100vh-8rem)]">
+      <div className="flex h-[calc(100dvh-8rem)]">
         <ShiftClosedBlocker canManage={canManageShift} />
       </div>
     );
   }
 
   return (
-    <div className="flex h-[calc(100vh-8rem)] flex-col gap-2">
+    <div className="flex h-[calc(100dvh-8rem)] flex-col gap-2">
       {currentShift && <ShiftBar shift={currentShift} canManage={canManageShift} />}
       <div className="flex min-h-0 flex-1 gap-3">
         <ProductGrid

@@ -54,8 +54,8 @@ settings.get("/branch", async (c) => {
   return c.json({ success: true, data: branch });
 });
 
-// PATCH /branch
-settings.patch("/branch", requirePermission("settings:*"), zValidator("json", updateBranchSettingsSchema), async (c) => {
+// PATCH /branch — settings:update để branch_manager (Quản lý) cũng chỉnh được cài đặt chi nhánh
+settings.patch("/branch", requirePermission("settings:update"), zValidator("json", updateBranchSettingsSchema), async (c) => {
   const tenant = c.get("tenant") as any;
   if (!tenant.branchId) {
     return c.json({ success: false, error: { code: "BAD_REQUEST", message: t(c, "branch_header_required") } }, 400);

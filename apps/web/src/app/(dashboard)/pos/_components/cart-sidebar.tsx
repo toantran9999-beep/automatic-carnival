@@ -199,7 +199,7 @@ export function CartSidebar({
             placeholder={t("pos.enterCustomerName")}
             value={customerName}
             onChange={(e) => onCustomerNameChange(e.target.value)}
-            className="h-9 rounded-lg pl-9 text-sm"
+            className="h-9 rounded-lg pl-9 text-base md:text-sm"
           />
         </div>
       </div>
@@ -351,7 +351,7 @@ export function CartSidebar({
             placeholder={t("pos.notes")}
             value={orderNotes}
             onChange={(e) => onOrderNotesChange(e.target.value)}
-            className="h-9 rounded-lg text-sm"
+            className="h-9 rounded-lg text-base md:text-sm"
           />
         </div>
       )}

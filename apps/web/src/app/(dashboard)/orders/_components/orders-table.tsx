@@ -123,7 +123,7 @@ export function OrdersTable({
                   <th className="text-right p-3 text-sm font-medium text-muted-foreground hidden lg:table-cell">
                     {t("orders.headerTime")}
                   </th>
-                  <th className="text-center p-3 text-sm font-medium text-muted-foreground hidden md:table-cell">
+                  <th className="text-center p-3 text-sm font-medium text-muted-foreground">
                     {t("common.actions")}
                   </th>
                 </tr>
@@ -140,7 +140,7 @@ export function OrdersTable({
                       <td className="p-3 hidden md:table-cell"><Skeleton className="h-4 w-12" /></td>
                       <td className="p-3"><Skeleton className="h-4 w-16 ml-auto" /></td>
                       <td className="p-3 hidden lg:table-cell"><Skeleton className="h-4 w-24 ml-auto" /></td>
-                      <td className="p-3 hidden md:table-cell"><Skeleton className="h-7 w-20 mx-auto" /></td>
+                      <td className="p-3"><Skeleton className="h-7 w-20 mx-auto" /></td>
                     </tr>
                   ))
                 ) : filteredOrders.length === 0 ? (
@@ -201,7 +201,7 @@ export function OrdersTable({
                         <td className="p-3 text-sm text-muted-foreground text-right hidden lg:table-cell">
                           {createdAt ? formatDate(createdAt) : "-"}
                         </td>
-                        <td className="p-3 text-center hidden md:table-cell">
+                        <td className="p-3 text-center">
                           <div className="flex items-center justify-center gap-1">
                             {nextStatus && (
                               <Button

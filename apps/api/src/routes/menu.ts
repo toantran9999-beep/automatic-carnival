@@ -288,7 +288,9 @@ menu.delete(
       return c.json({ success: true, data: { message: t(c, "menu_item_deleted") } });
     } catch (err: any) {
       // Món đã có đơn hàng tham chiếu (FK restrict) -> không xóa được, ẩn khỏi thực đơn thay thế.
-      if (err?.code === "23503") {
+      // drizzle-orm bọc lỗi Postgres gốc vào DrizzleQueryError, mã lỗi nằm ở err.cause.code.
+      const pgCode = err?.code ?? err?.cause?.code;
+      if (pgCode === "23503") {
         const [hidden] = await db
           .update(schema.menuItems)
           .set({ is_available: false })

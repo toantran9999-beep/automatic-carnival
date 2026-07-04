@@ -119,8 +119,8 @@ export function ProductsPanel({
           setSelectedCategoryId("all");
         }
       } else {
-        await deleteItem.mutateAsync(confirmDelete.id);
-        toast.success(t("menu.deleteSuccess"));
+        const result: any = await deleteItem.mutateAsync(confirmDelete.id);
+        toast.success(result?.hidden ? result.message : t("menu.deleteSuccess"));
       }
     } catch (err: any) {
       toast.error(err.message || t("menu.deleteError"));

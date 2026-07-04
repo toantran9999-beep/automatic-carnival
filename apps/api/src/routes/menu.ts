@@ -267,24 +267,53 @@ menu.delete(
     const { id } = c.req.valid("param");
     const tenant = c.get("tenant") as any;
 
-    const [deleted] = await db
-      .delete(schema.menuItems)
-      .where(
-        and(
-          eq(schema.menuItems.id, id),
-          eq(schema.menuItems.branch_id, tenant.branchId),
-        ),
-      )
-      .returning();
+    try {
+      const [deleted] = await db
+        .delete(schema.menuItems)
+        .where(
+          and(
+            eq(schema.menuItems.id, id),
+            eq(schema.menuItems.branch_id, tenant.branchId),
+          ),
+        )
+        .returning();
 
-    if (!deleted) {
-      return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: t(c, "item_not_found") } },
-        404,
-      );
+      if (!deleted) {
+        return c.json(
+          { success: false, error: { code: "NOT_FOUND", message: t(c, "item_not_found") } },
+          404,
+        );
+      }
+
+      return c.json({ success: true, data: { message: t(c, "menu_item_deleted") } });
+    } catch (err: any) {
+      // Món đã có đơn hàng tham chiếu (FK restrict) -> không xóa được, ẩn khỏi thực đơn thay thế.
+      if (err?.code === "23503") {
+        const [hidden] = await db
+          .update(schema.menuItems)
+          .set({ is_available: false })
+          .where(
+            and(
+              eq(schema.menuItems.id, id),
+              eq(schema.menuItems.branch_id, tenant.branchId),
+            ),
+          )
+          .returning();
+
+        if (!hidden) {
+          return c.json(
+            { success: false, error: { code: "NOT_FOUND", message: t(c, "item_not_found") } },
+            404,
+          );
+        }
+
+        return c.json({
+          success: true,
+          data: { message: t(c, "menu_item_hidden_has_orders"), hidden: true },
+        });
+      }
+      throw err;
     }
-
-    return c.json({ success: true, data: { message: t(c, "menu_item_deleted") } });
   },
 );
 

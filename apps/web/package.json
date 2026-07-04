@@ -4,11 +4,11 @@
   "private": true,
   "type": "module",
   "browserslist": [
-    "chrome >= 74",
-    "edge >= 79",
-    "firefox >= 68",
-    "safari >= 13",
-    "ios_saf >= 13"
+    "chrome >= 111",
+    "edge >= 111",
+    "firefox >= 113",
+    "safari >= 16.4",
+    "ios_saf >= 16.4"
   ],
   "scripts": {
     "dev": "next dev --port 3000",

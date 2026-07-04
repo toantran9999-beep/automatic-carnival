@@ -2,9 +2,8 @@
 const config = {
   plugins: {
     "@tailwindcss/postcss": {},
-    // Hạ cấp CSS hiện đại cho WebView máy POS cũ (~Chromium 83):
-    // gỡ vỏ @layer (Chrome 99) + đổi color-mix() (Chrome 111) sang màu đặc.
-    "@restai/postcss-compat": {},
+    // @restai/postcss-compat (hạ cấp CSS cho WebView ~Chromium 83) đã gỡ:
+    // toàn bộ máy POS đã lên WebView hiện đại (~Chromium 149). Xem ARCHITECTURE.md §7.
   },
 };
 

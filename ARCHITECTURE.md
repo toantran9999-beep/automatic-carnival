@@ -95,9 +95,16 @@
 - **APK "TODA POS Quầy"** (`pos-android/`): vỏ Android (WebView nạp URL POS) + cầu in native **in thẳng Gprinter qua USB** (ESC/POS thô), phơi `window.TodaPrintBridge.printBase64()` → khớp driver `android_bridge`. Thay cho RawBT (RawBT qua intent chập chờn, không hợp chạy lâu). Build bằng GitHub Actions (`.github/workflows/build-apk.yml`) → tải artifact `app-debug.apk` → sideload lên iPOS. Đổi URL ở `MainActivity.java` (`POS_URL`). Xem `pos-android/README.md`.
 - **Codex**: thêm **print driver nhanh cho Android POS** (`branches.settings.print_driver`). `browser_print` giữ `window.print()` fallback, `rawbt_intent` gửi ESC/POS base64 qua RawBT trên Android, `android_bridge` gửi payload ESC/POS cho bridge/WebView native. Phiếu bếp, hóa đơn, tạm tính QR đều có đường ESC/POS.
 
-## 7. Tương thích WebView cũ trên máy POS Android (⚠️ QUAN TRỌNG — đừng gỡ)
+## 7. [ĐÃ TẮT 2026-07-04] Tương thích WebView cũ trên máy POS Android
 
-Máy POS quầy (iPOS, Android 11) chạy APK `pos-android/` (xem bullet "APK TODA POS Quầy" ở mục 6, và `pos-android/README.md`) — WebView nạp thẳng web POS. **Android System WebView của máy rất cũ (~Chromium 83)** dù bản Android mới, trong khi Next.js 16 / React 19 / Tailwind v4 xuất JS/CSS cho engine hiện đại (Chrome 111+). Chạy thẳng bằng Chrome ngoài thì OK (Chrome tự cập nhật), nhưng **trong APK sẽ vỡ hoàn toàn** nếu không hạ cấp. Đã xử các lớp sau, PHẢI GIỮ NGUYÊN TẤT CẢ — thiếu 1 lớp là tái phát lỗi:
+> **Cập nhật 2026-07-04:** toàn bộ máy POS đã lên Android System WebView hiện đại (~Chromium 149, tự động qua Play Store). Lớp hạ cấp mô tả bên dưới đã **TẮT** để tối ưu tốc độ (bundle JS/CSS build ra không còn bị hạ cấp cú pháp cho toàn bộ người dùng, kể cả trang khách quét QR):
+> - `apps/web/package.json` → `browserslist` nâng lên `chrome >= 111, edge >= 111, firefox >= 113, safari >= 16.4, ios_saf >= 16.4` (đúng ngưỡng Tailwind v4/Next 16 xuất ra tự nhiên, không hạ nữa).
+> - `apps/web/postcss.config.mjs` → gỡ đăng ký `@restai/postcss-compat` (package vẫn còn trong `packages/postcss-compat/`, chỉ không gọi tới — nếu cần bật lại chỉ việc thêm lại dòng plugin).
+> - Class `legacy-webview` + rule tắt animation/backdrop-blur trong `globals.css` **giữ nguyên** — tự vô hiệu khi Chrome UA ≥ 100 nên không cần đụng, không tốn chi phí runtime đáng kể.
+>
+> **Nếu sau này có máy POS nào tụt lại WebView cũ** (< Chrome 111) và app đứng khựng ở "Đang tải..."/vỡ layout: thêm lại dòng `"@restai/postcss-compat": {}` vào `postcss.config.mjs` và hạ `browserslist` như phần lịch sử bên dưới, build lại. Toàn bộ code hạ cấp KHÔNG bị xoá, chỉ tắt.
+
+Máy POS quầy (iPOS, Android 11) chạy APK `pos-android/` (xem bullet "APK TODA POS Quầy" ở mục 6, và `pos-android/README.md`) — WebView nạp thẳng web POS. **Android System WebView của máy từng rất cũ (~Chromium 83)** dù bản Android mới, trong khi Next.js 16 / React 19 / Tailwind v4 xuất JS/CSS cho engine hiện đại (Chrome 111+). Chạy thẳng bằng Chrome ngoài thì OK (Chrome tự cập nhật), nhưng **trong APK từng vỡ hoàn toàn** nếu không hạ cấp. Đã từng xử các lớp sau (lịch sử, xem ghi chú TẮT ở trên):
 
 1. **JS — toán tử logic gán mới (`??=`/`||=`/`&&=`, cần Chrome 85):** `apps/web/package.json` có field `"browserslist"` (`chrome >= 74`, `safari >= 13`...) → Next/Turbopack tự biên dịch xuống cú pháp cũ hơn. Thiếu field này → `Uncaught SyntaxError: Unexpected token '='` → app đứng khựng ở màn "Đang tải..." (không load được gì).
 2. **CSS — toàn bộ xử trong plugin `@restai/postcss-compat`** (bảng lớp bên dưới). Bài học từ đợt đầu: từng THỬ và BỎ polyfill `@csstools/postcss-cascade-layers` vì nó thêm hack `:not(#\#)` vào specificity, làm vài utility (`max-height`, `gap`) thua độ ưu tiên → vỡ layout khác. **Đơn giản (gỡ vỏ / hạ cú pháp tương đương) > polyfill "đúng chuẩn".**
@@ -149,7 +156,7 @@ grep -c -- '--tw-translate-x:0' "$f"   # phải >= 1 (default đã đổ xuống
 
 ## 8. Gotchas (đọc kỹ trước khi sửa)
 
-- **WebView cũ trên POS Android**: xem mục 7 — đừng gỡ browserslist/postcss-compat, đó là lý do APK chạy được.
+- **WebView cũ trên POS Android**: xem mục 7 — đã TẮT (2026-07-04) vì cả fleet lên WebView mới. Nếu máy nào tụt lại bản cũ, bật lại theo hướng dẫn ở đầu mục 7.
 - **In**: máy in phải gắn ở thiết bị mở web. Desktop/browser fallback dùng `window.print()` (luôn hiện hộp thoại, không tắt được — hạn chế của trình duyệt, không phải bug). Android POS dùng APK `pos-android/` với `print_driver=android_bridge` để in ngầm qua USB; `rawbt_intent` (RawBT qua intent) đã THỬ và BỎ vì chập chờn, không hợp chạy lâu dài.
 - **seed.ts TRUNCATE** sạch DB — chỉ cho DB trống. Backup `pg_dump` trước khi đụng DB (`/root/menu-backups`, `/root/db-backup-*`).
 - **Phân quyền**: server ở `packages/config/src/index.ts` (`PERMISSIONS`); ẩn nav ở `(dashboard)/layout.tsx` (`allowedPaths`). Sửa 1 vai trò nhớ sửa cả 2 nơi.

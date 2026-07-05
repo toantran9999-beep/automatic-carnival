@@ -197,6 +197,23 @@ function centerLine(value = "", width = ESC_POS_WIDTH): string {
   return `${" ".repeat(left)}${clean}`;
 }
 
+/**
+ * Căn giữa bằng LỆNH máy in (ESC a 1) thay vì đệm khoảng trắng — đúng giữa
+ * bất kể máy in bao nhiêu ký tự/dòng (fix lệch khi đệm theo bề rộng đoán sai).
+ */
+function centered(value = "", maxChars = 48): number[] {
+  return [
+    ...escposAlign("center"),
+    ...textBytes(`${plainLine(value, maxChars)}\n`),
+    ...escposAlign("left"),
+  ];
+}
+
+/** Số ký tự/dòng theo khổ giấy (Font A chuẩn: 80mm = 48, 58mm = 32). */
+function widthForPaper(paper: "58" | "80"): number {
+  return paper === "58" ? 32 : 48;
+}
+
 function moneyPlain(cents: number): string {
   return `${Math.round(cents / 100).toLocaleString("vi-VN")} d`;
 }
@@ -250,33 +267,36 @@ function buildEscPos(lines: Array<string | number[]>): number[] {
   return bytes;
 }
 
-function buildKitchenEscPos(data: KitchenTicketData): number[] {
+function buildKitchenEscPos(data: KitchenTicketData, width = 48): number[] {
   const { time, date } = vnTimeParts(data.createdAt);
   const staff = currentStaffName();
   const subtitle = data.tableNumber ? `BAN ${data.tableNumber}` : "MANG VE";
-  const rows: string[] = [
-    centerLine("PHIEU DAT DO"),
-    centerLine(subtitle),
-    data.ticketLabel ? centerLine(`Phieu ${data.ticketLabel}`) : "",
-    ESC_POS_SEPARATOR,
-    twoCol(`Gio: ${time}`, `Ngay: ${date}`),
-    `Nhan vien: ${plainLine(staff || data.customerName || "-", 30)}`,
+  const SEP = "-".repeat(width);
+  const rows: Array<string | number[]> = [
+    centered("PHIEU DAT DO", width),
+    centered(subtitle, width),
+    data.ticketLabel ? centered(`Phieu ${data.ticketLabel}`, width) : "",
+    SEP,
+    twoCol(`Gio: ${time}`, `Ngay: ${date}`, width),
+    `Nhan vien: ${plainLine(staff || data.customerName || "-", width - 11)}`,
     `So thu tu: #${data.orderNumber}`,
-    ESC_POS_SEPARATOR,
-  ].filter(Boolean);
+    SEP,
+  ].filter((r) => r !== "");
 
   for (const item of data.items) {
-    rows.push(`${item.quantity} x ${plainLine(item.name, 30)} ${plainLine(item.unit || "", 4)}`);
-    if (item.notes) rows.push(`  * ${plainLine(item.notes, 36)}`);
+    rows.push(`${item.quantity} x ${plainLine(item.name, width - 8)} ${plainLine(item.unit || "", 4)}`);
+    if (item.notes) rows.push(`  * ${plainLine(item.notes, width - 4)}`);
   }
 
-  if (data.notes) rows.push(ESC_POS_SEPARATOR, `Ghi chu: ${plainLine(data.notes, 34)}`);
-  rows.push(ESC_POS_SEPARATOR, centerLine("Toda Cafe"));
+  if (data.notes) rows.push(SEP, `Ghi chu: ${plainLine(data.notes, width - 9)}`);
+  rows.push(SEP, centered("Toda Cafe", width));
   return buildEscPos(rows);
 }
 
 function buildReceiptEscPos(data: ReceiptTicketData, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): number[] {
-  const SEP = separatorLine(cfg.separator);
+  const W = widthForPaper(cfg.paper);
+  const ch = separatorChar(cfg.separator);
+  const SEP = ch ? ch.repeat(W) : "";
   const footers = cfg.footerLines ?? ["Cam on quy khach!"];
   const rows: Array<string | number[]> = [];
 
@@ -284,30 +304,30 @@ function buildReceiptEscPos(data: ReceiptTicketData, cfg: ReceiptConfig = DEFAUL
   for (let i = 0; i < cfg.topFeedLines; i++) rows.push(" ");
 
   rows.push(
-    centerLine(data.businessName),
-    ...cfg.headerLines.map((l) => centerLine(l)),
-    cfg.show.address && data.address ? centerLine(data.address) : "",
-    cfg.show.phone && data.phone ? centerLine(`DT: ${data.phone}`) : "",
+    centered(data.businessName, W),
+    ...cfg.headerLines.map((l) => centered(l, W)),
+    cfg.show.address && data.address ? centered(data.address, W) : "",
+    cfg.show.phone && data.phone ? centered(`DT: ${data.phone}`, W) : "",
     SEP,
-    centerLine("HOA DON"),
+    centered("HOA DON", W),
     `Don hang: #${data.orderNumber}`,
     formatDateTime(data.createdAt),
-    cfg.show.customer && data.customerName ? `Khach: ${plainLine(data.customerName, 34)}` : "",
+    cfg.show.customer && data.customerName ? `Khach: ${plainLine(data.customerName, W - 7)}` : "",
     SEP,
   );
 
   for (const item of data.items) {
-    rows.push(twoCol(`${item.quantity}x ${plainLine(item.name, 26)}`, moneyPlain(item.total)));
+    rows.push(twoCol(`${item.quantity}x ${plainLine(item.name, W - 12)}`, moneyPlain(item.total), W));
   }
 
   rows.push(
     SEP,
-    twoCol("Tam tinh", moneyPlain(data.subtotal)),
-    cfg.show.vat ? twoCol("VAT", moneyPlain(data.tax)) : "",
-    twoCol("TONG CONG", moneyPlain(data.total)),
-    cfg.show.paymentMethod && data.paymentMethod ? `Thanh toan: ${plainLine(data.paymentMethod, 28)}` : "",
+    twoCol("Tam tinh", moneyPlain(data.subtotal), W),
+    cfg.show.vat ? twoCol("VAT", moneyPlain(data.tax), W) : "",
+    twoCol("TONG CONG", moneyPlain(data.total), W),
+    cfg.show.paymentMethod && data.paymentMethod ? `Thanh toan: ${plainLine(data.paymentMethod, W - 12)}` : "",
     SEP,
-    ...footers.map((l) => centerLine(l)),
+    ...footers.map((l) => centered(l, W)),
   );
   return buildEscPos(rows.filter((r) => r !== ""));
 }
@@ -490,41 +510,42 @@ function buildReceiptRasterEscPos(data: ReceiptTicketData, cfg: ReceiptConfig): 
   return bytes;
 }
 
-function buildTemporaryTransferEscPos(data: TemporaryTransferBillData): number[] {
+function buildTemporaryTransferEscPos(data: TemporaryTransferBillData, width = 48): number[] {
   const expires = new Date(data.expiresAt).toLocaleTimeString("vi-VN", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
     timeZone: "Asia/Ho_Chi_Minh",
   });
+  const SEP = "-".repeat(width);
   const rows: Array<string | number[]> = [
-    centerLine(data.businessName),
-    data.address ? centerLine(data.address) : "",
-    ESC_POS_SEPARATOR,
-    centerLine("PHIEU TAM TINH"),
+    centered(data.businessName, width),
+    data.address ? centered(data.address, width) : "",
+    SEP,
+    centered("PHIEU TAM TINH", width),
     `Don: #${data.orderNumber}`,
     data.tableNumber ? `Ban: ${data.tableNumber}` : "",
-    data.customerName ? `Khach: ${plainLine(data.customerName, 34)}` : "",
-    ESC_POS_SEPARATOR,
-  ].filter(Boolean);
+    data.customerName ? `Khach: ${plainLine(data.customerName, width - 7)}` : "",
+    SEP,
+  ].filter((r) => r !== "");
 
   for (const item of data.items) {
-    rows.push(twoCol(`${item.quantity}x ${plainLine(item.name, 26)}`, moneyPlain(item.total)));
+    rows.push(twoCol(`${item.quantity}x ${plainLine(item.name, width - 12)}`, moneyPlain(item.total), width));
   }
 
   rows.push(
-    ESC_POS_SEPARATOR,
-    twoCol("Tam tinh", moneyPlain(data.subtotal)),
-    twoCol("VAT", moneyPlain(data.tax)),
-    twoCol("TONG CAN TRA", moneyPlain(data.total)),
-    ESC_POS_SEPARATOR,
-    centerLine("QUET QR CHUYEN KHOAN"),
+    SEP,
+    twoCol("Tam tinh", moneyPlain(data.subtotal), width),
+    twoCol("VAT", moneyPlain(data.tax), width),
+    twoCol("TONG CAN TRA", moneyPlain(data.total), width),
+    SEP,
+    centered("QUET QR CHUYEN KHOAN", width),
     escposAlign("center"),
     escposQrBytes(data.qrPayload || data.paymentCode),
     escposAlign("left"),
-    data.bank?.accountName ? `Nguoi nhan: ${plainLine(data.bank.accountName, 30)}` : "",
-    data.bank?.bankCode ? `Ngan hang: ${plainLine(data.bank.bankCode, 30)}` : "",
-    data.bank?.accountNumber ? `STK: ${plainLine(data.bank.accountNumber, 34)}` : "",
+    data.bank?.accountName ? `Nguoi nhan: ${plainLine(data.bank.accountName, width - 12)}` : "",
+    data.bank?.bankCode ? `Ngan hang: ${plainLine(data.bank.bankCode, width - 11)}` : "",
+    data.bank?.accountNumber ? `STK: ${plainLine(data.bank.accountNumber, width - 5)}` : "",
     `Noi dung: ${data.paymentCode}`,
     `Hieu luc den: ${expires}`,
     "Ma qua han vui long xin phieu moi.",
@@ -1071,9 +1092,10 @@ export function usePrintKitchenTicket() {
     // Thử in qua ESC/POS (RawBT / bridge). Nếu MỌI phiếu in ok thì xong;
     // nếu lỗi/không có driver → tự lùi về in trình duyệt cho cả lô.
     if (driver !== "browser_print") {
+      const width = widthForPaper(getReceiptConfig(branchSettings).paper);
       let allOk = true;
       for (const ticket of tickets) {
-        if (!(await printEscPos(buildKitchenEscPos(ticket), driver))) {
+        if (!(await printEscPos(buildKitchenEscPos(ticket, width), driver))) {
           allOk = false;
           break;
         }
@@ -1106,12 +1128,48 @@ export function usePrintReceipt() {
   }, [branchSettings]);
 }
 
+/**
+ * In thử hóa đơn mẫu với cấu hình truyền vào TRỰC TIẾP (kể cả chưa lưu) —
+ * dùng cho nút "In thử" trong Cài đặt → Hóa đơn để kiểm tra ngay trên máy in.
+ */
+export function usePrintSampleReceipt() {
+  const { data: branchSettings } = useBranchSettings();
+  return useCallback(async (cfg: ReceiptConfig) => {
+    const data: ReceiptTicketData = {
+      businessName: branchSettings?.name || "TODA CAFE",
+      address: branchSettings?.address || undefined,
+      phone: branchSettings?.phone || undefined,
+      orderNumber: "IN-THU-01",
+      createdAt: new Date().toISOString(),
+      items: [
+        { name: "Cà phê sữa", quantity: 2, unit_price: 2500000, total: 5000000 },
+        { name: "Bạc xỉu", quantity: 1, unit_price: 2900000, total: 2900000 },
+      ],
+      subtotal: 7900000,
+      tax: 0,
+      total: 7900000,
+      paymentMethod: "Tiền mặt",
+      customerName: "Khách in thử",
+    };
+    const driver = currentPrintDriver(branchSettings);
+    if (driver !== "browser_print") {
+      const bytes = cfg.utf8Bitmap
+        ? buildReceiptRasterEscPos(data, cfg) ?? buildReceiptEscPos(data, cfg)
+        : buildReceiptEscPos(data, cfg);
+      if (await printEscPos(bytes, driver)) return "escpos";
+    }
+    printHtml(buildReceiptTicketHtml(data, cfg));
+    return "browser";
+  }, [branchSettings]);
+}
+
 export function usePrintTemporaryTransferBill() {
   const { data: branchSettings } = useBranchSettings();
   return useCallback(async (data: TemporaryTransferBillData) => {
     const driver = currentPrintDriver(branchSettings);
     if (driver !== "browser_print") {
-      if (await printEscPos(buildTemporaryTransferEscPos(data), driver)) return;
+      const width = widthForPaper(getReceiptConfig(branchSettings).paper);
+      if (await printEscPos(buildTemporaryTransferEscPos(data, width), driver)) return;
     }
     const html = buildTemporaryTransferBillHtml(data);
     printHtml(html);

@@ -8,6 +8,8 @@ import { Button } from "@restai/ui/components/button";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@restai/ui/components/select";
 import { cn } from "@/lib/utils";
 import { useBranchSettings, useUpdateBranch } from "@/hooks/use-settings";
+import { usePrintSampleReceipt, type ReceiptConfig } from "@/components/print-ticket";
+import { Printer } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/stores/lang-store";
 
@@ -60,9 +62,39 @@ const SEP_PREVIEW: Record<SeparatorStyle, string> = {
 export function ReceiptTab() {
   const { data: branchData, isLoading } = useBranchSettings();
   const updateBranch = useUpdateBranch();
+  const printSample = usePrintSampleReceipt();
   const { t } = useTranslation();
 
   const [form, setForm] = useState(DEFAULT_FORM);
+
+  const formToConfig = (): ReceiptConfig => ({
+    topFeedLines: form.topFeedLines,
+    paper: form.paper,
+    utf8Bitmap: form.utf8Bitmap,
+    separator: form.separator,
+    headerLines: form.headerText.split("\n").map((l) => l.trim()).filter(Boolean),
+    footerLines: form.footerText.split("\n").map((l) => l.trim()).filter(Boolean),
+    show: {
+      address: form.showAddress,
+      phone: form.showPhone,
+      customer: form.showCustomer,
+      paymentMethod: form.showPaymentMethod,
+      vat: form.showVat,
+    },
+  });
+
+  const handleTestPrint = async () => {
+    try {
+      const via = await printSample(formToConfig());
+      toast.success(
+        via === "escpos"
+          ? t("settings.receiptTestSent", "Đã gửi phiếu in thử tới máy in")
+          : t("settings.receiptTestBrowser", "Không có máy in ESC/POS — in thử qua trình duyệt"),
+      );
+    } catch (err: any) {
+      toast.error(err.message || t("settings.receiptTestError", "Lỗi in thử"));
+    }
+  };
 
   useEffect(() => {
     const raw = branchData?.settings?.receipt;
@@ -231,9 +263,18 @@ export function ReceiptTab() {
                 <Toggle checked={form.utf8Bitmap} onChange={() => setForm({ ...form, utf8Bitmap: !form.utf8Bitmap })} />
               </div>
 
-              <Button onClick={handleSave} disabled={updateBranch.isPending}>
-                {updateBranch.isPending ? t("settings.saving", "Đang lưu...") : t("settings.saveChanges", "Lưu thay đổi")}
-              </Button>
+              <div className="flex flex-wrap gap-2">
+                <Button onClick={handleSave} disabled={updateBranch.isPending}>
+                  {updateBranch.isPending ? t("settings.saving", "Đang lưu...") : t("settings.saveChanges", "Lưu thay đổi")}
+                </Button>
+                <Button variant="outline" onClick={handleTestPrint}>
+                  <Printer className="mr-2 h-4 w-4" />
+                  {t("settings.receiptTestPrint", "In thử")}
+                </Button>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                {t("settings.receiptTestHelp", "\"In thử\" dùng cấu hình đang chỉnh trên form (kể cả chưa lưu) — mở tab này trên máy POS có máy in để kiểm tra trực tiếp.")}
+              </p>
             </>
           )}
         </CardContent>

@@ -342,7 +342,8 @@ type RasterSeg =
   | { kind: "text"; text: string; align?: "left" | "center"; bold?: boolean; big?: boolean }
   | { kind: "twoCol"; left: string; right: string; bold?: boolean; big?: boolean }
   | { kind: "sep" }
-  | { kind: "space" };
+  | { kind: "space" }
+  | { kind: "qr"; payload: string };
 
 function moneyVi(cents: number): string {
   return `${Math.round(cents / 100).toLocaleString("vi-VN")}đ`;
@@ -377,7 +378,7 @@ function receiptRasterSegments(data: ReceiptTicketData, cfg: ReceiptConfig): Ras
   return segs;
 }
 
-function drawSegmentsToCanvas(segs: RasterSeg[], cfg: ReceiptConfig): HTMLCanvasElement | null {
+function drawSegmentsToCanvas(segs: Exclude<RasterSeg, { kind: "qr" }>[], cfg: ReceiptConfig): HTMLCanvasElement | null {
   if (typeof document === "undefined") return null;
   const width = cfg.paper === "58" ? 384 : 576;
   const FONT = 22;
@@ -498,16 +499,116 @@ function canvasToEscPosRaster(canvas: HTMLCanvasElement): number[] {
   return out;
 }
 
-function buildReceiptRasterEscPos(data: ReceiptTicketData, cfg: ReceiptConfig): number[] | null {
-  const canvas = drawSegmentsToCanvas(receiptRasterSegments(data, cfg), cfg);
-  if (!canvas) return null;
-  const raster = canvasToEscPosRaster(canvas);
-  if (!raster.length) return null;
+/**
+ * Đổi danh sách segment thành bytes ESC/POS: text render qua canvas (có dấu),
+ * segment QR chèn lệnh QR gốc của máy in (nét hơn ảnh) giữa các khối ảnh.
+ */
+function segsToEscPosBytes(segs: RasterSeg[], cfg: ReceiptConfig): number[] | null {
+  const out: number[] = [];
+  let buf: Exclude<RasterSeg, { kind: "qr" }>[] = [];
+  const flush = (): boolean => {
+    if (!buf.length) return true;
+    const canvas = drawSegmentsToCanvas(buf, cfg);
+    if (!canvas) return false;
+    const raster = canvasToEscPosRaster(canvas);
+    if (!raster.length) return false;
+    out.push(...raster);
+    buf = [];
+    return true;
+  };
+  for (const s of segs) {
+    if (s.kind === "qr") {
+      if (!flush()) return null;
+      out.push(...escposAlign("center"), ...escposQrBytes(s.payload), ...escposAlign("left"));
+    } else {
+      buf.push(s);
+    }
+  }
+  if (!flush()) return null;
+  return out;
+}
+
+function wrapRasterTicket(content: number[] | null, topFeedLines: number): number[] | null {
+  if (!content || !content.length) return null;
   const bytes: number[] = [0x1b, 0x40];
-  for (let i = 0; i < cfg.topFeedLines; i++) bytes.push(0x0a);
-  bytes.push(...raster);
+  for (let i = 0; i < topFeedLines; i++) bytes.push(0x0a);
+  bytes.push(...content);
   bytes.push(0x0a, 0x0a, 0x1d, 0x56, 0x42, 0x00);
   return bytes;
+}
+
+function buildReceiptRasterEscPos(data: ReceiptTicketData, cfg: ReceiptConfig): number[] | null {
+  return wrapRasterTicket(segsToEscPosBytes(receiptRasterSegments(data, cfg), cfg), cfg.topFeedLines);
+}
+
+function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): RasterSeg[] {
+  const { time, date } = vnTimeParts(data.createdAt);
+  const staff = currentStaffName();
+  const segs: RasterSeg[] = [
+    { kind: "text", text: "PHIẾU ĐẶT ĐỒ", align: "center", bold: true, big: true },
+    { kind: "text", text: data.tableNumber ? `BÀN ${data.tableNumber}` : "MANG VỀ", align: "center", bold: true },
+  ];
+  if (data.ticketLabel) segs.push({ kind: "text", text: `Phiếu ${data.ticketLabel}`, align: "center" });
+  segs.push({ kind: "sep" });
+  segs.push({ kind: "twoCol", left: `Giờ: ${time}`, right: `Ngày: ${date}` });
+  segs.push({ kind: "text", text: `Nhân viên: ${staff || data.customerName || "-"}` });
+  segs.push({ kind: "text", text: `Số thứ tự: #${data.orderNumber}` });
+  segs.push({ kind: "sep" });
+  for (const item of data.items) {
+    segs.push({ kind: "text", text: `${item.quantity} x ${item.name}${item.unit ? ` (${item.unit})` : ""}`, bold: true });
+    if (item.notes) segs.push({ kind: "text", text: `  * ${item.notes}` });
+  }
+  if (data.notes) {
+    segs.push({ kind: "sep" });
+    segs.push({ kind: "text", text: `Ghi chú: ${data.notes}` });
+  }
+  segs.push({ kind: "sep" });
+  segs.push({ kind: "text", text: "Toda Cafe", align: "center" });
+  return segs;
+}
+
+function buildKitchenRasterEscPos(data: KitchenTicketData, cfg: ReceiptConfig): number[] | null {
+  return wrapRasterTicket(segsToEscPosBytes(kitchenRasterSegments(data, cfg), cfg), cfg.topFeedLines);
+}
+
+function transferRasterSegments(data: TemporaryTransferBillData, cfg: ReceiptConfig): RasterSeg[] {
+  const expires = new Date(data.expiresAt).toLocaleTimeString("vi-VN", {
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+    timeZone: "Asia/Ho_Chi_Minh",
+  });
+  const segs: RasterSeg[] = [
+    { kind: "text", text: data.businessName, align: "center", bold: true, big: true },
+  ];
+  if (data.address) segs.push({ kind: "text", text: data.address, align: "center" });
+  segs.push({ kind: "sep" });
+  segs.push({ kind: "text", text: "PHIẾU TẠM TÍNH", align: "center", bold: true });
+  segs.push({ kind: "text", text: `Đơn: #${data.orderNumber}` });
+  if (data.tableNumber) segs.push({ kind: "text", text: `Bàn: ${data.tableNumber}` });
+  if (data.customerName) segs.push({ kind: "text", text: `Khách: ${data.customerName}` });
+  segs.push({ kind: "sep" });
+  for (const item of data.items) {
+    segs.push({ kind: "twoCol", left: `${item.quantity}x ${item.name}`, right: moneyVi(item.total) });
+  }
+  segs.push({ kind: "sep" });
+  segs.push({ kind: "twoCol", left: "Tạm tính", right: moneyVi(data.subtotal) });
+  segs.push({ kind: "twoCol", left: "Thuế VAT", right: moneyVi(data.tax) });
+  segs.push({ kind: "twoCol", left: "TỔNG CẦN TRẢ", right: moneyVi(data.total), bold: true, big: true });
+  segs.push({ kind: "sep" });
+  segs.push({ kind: "text", text: "QUÉT QR CHUYỂN KHOẢN", align: "center", bold: true });
+  segs.push({ kind: "qr", payload: data.qrPayload || data.paymentCode });
+  if (data.bank?.accountName) segs.push({ kind: "text", text: `Người nhận: ${data.bank.accountName}` });
+  if (data.bank?.bankCode) segs.push({ kind: "text", text: `Ngân hàng: ${data.bank.bankCode}` });
+  if (data.bank?.accountNumber) segs.push({ kind: "text", text: `STK: ${data.bank.accountNumber}` });
+  segs.push({ kind: "text", text: `Nội dung: ${data.paymentCode}` });
+  segs.push({ kind: "text", text: `Hiệu lực đến: ${expires}` });
+  segs.push({ kind: "text", text: "Mã quá hạn vui lòng xin phiếu mới." });
+  return segs;
+}
+
+function buildTransferRasterEscPos(data: TemporaryTransferBillData, cfg: ReceiptConfig): number[] | null {
+  return wrapRasterTicket(segsToEscPosBytes(transferRasterSegments(data, cfg), cfg), cfg.topFeedLines);
 }
 
 function buildTemporaryTransferEscPos(data: TemporaryTransferBillData, width = 48): number[] {
@@ -1092,10 +1193,14 @@ export function usePrintKitchenTicket() {
     // Thử in qua ESC/POS (RawBT / bridge). Nếu MỌI phiếu in ok thì xong;
     // nếu lỗi/không có driver → tự lùi về in trình duyệt cho cả lô.
     if (driver !== "browser_print") {
-      const width = widthForPaper(getReceiptConfig(branchSettings).paper);
+      const cfg = getReceiptConfig(branchSettings);
+      const width = widthForPaper(cfg.paper);
       let allOk = true;
       for (const ticket of tickets) {
-        if (!(await printEscPos(buildKitchenEscPos(ticket, width), driver))) {
+        const bytes = cfg.utf8Bitmap
+          ? buildKitchenRasterEscPos(ticket, cfg) ?? buildKitchenEscPos(ticket, width)
+          : buildKitchenEscPos(ticket, width);
+        if (!(await printEscPos(bytes, driver))) {
           allOk = false;
           break;
         }
@@ -1153,10 +1258,20 @@ export function usePrintSampleReceipt() {
     };
     const driver = currentPrintDriver(branchSettings);
     if (driver !== "browser_print") {
-      const bytes = cfg.utf8Bitmap
-        ? buildReceiptRasterEscPos(data, cfg) ?? buildReceiptEscPos(data, cfg)
-        : buildReceiptEscPos(data, cfg);
-      if (await printEscPos(bytes, driver)) return "escpos";
+      let mode: "escpos-bitmap" | "escpos-text" = "escpos-text";
+      let bytes: number[];
+      if (cfg.utf8Bitmap) {
+        const raster = buildReceiptRasterEscPos(data, cfg);
+        if (raster) {
+          bytes = raster;
+          mode = "escpos-bitmap";
+        } else {
+          bytes = buildReceiptEscPos(data, cfg);
+        }
+      } else {
+        bytes = buildReceiptEscPos(data, cfg);
+      }
+      if (await printEscPos(bytes, driver)) return mode;
     }
     printHtml(buildReceiptTicketHtml(data, cfg));
     return "browser";
@@ -1168,8 +1283,12 @@ export function usePrintTemporaryTransferBill() {
   return useCallback(async (data: TemporaryTransferBillData) => {
     const driver = currentPrintDriver(branchSettings);
     if (driver !== "browser_print") {
-      const width = widthForPaper(getReceiptConfig(branchSettings).paper);
-      if (await printEscPos(buildTemporaryTransferEscPos(data, width), driver)) return;
+      const cfg = getReceiptConfig(branchSettings);
+      const width = widthForPaper(cfg.paper);
+      const bytes = cfg.utf8Bitmap
+        ? buildTransferRasterEscPos(data, cfg) ?? buildTemporaryTransferEscPos(data, width)
+        : buildTemporaryTransferEscPos(data, width);
+      if (await printEscPos(bytes, driver)) return;
     }
     const html = buildTemporaryTransferBillHtml(data);
     printHtml(html);

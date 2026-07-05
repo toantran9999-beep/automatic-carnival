@@ -86,11 +86,17 @@ export function ReceiptTab() {
   const handleTestPrint = async () => {
     try {
       const via = await printSample(formToConfig());
-      toast.success(
-        via === "escpos"
-          ? t("settings.receiptTestSent", "Đã gửi phiếu in thử tới máy in")
-          : t("settings.receiptTestBrowser", "Không có máy in ESC/POS — in thử qua trình duyệt"),
-      );
+      if (via === "escpos-bitmap") {
+        toast.success(t("settings.receiptTestBitmap", "Đã in thử: chế độ ẢNH có dấu tiếng Việt"));
+      } else if (via === "escpos-text") {
+        toast.success(
+          form.utf8Bitmap
+            ? t("settings.receiptTestTextFallback", "⚠ Đã in thử nhưng KHÔNG tạo được ảnh — máy rơi về chữ thường bỏ dấu")
+            : t("settings.receiptTestText", "Đã in thử: chế độ chữ thường (bỏ dấu)"),
+        );
+      } else {
+        toast.success(t("settings.receiptTestBrowser", "Không có máy in ESC/POS — in thử qua trình duyệt"));
+      }
     } catch (err: any) {
       toast.error(err.message || t("settings.receiptTestError", "Lỗi in thử"));
     }

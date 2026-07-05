@@ -355,13 +355,13 @@ export function PosPaymentDialog({
                       key={item.id}
                       type="button"
                       onClick={() => setMethod(item.id)}
-                      className={`flex flex-col items-center justify-center p-2.5 rounded-xl border text-xs gap-1.5 transition-all font-medium ${
+                      className={`flex min-h-16 flex-col items-center justify-center p-3 rounded-xl border text-sm gap-1.5 transition-all font-medium ${
                         active
                           ? "border-primary bg-primary/5 text-primary shadow-sm"
                           : "border-border bg-background text-muted-foreground hover:bg-muted/50 hover:text-foreground"
                       }`}
                     >
-                      <Icon className="h-4 w-4" />
+                      <Icon className="h-5.5 w-5.5" />
                       {item.label}
                     </button>
                   );
@@ -387,7 +387,7 @@ export function PosPaymentDialog({
                   placeholder="0"
                   value={amountTendered}
                   onChange={(e) => setAmountTendered(e.target.value)}
-                  className="font-mono text-base text-right pr-3"
+                  className="h-12 font-mono text-lg text-right pr-3"
                 />
               </div>
             )}
@@ -432,13 +432,13 @@ export function PosPaymentDialog({
         <DialogFooter className="mt-2">
           {!paymentSuccess && (
             <>
-              <Button variant="outline" onClick={() => onOpenChange(false)} disabled={processing}>
+              <Button variant="outline" className="h-11 px-5" onClick={() => onOpenChange(false)} disabled={processing}>
                 {t("common.cancel")}
               </Button>
               <Button
                 onClick={handlePaymentSubmit}
                 disabled={processing || !isFormValid()}
-                className="font-semibold px-5"
+                className="h-11 font-semibold px-6 text-base"
               >
                 {processing ? (
                   <>

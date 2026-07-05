@@ -101,16 +101,16 @@ export function ProductGrid({
             placeholder={t("pos.searchPlaceholder")}
             value={search}
             onChange={(e) => onSearchChange(e.target.value)}
-            className="h-10 rounded-lg border-border/70 bg-card pl-9 pr-9 text-sm shadow-sm"
+            className="h-11 rounded-lg border-border/70 bg-card pl-9 pr-11 text-base shadow-sm md:text-sm"
           />
           {search && (
             <button
               type="button"
               aria-label="Clear search"
               onClick={() => onSearchChange("")}
-              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+              className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center text-muted-foreground hover:text-foreground"
             >
-              <X className="h-4 w-4" />
+              <X className="h-4.5 w-4.5" />
             </button>
           )}
         </div>
@@ -119,11 +119,11 @@ export function ProductGrid({
           <Button
             variant={selectedCategory === null ? "default" : "outline"}
             size="sm"
-            className="h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-semibold whitespace-nowrap"
+            className="h-10 shrink-0 gap-1.5 rounded-lg px-4 text-sm font-semibold whitespace-nowrap"
             onClick={() => onCategoryChange(null)}
           >
             {t("common.all")}
-            <span className="rounded-full bg-black/15 px-1.5 text-[10px] font-bold tabular-nums dark:bg-white/15">
+            <span className="rounded-full bg-black/15 px-1.5 text-[11px] font-bold tabular-nums dark:bg-white/15">
               {countAll}
             </span>
           </Button>
@@ -132,11 +132,11 @@ export function ProductGrid({
               key={cat.id}
               variant={selectedCategory === cat.id ? "default" : "outline"}
               size="sm"
-              className="h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-semibold"
+              className="h-10 shrink-0 gap-1.5 rounded-lg px-4 text-sm font-semibold"
               onClick={() => onCategoryChange(cat.id)}
             >
               <span className="max-w-36 truncate">{cat.name}</span>
-              <span className="rounded-full bg-black/15 px-1.5 text-[10px] font-bold tabular-nums dark:bg-white/15">
+              <span className="rounded-full bg-black/15 px-1.5 text-[11px] font-bold tabular-nums dark:bg-white/15">
                 {countByCategory.get(cat.id) ?? 0}
               </span>
             </Button>

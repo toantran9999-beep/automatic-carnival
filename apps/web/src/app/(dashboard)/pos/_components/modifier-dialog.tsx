@@ -227,29 +227,29 @@ export function ModifierDialog({
                               key={mod.id}
                               type="button"
                               onClick={() => toggleModifier(group.id, mod.id, group.max_selections, isSingle)}
-                              className={`w-full flex items-center justify-between rounded-lg border px-3 py-2.5 text-sm transition-colors ${
+                              className={`w-full flex min-h-12 items-center justify-between rounded-lg border px-3 py-3 text-base transition-colors md:text-sm ${
                                 isSelected
                                   ? "border-primary bg-primary/5"
                                   : "border-border hover:border-primary/40"
                               }`}
                             >
-                              <div className="flex items-center gap-2.5">
+                              <div className="flex items-center gap-3">
                                 <div
-                                  className={`flex h-4.5 w-4.5 items-center justify-center ${
+                                  className={`flex h-5.5 w-5.5 shrink-0 items-center justify-center ${
                                     isSingle ? "rounded-full" : "rounded"
                                   } border-2 transition-colors ${
                                     isSelected ? "border-primary bg-primary" : "border-muted-foreground/30"
                                   }`}
                                 >
                                   {isSelected && (
-                                    <Check className="h-2.5 w-2.5 text-primary-foreground" />
+                                    <Check className="h-3.5 w-3.5 text-primary-foreground" />
                                   )}
                                 </div>
                                 <span className={isSelected ? "font-medium" : ""}>{mod.name}</span>
                               </div>
                               {mod.price !== 0 && (
                                 <span className={cn(
-                                  "text-xs font-medium",
+                                  "text-sm font-medium",
                                   mod.price > 0 ? "text-muted-foreground" : "text-emerald-600 dark:text-emerald-400"
                                 )}>
                                   {mod.price > 0 ? "+" : "−"}{formatCurrency(Math.abs(mod.price))}
@@ -272,7 +272,7 @@ export function ModifierDialog({
                 placeholder={t("pos.notesPlaceholder")}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="text-sm"
+                className="h-11 text-base md:text-sm"
               />
             </div>
           </div>
@@ -287,25 +287,25 @@ export function ModifierDialog({
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-11 w-11 rounded-lg"
                   onClick={() => setQuantity(Math.max(1, quantity - 1))}
                   disabled={quantity <= 1}
                 >
-                  <Minus className="h-3 w-3" />
+                  <Minus className="h-4.5 w-4.5" />
                 </Button>
-                <span className="w-6 text-center font-bold">{quantity}</span>
+                <span className="w-9 text-center text-lg font-bold">{quantity}</span>
                 <Button
                   variant="outline"
                   size="icon"
-                  className="h-8 w-8"
+                  className="h-11 w-11 rounded-lg"
                   onClick={() => setQuantity(quantity + 1)}
                 >
-                  <Plus className="h-3 w-3" />
+                  <Plus className="h-4.5 w-4.5" />
                 </Button>
               </div>
             </div>
             <Button
-              className="w-full h-11"
+              className="w-full h-12 text-base font-semibold"
               disabled={hasRequiredErrors}
               onClick={handleConfirm}
             >

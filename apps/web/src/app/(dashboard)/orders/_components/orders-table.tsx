@@ -207,7 +207,7 @@ export function OrdersTable({
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="active:translate-y-px active:scale-[0.98]"
+                                className="h-10 px-3 active:translate-y-px active:scale-[0.98]"
                                 disabled={updateStatusPending}
                                 onClick={() => onUpdateStatus(order.id, nextStatus)}
                               >
@@ -222,7 +222,7 @@ export function OrdersTable({
                               <Button
                                 variant="outline"
                                 size="sm"
-                                className="active:translate-y-px active:scale-[0.98]"
+                                className="h-10 px-3 active:translate-y-px active:scale-[0.98]"
                                 disabled={isOpeningCharge}
                                 onClick={() => onCharge(order)}
                               >
@@ -239,11 +239,11 @@ export function OrdersTable({
                             <Button
                               variant="ghost"
                               size="sm"
-                              className="h-8 w-8 p-0"
+                              className="h-10 w-10 p-0"
                               onClick={() => onPrintReceipt(order)}
                               title={t("orders.printReceipt")}
                             >
-                              <Printer className="h-4 w-4" />
+                              <Printer className="h-4.5 w-4.5" />
                             </Button>
                           </div>
                         </td>

@@ -251,7 +251,7 @@ export function ShiftBar({ shift, canManage }: { shift: CurrentShift; canManage:
         <Button
           size="sm"
           variant="outline"
-          className="h-7 border-emerald-300 text-xs text-emerald-800 dark:text-emerald-300"
+          className="h-10 border-emerald-300 px-3 text-sm text-emerald-800 dark:text-emerald-300"
           onClick={() => setCloseOpen(true)}
         >
           <Lock className="mr-1 h-3.5 w-3.5" />

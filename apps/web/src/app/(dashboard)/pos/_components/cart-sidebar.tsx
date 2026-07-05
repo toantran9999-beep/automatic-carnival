@@ -121,7 +121,7 @@ export function CartSidebar({
           <Button
             variant="ghost"
             size="sm"
-            className="h-8 px-2 text-xs text-destructive"
+            className="h-10 px-3 text-sm text-destructive"
             onClick={onClearCart}
           >
             {t("pos.clear")}
@@ -133,7 +133,7 @@ export function CartSidebar({
         <Button
           variant={orderType === "dine_in" ? "default" : "ghost"}
           size="sm"
-          className="h-8 text-xs font-semibold"
+          className="h-10 text-sm font-semibold"
           onClick={() => onOrderTypeChange("dine_in")}
         >
           {t("pos.dineIn")}
@@ -141,7 +141,7 @@ export function CartSidebar({
         <Button
           variant={orderType === "takeout" ? "default" : "ghost"}
           size="sm"
-          className="h-8 text-xs font-semibold"
+          className="h-10 text-sm font-semibold"
           onClick={() => onOrderTypeChange("takeout")}
         >
           {t("pos.takeaway")}
@@ -159,7 +159,7 @@ export function CartSidebar({
               <button
                 type="button"
                 onClick={onTableClear}
-                className="text-[11px] font-medium text-muted-foreground underline hover:text-foreground"
+                className="-m-2 p-2 text-sm font-medium text-muted-foreground underline hover:text-foreground"
               >
                 {t("common.cancel")}
               </button>
@@ -174,7 +174,7 @@ export function CartSidebar({
                     if (matched && onTableSelect) onTableSelect(matched.id, matched.number);
                   }}
                 >
-                  <SelectTrigger className="h-9 border bg-white/50 text-xs shadow-none dark:bg-white/5">
+                  <SelectTrigger className="h-11 border bg-white/50 text-sm shadow-none dark:bg-white/5">
                     <SelectValue placeholder={t("tables.selectTablePlaceholder")} />
                   </SelectTrigger>
                   <SelectContent>
@@ -199,7 +199,7 @@ export function CartSidebar({
             placeholder={t("pos.enterCustomerName")}
             value={customerName}
             onChange={(e) => onCustomerNameChange(e.target.value)}
-            className="h-9 rounded-lg pl-9 text-base md:text-sm"
+            className="h-11 rounded-lg pl-9 text-base md:text-sm"
           />
         </div>
       </div>
@@ -244,9 +244,9 @@ export function CartSidebar({
                     <button
                       type="button"
                       onClick={() => onRemove(item.lineId)}
-                      className="p-1 text-muted-foreground transition-colors hover:text-destructive"
+                      className="-m-1 flex h-10 w-10 items-center justify-center text-muted-foreground transition-colors hover:text-destructive"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-4.5 w-4.5" />
                     </button>
                   </div>
 
@@ -271,23 +271,23 @@ export function CartSidebar({
                   )}
 
                   <div className="flex items-center justify-between pl-10">
-                    <div className="flex items-center gap-1">
+                    <div className="flex items-center gap-1.5">
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-6 w-6 rounded-md"
+                        className="h-10 w-10 rounded-lg"
                         onClick={() => onUpdateQty(item.lineId, item.quantity - 1)}
                       >
-                        <Minus className="h-2.5 w-2.5" />
+                        <Minus className="h-4 w-4" />
                       </Button>
-                      <span className="w-5 text-center text-xs font-bold">{item.quantity}</span>
+                      <span className="w-8 text-center text-base font-bold">{item.quantity}</span>
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-6 w-6 rounded-md"
+                        className="h-10 w-10 rounded-lg"
                         onClick={() => onUpdateQty(item.lineId, item.quantity + 1)}
                       >
-                        <Plus className="h-2.5 w-2.5" />
+                        <Plus className="h-4 w-4" />
                       </Button>
                     </div>
                     <p className="text-sm font-bold">{formatCurrency(lineTotal)}</p>
@@ -351,7 +351,7 @@ export function CartSidebar({
             placeholder={t("pos.notes")}
             value={orderNotes}
             onChange={(e) => onOrderNotesChange(e.target.value)}
-            className="h-9 rounded-lg text-base md:text-sm"
+            className="h-11 rounded-lg text-base md:text-sm"
           />
         </div>
       )}

@@ -8,7 +8,12 @@ import { Button } from "@restai/ui/components/button";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@restai/ui/components/select";
 import { cn } from "@/lib/utils";
 import { useBranchSettings, useUpdateBranch } from "@/hooks/use-settings";
-import { usePrintSampleReceipt, type ReceiptConfig } from "@/components/print-ticket";
+import {
+  usePrintSampleReceipt,
+  usePrintSampleKitchen,
+  usePrintSampleTransfer,
+  type ReceiptConfig,
+} from "@/components/print-ticket";
 import { Printer } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/stores/lang-store";
@@ -49,6 +54,17 @@ const DEFAULT_FORM = {
   showCustomer: true,
   showPaymentMethod: true,
   showVat: true,
+  // Phiếu đặt món
+  kitchenTitle: "PHIẾU ĐẶT ĐỒ",
+  kitchenFooterText: "Toda Cafe",
+  kitchenShowStaff: true,
+  kitchenShowTime: true,
+  // Phiếu tạm tính
+  transferTitle: "PHIẾU TẠM TÍNH",
+  transferNote: "Mã quá hạn vui lòng xin phiếu mới.",
+  transferShowAddress: true,
+  transferShowCustomer: true,
+  transferShowBank: true,
 };
 
 const SEP_PREVIEW: Record<SeparatorStyle, string> = {
@@ -63,6 +79,8 @@ export function ReceiptTab() {
   const { data: branchData, isLoading } = useBranchSettings();
   const updateBranch = useUpdateBranch();
   const printSample = usePrintSampleReceipt();
+  const printSampleKitchen = usePrintSampleKitchen();
+  const printSampleTransfer = usePrintSampleTransfer();
   const { t } = useTranslation();
 
   const [form, setForm] = useState(DEFAULT_FORM);
@@ -81,11 +99,27 @@ export function ReceiptTab() {
       paymentMethod: form.showPaymentMethod,
       vat: form.showVat,
     },
+    kitchen: {
+      title: form.kitchenTitle.trim() || "PHIẾU ĐẶT ĐỒ",
+      footerLines: form.kitchenFooterText.split("\n").map((l) => l.trim()).filter(Boolean),
+      show: { staff: form.kitchenShowStaff, time: form.kitchenShowTime },
+    },
+    transfer: {
+      title: form.transferTitle.trim() || "PHIẾU TẠM TÍNH",
+      note: form.transferNote.trim(),
+      show: {
+        address: form.transferShowAddress,
+        customer: form.transferShowCustomer,
+        bankInfo: form.transferShowBank,
+      },
+    },
   });
 
-  const handleTestPrint = async () => {
+  const handleTestPrint = async (kind: "receipt" | "kitchen" | "transfer" = "receipt") => {
     try {
-      const via = await printSample(formToConfig());
+      const printer =
+        kind === "kitchen" ? printSampleKitchen : kind === "transfer" ? printSampleTransfer : printSample;
+      const via = await printer(formToConfig());
       if (via === "escpos-bitmap") {
         toast.success(t("settings.receiptTestBitmap", "Đã in thử: chế độ ẢNH có dấu tiếng Việt"));
       } else if (via === "escpos-text") {
@@ -106,6 +140,10 @@ export function ReceiptTab() {
     const raw = branchData?.settings?.receipt;
     if (raw) {
       const show = raw.show || {};
+      const kc = raw.kitchen || {};
+      const kShow = kc.show || {};
+      const tc = raw.transfer || {};
+      const tShow = tc.show || {};
       setForm({
         topFeedLines: Math.min(10, Math.max(0, Number(raw.top_feed_lines ?? 4))),
         paper: raw.paper === "58" ? "58" : "80",
@@ -122,6 +160,17 @@ export function ReceiptTab() {
         showCustomer: show.customer ?? true,
         showPaymentMethod: show.payment_method ?? true,
         showVat: show.vat ?? true,
+        kitchenTitle: typeof kc.title === "string" && kc.title.trim() ? kc.title : DEFAULT_FORM.kitchenTitle,
+        kitchenFooterText: Array.isArray(kc.footer_lines)
+          ? kc.footer_lines.join("\n")
+          : DEFAULT_FORM.kitchenFooterText,
+        kitchenShowStaff: kShow.staff ?? true,
+        kitchenShowTime: kShow.time ?? true,
+        transferTitle: typeof tc.title === "string" && tc.title.trim() ? tc.title : DEFAULT_FORM.transferTitle,
+        transferNote: typeof tc.note === "string" ? tc.note : DEFAULT_FORM.transferNote,
+        transferShowAddress: tShow.address ?? true,
+        transferShowCustomer: tShow.customer ?? true,
+        transferShowBank: tShow.bank_info ?? true,
       });
     }
   }, [branchData]);
@@ -142,6 +191,20 @@ export function ReceiptTab() {
             customer: form.showCustomer,
             payment_method: form.showPaymentMethod,
             vat: form.showVat,
+          },
+          kitchen: {
+            title: form.kitchenTitle.trim() || "PHIẾU ĐẶT ĐỒ",
+            footer_lines: form.kitchenFooterText.split("\n").map((l) => l.trim()).filter(Boolean),
+            show: { staff: form.kitchenShowStaff, time: form.kitchenShowTime },
+          },
+          transfer: {
+            title: form.transferTitle.trim() || "PHIẾU TẠM TÍNH",
+            note: form.transferNote.trim(),
+            show: {
+              address: form.transferShowAddress,
+              customer: form.transferShowCustomer,
+              bank_info: form.transferShowBank,
+            },
           },
         },
       });
@@ -269,13 +332,95 @@ export function ReceiptTab() {
                 <Toggle checked={form.utf8Bitmap} onChange={() => setForm({ ...form, utf8Bitmap: !form.utf8Bitmap })} />
               </div>
 
+              {/* ---- Phiếu đặt món ---- */}
+              <div className="space-y-3 rounded-lg border p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">{t("settings.kitchenTicketTitle", "Phiếu đặt món (in khi gửi món)")}</p>
+                  <Button variant="outline" size="sm" onClick={() => handleTestPrint("kitchen")}>
+                    <Printer className="mr-1.5 h-3.5 w-3.5" />
+                    {t("settings.receiptTestPrint", "In thử")}
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("settings.kitchenTitleLabel", "Tiêu đề phiếu")}</Label>
+                  <Input
+                    value={form.kitchenTitle}
+                    placeholder="PHIẾU ĐẶT ĐỒ"
+                    onChange={(e) => setForm({ ...form, kitchenTitle: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("settings.kitchenFooterLabel", "Dòng chữ cuối phiếu (mỗi dòng 1 hàng)")}</Label>
+                  <textarea
+                    className="w-full min-h-[50px] rounded-md border bg-transparent px-3 py-2 text-base md:text-sm"
+                    placeholder="Toda Cafe"
+                    value={form.kitchenFooterText}
+                    onChange={(e) => setForm({ ...form, kitchenFooterText: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">{t("settings.kitchenShowTime", "Dòng Giờ / Ngày")}</span>
+                    <Toggle checked={form.kitchenShowTime} onChange={() => setForm({ ...form, kitchenShowTime: !form.kitchenShowTime })} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">{t("settings.kitchenShowStaff", "Tên nhân viên")}</span>
+                    <Toggle checked={form.kitchenShowStaff} onChange={() => setForm({ ...form, kitchenShowStaff: !form.kitchenShowStaff })} />
+                  </div>
+                </div>
+              </div>
+
+              {/* ---- Phiếu tạm tính ---- */}
+              <div className="space-y-3 rounded-lg border p-4">
+                <div className="flex items-center justify-between">
+                  <p className="text-sm font-medium">{t("settings.transferTicketTitle", "Phiếu tạm tính (kèm QR chuyển khoản)")}</p>
+                  <Button variant="outline" size="sm" onClick={() => handleTestPrint("transfer")}>
+                    <Printer className="mr-1.5 h-3.5 w-3.5" />
+                    {t("settings.receiptTestPrint", "In thử")}
+                  </Button>
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("settings.transferTitleLabel", "Tiêu đề phiếu")}</Label>
+                  <Input
+                    value={form.transferTitle}
+                    placeholder="PHIẾU TẠM TÍNH"
+                    onChange={(e) => setForm({ ...form, transferTitle: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label>{t("settings.transferNoteLabel", "Ghi chú cuối phiếu")}</Label>
+                  <Input
+                    value={form.transferNote}
+                    placeholder="Mã quá hạn vui lòng xin phiếu mới."
+                    onChange={(e) => setForm({ ...form, transferNote: e.target.value })}
+                  />
+                </div>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">{t("settings.transferShowAddress", "Địa chỉ quán")}</span>
+                    <Toggle checked={form.transferShowAddress} onChange={() => setForm({ ...form, transferShowAddress: !form.transferShowAddress })} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">{t("settings.transferShowCustomer", "Tên khách hàng")}</span>
+                    <Toggle checked={form.transferShowCustomer} onChange={() => setForm({ ...form, transferShowCustomer: !form.transferShowCustomer })} />
+                  </div>
+                  <div className="flex items-center justify-between">
+                    <span className="text-sm">{t("settings.transferShowBank", "Thông tin ngân hàng (dưới QR)")}</span>
+                    <Toggle checked={form.transferShowBank} onChange={() => setForm({ ...form, transferShowBank: !form.transferShowBank })} />
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.transferSharedNote", "Khổ giấy, khoảng trắng đầu phiếu, kiểu đường kẻ và chế độ in có dấu dùng chung cấu hình phía trên cho cả 3 loại phiếu.")}
+                </p>
+              </div>
+
               <div className="flex flex-wrap gap-2">
                 <Button onClick={handleSave} disabled={updateBranch.isPending}>
                   {updateBranch.isPending ? t("settings.saving", "Đang lưu...") : t("settings.saveChanges", "Lưu thay đổi")}
                 </Button>
-                <Button variant="outline" onClick={handleTestPrint}>
+                <Button variant="outline" onClick={() => handleTestPrint("receipt")}>
                   <Printer className="mr-2 h-4 w-4" />
-                  {t("settings.receiptTestPrint", "In thử")}
+                  {t("settings.receiptTestPrint", "In thử hóa đơn")}
                 </Button>
               </div>
               <p className="text-xs text-muted-foreground">
@@ -319,6 +464,50 @@ export function ReceiptTab() {
             {t("settings.receiptAsciiNote", "Đang in chữ thường: máy in nhiệt sẽ tự bỏ dấu tiếng Việt. Bật \"In tiếng Việt có dấu\" nếu muốn giữ dấu.")}
           </p>
         )}
+
+        {/* Xem trước phiếu đặt món */}
+        <p className="text-xs text-muted-foreground mb-2 mt-6">{t("settings.kitchenPreview", "Xem trước phiếu đặt món")}</p>
+        <div className="rounded-lg border bg-white text-black p-3 font-mono text-[11px] leading-relaxed shadow-sm">
+          <div className="text-center font-bold text-[13px]">{form.kitchenTitle.trim() || "PHIẾU ĐẶT ĐỒ"}</div>
+          <div className="text-center font-bold">BÀN 5</div>
+          {previewSep}
+          {form.kitchenShowTime && <div className="flex justify-between"><span>Giờ: 10:30</span><span>Ngày: 05/07</span></div>}
+          {form.kitchenShowStaff && <div>Nhân viên: Toàn</div>}
+          <div>Số thứ tự: #A-042</div>
+          {previewSep}
+          <div className="font-bold">2 x Cà phê sữa (Ly)</div>
+          <div className="italic text-[10px]">&nbsp;&nbsp;* Ít đường</div>
+          <div className="font-bold">1 x Bạc xỉu (Ly)</div>
+          {previewSep}
+          {form.kitchenFooterText.split("\n").filter(Boolean).map((l, i) => (
+            <div key={`kf${i}`} className="text-center">{l}</div>
+          ))}
+        </div>
+
+        {/* Xem trước phiếu tạm tính */}
+        <p className="text-xs text-muted-foreground mb-2 mt-6">{t("settings.transferPreview", "Xem trước phiếu tạm tính")}</p>
+        <div className="rounded-lg border bg-white text-black p-3 font-mono text-[11px] leading-relaxed shadow-sm">
+          <div className="text-center font-bold text-[13px]">{branchData?.name || "TODA CAFE"}</div>
+          {form.transferShowAddress && branchData?.address && <div className="text-center">{branchData.address}</div>}
+          {previewSep}
+          <div className="text-center font-bold">{form.transferTitle.trim() || "PHIẾU TẠM TÍNH"}</div>
+          <div>Đơn: #A-042 · Bàn: 5</div>
+          {form.transferShowCustomer && <div>Khách: Anh Ba</div>}
+          {previewSep}
+          <div className="flex justify-between"><span>2x Cà phê sữa</span><span>50.000đ</span></div>
+          <div className="flex justify-between font-bold"><span>TỔNG CẦN TRẢ</span><span>79.000đ</span></div>
+          {previewSep}
+          <div className="text-center font-bold">QUÉT QR CHUYỂN KHOẢN</div>
+          <div className="mx-auto my-1 h-14 w-14 border border-black grid place-items-center text-[9px]">QR</div>
+          {form.transferShowBank && (
+            <>
+              <div>Người nhận: TODA CAFE</div>
+              <div>STK: 0123456789</div>
+            </>
+          )}
+          <div>Nội dung: TODA-A042</div>
+          {form.transferNote.trim() && <div className="text-center text-[10px]">{form.transferNote.trim()}</div>}
+        </div>
       </div>
     </div>
   );

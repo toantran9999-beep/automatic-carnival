@@ -105,7 +105,24 @@ export interface ReceiptConfig {
     paymentMethod: boolean;
     vat: boolean;
   };
+  /** Cấu hình riêng cho phiếu đặt món (in khi gửi món cho quầy) */
+  kitchen: {
+    title: string;
+    footerLines: string[];
+    show: { staff: boolean; time: boolean };
+  };
+  /** Cấu hình riêng cho phiếu tạm tính (kèm QR chuyển khoản) */
+  transfer: {
+    title: string;
+    note: string;
+    show: { address: boolean; customer: boolean; bankInfo: boolean };
+  };
 }
+
+const DEFAULT_KITCHEN_TITLE = "PHIẾU ĐẶT ĐỒ";
+const DEFAULT_KITCHEN_FOOTER = ["Toda Cafe"];
+const DEFAULT_TRANSFER_TITLE = "PHIẾU TẠM TÍNH";
+const DEFAULT_TRANSFER_NOTE = "Mã quá hạn vui lòng xin phiếu mới.";
 
 const DEFAULT_RECEIPT_CONFIG: ReceiptConfig = {
   topFeedLines: 4,
@@ -115,11 +132,25 @@ const DEFAULT_RECEIPT_CONFIG: ReceiptConfig = {
   headerLines: [],
   footerLines: null,
   show: { address: true, phone: false, customer: true, paymentMethod: true, vat: true },
+  kitchen: {
+    title: DEFAULT_KITCHEN_TITLE,
+    footerLines: DEFAULT_KITCHEN_FOOTER,
+    show: { staff: true, time: true },
+  },
+  transfer: {
+    title: DEFAULT_TRANSFER_TITLE,
+    note: DEFAULT_TRANSFER_NOTE,
+    show: { address: true, customer: true, bankInfo: true },
+  },
 };
 
 export function getReceiptConfig(branchSettings: any): ReceiptConfig {
   const raw = branchSettings?.settings?.receipt || {};
   const show = raw.show || {};
+  const kc = raw.kitchen || {};
+  const kShow = kc.show || {};
+  const tc = raw.transfer || {};
+  const tShow = tc.show || {};
   return {
     topFeedLines: Math.min(10, Math.max(0, Number(raw.top_feed_lines ?? DEFAULT_RECEIPT_CONFIG.topFeedLines))),
     paper: raw.paper === "58" ? "58" : "80",
@@ -135,6 +166,20 @@ export function getReceiptConfig(branchSettings: any): ReceiptConfig {
       customer: show.customer ?? true,
       paymentMethod: show.payment_method ?? true,
       vat: show.vat ?? true,
+    },
+    kitchen: {
+      title: typeof kc.title === "string" && kc.title.trim() ? kc.title.trim() : DEFAULT_KITCHEN_TITLE,
+      footerLines: Array.isArray(kc.footer_lines) ? kc.footer_lines.filter(Boolean) : DEFAULT_KITCHEN_FOOTER,
+      show: { staff: kShow.staff ?? true, time: kShow.time ?? true },
+    },
+    transfer: {
+      title: typeof tc.title === "string" && tc.title.trim() ? tc.title.trim() : DEFAULT_TRANSFER_TITLE,
+      note: typeof tc.note === "string" ? tc.note : DEFAULT_TRANSFER_NOTE,
+      show: {
+        address: tShow.address ?? true,
+        customer: tShow.customer ?? true,
+        bankInfo: tShow.bank_info ?? true,
+      },
     },
   };
 }
@@ -267,18 +312,20 @@ function buildEscPos(lines: Array<string | number[]>): number[] {
   return bytes;
 }
 
-function buildKitchenEscPos(data: KitchenTicketData, width = 48): number[] {
+function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): number[] {
+  const width = widthForPaper(cfg.paper);
   const { time, date } = vnTimeParts(data.createdAt);
   const staff = currentStaffName();
   const subtitle = data.tableNumber ? `BAN ${data.tableNumber}` : "MANG VE";
-  const SEP = "-".repeat(width);
+  const ch = separatorChar(cfg.separator);
+  const SEP = ch ? ch.repeat(width) : "";
   const rows: Array<string | number[]> = [
-    centered("PHIEU DAT DO", width),
+    centered(cfg.kitchen.title, width),
     centered(subtitle, width),
     data.ticketLabel ? centered(`Phieu ${data.ticketLabel}`, width) : "",
     SEP,
-    twoCol(`Gio: ${time}`, `Ngay: ${date}`, width),
-    `Nhan vien: ${plainLine(staff || data.customerName || "-", width - 11)}`,
+    cfg.kitchen.show.time ? twoCol(`Gio: ${time}`, `Ngay: ${date}`, width) : "",
+    cfg.kitchen.show.staff ? `Nhan vien: ${plainLine(staff || data.customerName || "-", width - 11)}` : "",
     `So thu tu: #${data.orderNumber}`,
     SEP,
   ].filter((r) => r !== "");
@@ -289,8 +336,10 @@ function buildKitchenEscPos(data: KitchenTicketData, width = 48): number[] {
   }
 
   if (data.notes) rows.push(SEP, `Ghi chu: ${plainLine(data.notes, width - 9)}`);
-  rows.push(SEP, centered("Toda Cafe", width));
-  return buildEscPos(rows);
+  if (cfg.kitchen.footerLines.length) {
+    rows.push(SEP, ...cfg.kitchen.footerLines.map((l) => centered(l, width)));
+  }
+  return buildEscPos(rows.filter((r) => r !== ""));
 }
 
 function buildReceiptEscPos(data: ReceiptTicketData, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): number[] {
@@ -545,13 +594,13 @@ function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): Ras
   const { time, date } = vnTimeParts(data.createdAt);
   const staff = currentStaffName();
   const segs: RasterSeg[] = [
-    { kind: "text", text: "PHIẾU ĐẶT ĐỒ", align: "center", bold: true, big: true },
+    { kind: "text", text: cfg.kitchen.title, align: "center", bold: true, big: true },
     { kind: "text", text: data.tableNumber ? `BÀN ${data.tableNumber}` : "MANG VỀ", align: "center", bold: true },
   ];
   if (data.ticketLabel) segs.push({ kind: "text", text: `Phiếu ${data.ticketLabel}`, align: "center" });
   segs.push({ kind: "sep" });
-  segs.push({ kind: "twoCol", left: `Giờ: ${time}`, right: `Ngày: ${date}` });
-  segs.push({ kind: "text", text: `Nhân viên: ${staff || data.customerName || "-"}` });
+  if (cfg.kitchen.show.time) segs.push({ kind: "twoCol", left: `Giờ: ${time}`, right: `Ngày: ${date}` });
+  if (cfg.kitchen.show.staff) segs.push({ kind: "text", text: `Nhân viên: ${staff || data.customerName || "-"}` });
   segs.push({ kind: "text", text: `Số thứ tự: #${data.orderNumber}` });
   segs.push({ kind: "sep" });
   for (const item of data.items) {
@@ -562,8 +611,10 @@ function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): Ras
     segs.push({ kind: "sep" });
     segs.push({ kind: "text", text: `Ghi chú: ${data.notes}` });
   }
-  segs.push({ kind: "sep" });
-  segs.push({ kind: "text", text: "Toda Cafe", align: "center" });
+  if (cfg.kitchen.footerLines.length) {
+    segs.push({ kind: "sep" });
+    for (const l of cfg.kitchen.footerLines) segs.push({ kind: "text", text: l, align: "center" });
+  }
   return segs;
 }
 
@@ -581,12 +632,12 @@ function transferRasterSegments(data: TemporaryTransferBillData, cfg: ReceiptCon
   const segs: RasterSeg[] = [
     { kind: "text", text: data.businessName, align: "center", bold: true, big: true },
   ];
-  if (data.address) segs.push({ kind: "text", text: data.address, align: "center" });
+  if (cfg.transfer.show.address && data.address) segs.push({ kind: "text", text: data.address, align: "center" });
   segs.push({ kind: "sep" });
-  segs.push({ kind: "text", text: "PHIẾU TẠM TÍNH", align: "center", bold: true });
+  segs.push({ kind: "text", text: cfg.transfer.title, align: "center", bold: true });
   segs.push({ kind: "text", text: `Đơn: #${data.orderNumber}` });
   if (data.tableNumber) segs.push({ kind: "text", text: `Bàn: ${data.tableNumber}` });
-  if (data.customerName) segs.push({ kind: "text", text: `Khách: ${data.customerName}` });
+  if (cfg.transfer.show.customer && data.customerName) segs.push({ kind: "text", text: `Khách: ${data.customerName}` });
   segs.push({ kind: "sep" });
   for (const item of data.items) {
     segs.push({ kind: "twoCol", left: `${item.quantity}x ${item.name}`, right: moneyVi(item.total) });
@@ -598,12 +649,14 @@ function transferRasterSegments(data: TemporaryTransferBillData, cfg: ReceiptCon
   segs.push({ kind: "sep" });
   segs.push({ kind: "text", text: "QUÉT QR CHUYỂN KHOẢN", align: "center", bold: true });
   segs.push({ kind: "qr", payload: data.qrPayload || data.paymentCode });
-  if (data.bank?.accountName) segs.push({ kind: "text", text: `Người nhận: ${data.bank.accountName}` });
-  if (data.bank?.bankCode) segs.push({ kind: "text", text: `Ngân hàng: ${data.bank.bankCode}` });
-  if (data.bank?.accountNumber) segs.push({ kind: "text", text: `STK: ${data.bank.accountNumber}` });
+  if (cfg.transfer.show.bankInfo) {
+    if (data.bank?.accountName) segs.push({ kind: "text", text: `Người nhận: ${data.bank.accountName}` });
+    if (data.bank?.bankCode) segs.push({ kind: "text", text: `Ngân hàng: ${data.bank.bankCode}` });
+    if (data.bank?.accountNumber) segs.push({ kind: "text", text: `STK: ${data.bank.accountNumber}` });
+  }
   segs.push({ kind: "text", text: `Nội dung: ${data.paymentCode}` });
   segs.push({ kind: "text", text: `Hiệu lực đến: ${expires}` });
-  segs.push({ kind: "text", text: "Mã quá hạn vui lòng xin phiếu mới." });
+  if (cfg.transfer.note.trim()) segs.push({ kind: "text", text: cfg.transfer.note.trim() });
   return segs;
 }
 
@@ -611,22 +664,24 @@ function buildTransferRasterEscPos(data: TemporaryTransferBillData, cfg: Receipt
   return wrapRasterTicket(segsToEscPosBytes(transferRasterSegments(data, cfg), cfg), cfg.topFeedLines);
 }
 
-function buildTemporaryTransferEscPos(data: TemporaryTransferBillData, width = 48): number[] {
+function buildTemporaryTransferEscPos(data: TemporaryTransferBillData, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): number[] {
+  const width = widthForPaper(cfg.paper);
   const expires = new Date(data.expiresAt).toLocaleTimeString("vi-VN", {
     hour: "2-digit",
     minute: "2-digit",
     hour12: false,
     timeZone: "Asia/Ho_Chi_Minh",
   });
-  const SEP = "-".repeat(width);
+  const ch = separatorChar(cfg.separator);
+  const SEP = ch ? ch.repeat(width) : "";
   const rows: Array<string | number[]> = [
     centered(data.businessName, width),
-    data.address ? centered(data.address, width) : "",
+    cfg.transfer.show.address && data.address ? centered(data.address, width) : "",
     SEP,
-    centered("PHIEU TAM TINH", width),
+    centered(cfg.transfer.title, width),
     `Don: #${data.orderNumber}`,
     data.tableNumber ? `Ban: ${data.tableNumber}` : "",
-    data.customerName ? `Khach: ${plainLine(data.customerName, width - 7)}` : "",
+    cfg.transfer.show.customer && data.customerName ? `Khach: ${plainLine(data.customerName, width - 7)}` : "",
     SEP,
   ].filter((r) => r !== "");
 
@@ -644,12 +699,12 @@ function buildTemporaryTransferEscPos(data: TemporaryTransferBillData, width = 4
     escposAlign("center"),
     escposQrBytes(data.qrPayload || data.paymentCode),
     escposAlign("left"),
-    data.bank?.accountName ? `Nguoi nhan: ${plainLine(data.bank.accountName, width - 12)}` : "",
-    data.bank?.bankCode ? `Ngan hang: ${plainLine(data.bank.bankCode, width - 11)}` : "",
-    data.bank?.accountNumber ? `STK: ${plainLine(data.bank.accountNumber, width - 5)}` : "",
+    cfg.transfer.show.bankInfo && data.bank?.accountName ? `Nguoi nhan: ${plainLine(data.bank.accountName, width - 12)}` : "",
+    cfg.transfer.show.bankInfo && data.bank?.bankCode ? `Ngan hang: ${plainLine(data.bank.bankCode, width - 11)}` : "",
+    cfg.transfer.show.bankInfo && data.bank?.accountNumber ? `STK: ${plainLine(data.bank.accountNumber, width - 5)}` : "",
     `Noi dung: ${data.paymentCode}`,
     `Hieu luc den: ${expires}`,
-    "Ma qua han vui long xin phieu moi.",
+    cfg.transfer.note.trim() ? plainLine(cfg.transfer.note, width) : "",
   );
   return buildEscPos(rows.filter(Boolean));
 }
@@ -746,7 +801,7 @@ const receiptTranslations = {
   }
 };
 
-function buildKitchenTicketHtml(data: KitchenTicketData): string {
+function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): string {
   let lang = "vi";
   try {
     lang = useLangStore.getState()?.lang || "vi";
@@ -774,7 +829,7 @@ function buildKitchenTicketHtml(data: KitchenTicketData): string {
     .join("");
 
   const L = {
-    title: isVi ? "PHIẾU ĐẶT ĐỒ" : "ORDER TICKET",
+    title: isVi ? cfg.kitchen.title : "ORDER TICKET",
     time: isVi ? "Giờ" : "Time",
     date: isVi ? "Ngày" : "Date",
     staff: isVi ? "Nhân viên" : "Staff",
@@ -808,12 +863,12 @@ function buildKitchenTicketHtml(data: KitchenTicketData): string {
   <div class="ticket-sub">${subtitle}</div>
   ${data.ticketLabel ? `<div class="center bold" style="font-size:12px;margin-top:2px;">${t.ticket} ${data.ticketLabel}</div>` : ""}
   <table class="meta">
-    <tr>
+    ${cfg.kitchen.show.time ? `<tr>
       <td><b>${L.time}:</b> ${time}</td>
       <td><b>${L.date}:</b> ${date}</td>
-    </tr>
+    </tr>` : ""}
     <tr>
-      <td><b>${L.staff}:</b> ${escapeHtml(staff || (data.customerName || "-"))}</td>
+      ${cfg.kitchen.show.staff ? `<td><b>${L.staff}:</b> ${escapeHtml(staff || (data.customerName || "-"))}</td>` : "<td></td>"}
       <td><b>${L.no}:</b> #${data.orderNumber}</td>
     </tr>
   </table>
@@ -828,7 +883,7 @@ function buildKitchenTicketHtml(data: KitchenTicketData): string {
     <tbody>${rowsHtml}</tbody>
   </table>
   ${data.notes ? `<div class="note">${escapeHtml(data.notes)}</div>` : ""}
-  <div class="center" style="font-size:11px;font-weight:700;margin-top:8px;">Toda Café</div>
+  ${cfg.kitchen.footerLines.map((l) => `<div class="center" style="font-size:11px;font-weight:700;margin-top:8px;">${escapeHtml(l)}</div>`).join("")}
 </body>
 </html>`;
 }
@@ -953,7 +1008,7 @@ function buildReceiptTicketHtml(data: ReceiptTicketData, cfg: ReceiptConfig = DE
 </html>`;
 }
 
-function buildTemporaryTransferBillHtml(data: TemporaryTransferBillData): string {
+function buildTemporaryTransferBillHtml(data: TemporaryTransferBillData, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): string {
   const itemsHtml = data.items
     .map(
       (item) =>
@@ -984,13 +1039,13 @@ function buildTemporaryTransferBillHtml(data: TemporaryTransferBillData): string
 </head>
 <body>
   <div class="center bold" style="font-size:14px;">${escapeHtml(data.businessName)}</div>
-  ${data.address ? `<div class="center" style="font-size:10px;">${escapeHtml(data.address)}</div>` : ""}
+  ${cfg.transfer.show.address && data.address ? `<div class="center" style="font-size:10px;">${escapeHtml(data.address)}</div>` : ""}
   <div class="divider"></div>
-  <div class="center bold" style="font-size:15px;">PHIẾU TẠM TÍNH</div>
+  <div class="center bold" style="font-size:15px;">${escapeHtml(cfg.transfer.title)}</div>
   <div class="center" style="font-size:10px;">${formatDateTime(data.createdAt)}</div>
   <div class="center">Đơn: #${escapeHtml(data.orderNumber)}</div>
   ${data.tableNumber ? `<div class="center bold">Bàn: ${escapeHtml(String(data.tableNumber))}</div>` : ""}
-  ${data.customerName ? `<div>Khách: ${escapeHtml(data.customerName)}</div>` : ""}
+  ${cfg.transfer.show.customer && data.customerName ? `<div>Khách: ${escapeHtml(data.customerName)}</div>` : ""}
   <div class="divider"></div>
   <table>${itemsHtml}</table>
   <div class="divider"></div>
@@ -1003,13 +1058,13 @@ function buildTemporaryTransferBillHtml(data: TemporaryTransferBillData): string
   <div class="center bold">QUÉT QR CHUYỂN KHOẢN</div>
   ${data.qrUrl ? `<img class="qr" src="${escapeHtml(data.qrUrl)}" />` : `<div class="box center">${escapeHtml(data.qrPayload)}</div>`}
   <div class="box">
-    ${data.bank?.accountName ? `<div><b>Người nhận:</b> ${escapeHtml(data.bank.accountName)}</div>` : ""}
-    ${data.bank?.bankCode ? `<div><b>Ngân hàng:</b> ${escapeHtml(data.bank.bankCode)}</div>` : ""}
-    ${data.bank?.accountNumber ? `<div><b>STK:</b> ${escapeHtml(data.bank.accountNumber)}</div>` : ""}
+    ${cfg.transfer.show.bankInfo && data.bank?.accountName ? `<div><b>Người nhận:</b> ${escapeHtml(data.bank.accountName)}</div>` : ""}
+    ${cfg.transfer.show.bankInfo && data.bank?.bankCode ? `<div><b>Ngân hàng:</b> ${escapeHtml(data.bank.bankCode)}</div>` : ""}
+    ${cfg.transfer.show.bankInfo && data.bank?.accountNumber ? `<div><b>STK:</b> ${escapeHtml(data.bank.accountNumber)}</div>` : ""}
     <div><b>Nội dung:</b> ${escapeHtml(data.paymentCode)}</div>
     <div><b>Hiệu lực đến:</b> ${expires}</div>
   </div>
-  <div class="center" style="font-size:10px;margin-top:4px;">Mã quá hạn vui lòng xin phiếu mới.</div>
+  ${cfg.transfer.note.trim() ? `<div class="center" style="font-size:10px;margin-top:4px;">${escapeHtml(cfg.transfer.note.trim())}</div>` : ""}
 </body>
 </html>`;
 }
@@ -1181,6 +1236,7 @@ export function usePrintKitchenTicket() {
   const { data: branchSettings } = useBranchSettings();
   return useCallback(async (data: KitchenTicketData, mode: PrintMode = "combined") => {
     const driver = currentPrintDriver(branchSettings);
+    const cfg = getReceiptConfig(branchSettings);
     const tickets =
       mode === "per_item" && data.items.length > 1
         ? data.items.map((item, idx) => ({
@@ -1193,13 +1249,11 @@ export function usePrintKitchenTicket() {
     // Thử in qua ESC/POS (RawBT / bridge). Nếu MỌI phiếu in ok thì xong;
     // nếu lỗi/không có driver → tự lùi về in trình duyệt cho cả lô.
     if (driver !== "browser_print") {
-      const cfg = getReceiptConfig(branchSettings);
-      const width = widthForPaper(cfg.paper);
       let allOk = true;
       for (const ticket of tickets) {
         const bytes = cfg.utf8Bitmap
-          ? buildKitchenRasterEscPos(ticket, cfg) ?? buildKitchenEscPos(ticket, width)
-          : buildKitchenEscPos(ticket, width);
+          ? buildKitchenRasterEscPos(ticket, cfg) ?? buildKitchenEscPos(ticket, cfg)
+          : buildKitchenEscPos(ticket, cfg);
         if (!(await printEscPos(bytes, driver))) {
           allOk = false;
           break;
@@ -1207,7 +1261,7 @@ export function usePrintKitchenTicket() {
       }
       if (allOk) return;
     }
-    await printHtmlSequential(tickets.map((ticket) => buildKitchenTicketHtml(ticket)));
+    await printHtmlSequential(tickets.map((ticket) => buildKitchenTicketHtml(ticket, cfg)));
   }, [branchSettings]);
 }
 
@@ -1278,19 +1332,92 @@ export function usePrintSampleReceipt() {
   }, [branchSettings]);
 }
 
+/** In thử phiếu đặt món với cấu hình đang chỉnh (chưa cần lưu). */
+export function usePrintSampleKitchen() {
+  const { data: branchSettings } = useBranchSettings();
+  return useCallback(async (cfg: ReceiptConfig) => {
+    const data: KitchenTicketData = {
+      orderNumber: "IN-THU-01",
+      tableNumber: 5,
+      createdAt: new Date().toISOString(),
+      items: [
+        { name: "Cà phê sữa", quantity: 2, unit_price: 2500000, total: 5000000, notes: "Ít đường", unit: "Ly" },
+        { name: "Bạc xỉu", quantity: 1, unit_price: 2900000, total: 2900000, unit: "Ly" },
+      ],
+      notes: "Khách ngồi ngoài sân",
+    };
+    const driver = currentPrintDriver(branchSettings);
+    if (driver !== "browser_print") {
+      let mode: "escpos-bitmap" | "escpos-text" = "escpos-text";
+      let bytes: number[] | null = null;
+      if (cfg.utf8Bitmap) {
+        bytes = buildKitchenRasterEscPos(data, cfg);
+        if (bytes) mode = "escpos-bitmap";
+      }
+      if (!bytes) bytes = buildKitchenEscPos(data, cfg);
+      if (await printEscPos(bytes, driver)) return mode;
+    }
+    printHtml(buildKitchenTicketHtml(data, cfg));
+    return "browser";
+  }, [branchSettings]);
+}
+
+/** In thử phiếu tạm tính (kèm QR mẫu) với cấu hình đang chỉnh (chưa cần lưu). */
+export function usePrintSampleTransfer() {
+  const { data: branchSettings } = useBranchSettings();
+  return useCallback(async (cfg: ReceiptConfig) => {
+    const sepay = branchSettings?.settings?.payment?.sepay || branchSettings?.settings?.sepay || {};
+    const data: TemporaryTransferBillData = {
+      businessName: branchSettings?.name || "TODA CAFE",
+      address: branchSettings?.address || undefined,
+      orderNumber: "IN-THU-01",
+      tableNumber: 5,
+      customerName: "Khách in thử",
+      createdAt: new Date().toISOString(),
+      expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      items: [
+        { name: "Cà phê sữa", quantity: 2, unit_price: 2500000, total: 5000000 },
+        { name: "Bạc xỉu", quantity: 1, unit_price: 2900000, total: 2900000 },
+      ],
+      subtotal: 7900000,
+      tax: 0,
+      total: 7900000,
+      paymentCode: "TODA-INTHU",
+      qrPayload: "TODA-INTHU-QR-MAU",
+      bank: {
+        bankCode: sepay.bank_code || sepay.bankCode || "VCB",
+        accountNumber: sepay.account_number || sepay.accountNumber || "0123456789",
+        accountName: sepay.account_name || sepay.accountName || "TODA CAFE",
+      },
+    };
+    const driver = currentPrintDriver(branchSettings);
+    if (driver !== "browser_print") {
+      let mode: "escpos-bitmap" | "escpos-text" = "escpos-text";
+      let bytes: number[] | null = null;
+      if (cfg.utf8Bitmap) {
+        bytes = buildTransferRasterEscPos(data, cfg);
+        if (bytes) mode = "escpos-bitmap";
+      }
+      if (!bytes) bytes = buildTemporaryTransferEscPos(data, cfg);
+      if (await printEscPos(bytes, driver)) return mode;
+    }
+    printHtml(buildTemporaryTransferBillHtml(data, cfg));
+    return "browser";
+  }, [branchSettings]);
+}
+
 export function usePrintTemporaryTransferBill() {
   const { data: branchSettings } = useBranchSettings();
   return useCallback(async (data: TemporaryTransferBillData) => {
     const driver = currentPrintDriver(branchSettings);
+    const cfg = getReceiptConfig(branchSettings);
     if (driver !== "browser_print") {
-      const cfg = getReceiptConfig(branchSettings);
-      const width = widthForPaper(cfg.paper);
       const bytes = cfg.utf8Bitmap
-        ? buildTransferRasterEscPos(data, cfg) ?? buildTemporaryTransferEscPos(data, width)
-        : buildTemporaryTransferEscPos(data, width);
+        ? buildTransferRasterEscPos(data, cfg) ?? buildTemporaryTransferEscPos(data, cfg)
+        : buildTemporaryTransferEscPos(data, cfg);
       if (await printEscPos(bytes, driver)) return;
     }
-    const html = buildTemporaryTransferBillHtml(data);
+    const html = buildTemporaryTransferBillHtml(data, cfg);
     printHtml(html);
   }, [branchSettings]);
 }

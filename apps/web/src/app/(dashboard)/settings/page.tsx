@@ -2,17 +2,18 @@
 
 import { useState } from "react";
 import { Button } from "@restai/ui/components/button";
-import { RefreshCw, Building2, MapPin, Store, Printer } from "lucide-react";
+import { RefreshCw, Building2, MapPin, Store, Printer, ReceiptText } from "lucide-react";
 import { PageHeader } from "@/components/page-header";
 import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
 import { OrgTab } from "./_components/org-tab";
 import { BranchTab } from "./_components/branch-tab";
 import { SedesTab } from "./_components/sedes-tab";
 import { DeviceTab } from "./_components/device-tab";
+import { ReceiptTab } from "./_components/receipt-tab";
 import { useTranslation } from "@/stores/lang-store";
 
 export default function SettingsPage() {
-  const [activeTab, setActiveTab] = useState<"org" | "branch" | "sedes" | "device">("org");
+  const [activeTab, setActiveTab] = useState<"org" | "branch" | "receipt" | "sedes" | "device">("org");
   const { t } = useTranslation();
 
   const { error: orgError, refetch: refetchOrg } = useOrgSettings();
@@ -59,6 +60,14 @@ export default function SettingsPage() {
           {t("settings.tabBranch")}
         </Button>
         <Button
+          variant={activeTab === "receipt" ? "default" : "ghost"}
+          size="sm"
+          onClick={() => setActiveTab("receipt")}
+        >
+          <ReceiptText className="h-4 w-4 mr-2" />
+          {t("settings.tabReceipt", "Hóa đơn")}
+        </Button>
+        <Button
           variant={activeTab === "sedes" ? "default" : "ghost"}
           size="sm"
           onClick={() => setActiveTab("sedes")}
@@ -78,6 +87,7 @@ export default function SettingsPage() {
 
       {activeTab === "org" && <OrgTab />}
       {activeTab === "branch" && <BranchTab />}
+      {activeTab === "receipt" && <ReceiptTab />}
       {activeTab === "sedes" && <SedesTab />}
       {activeTab === "device" && <DeviceTab />}
     </div>

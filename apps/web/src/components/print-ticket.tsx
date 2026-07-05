@@ -70,6 +70,7 @@ interface ReceiptTicketData {
   businessName: string;
   ruc?: string;
   address?: string;
+  phone?: string;
   orderNumber: string;
   createdAt: string;
   items: OrderItem[];
@@ -81,6 +82,76 @@ interface ReceiptTicketData {
   docType?: "boleta_simple" | "boleta_electronica" | "factura";
   docNumber?: string;
   docHolderName?: string;
+}
+
+/** Cấu hình mẫu hóa đơn — chủ quán chỉnh trong Cài đặt → Chi nhánh, lưu ở branch.settings.receipt. */
+export interface ReceiptConfig {
+  /** Số dòng trống đầu phiếu (khoảng trắng để kẹp vào gai/thanh hóa đơn) */
+  topFeedLines: number;
+  /** Khổ giấy máy in nhiệt — quyết định bề rộng khi in bitmap */
+  paper: "58" | "80";
+  /** In tiếng Việt CÓ DẤU bằng cách render ảnh (bitmap) thay vì text ESC/POS bỏ dấu */
+  utf8Bitmap: boolean;
+  /** Kiểu đường kẻ phân cách */
+  separator: "dashed" | "solid" | "double" | "stars" | "none";
+  /** Dòng chữ tuỳ ý ở đầu phiếu (dưới tên quán) */
+  headerLines: string[];
+  /** Dòng chữ tuỳ ý cuối phiếu (lời cảm ơn, wifi, fanpage...). null = dùng mặc định */
+  footerLines: string[] | null;
+  show: {
+    address: boolean;
+    phone: boolean;
+    customer: boolean;
+    paymentMethod: boolean;
+    vat: boolean;
+  };
+}
+
+const DEFAULT_RECEIPT_CONFIG: ReceiptConfig = {
+  topFeedLines: 4,
+  paper: "80",
+  utf8Bitmap: false,
+  separator: "dashed",
+  headerLines: [],
+  footerLines: null,
+  show: { address: true, phone: false, customer: true, paymentMethod: true, vat: true },
+};
+
+export function getReceiptConfig(branchSettings: any): ReceiptConfig {
+  const raw = branchSettings?.settings?.receipt || {};
+  const show = raw.show || {};
+  return {
+    topFeedLines: Math.min(10, Math.max(0, Number(raw.top_feed_lines ?? DEFAULT_RECEIPT_CONFIG.topFeedLines))),
+    paper: raw.paper === "58" ? "58" : "80",
+    utf8Bitmap: !!raw.utf8_bitmap,
+    separator: ["dashed", "solid", "double", "stars", "none"].includes(raw.separator)
+      ? raw.separator
+      : DEFAULT_RECEIPT_CONFIG.separator,
+    headerLines: Array.isArray(raw.header_lines) ? raw.header_lines.filter(Boolean) : [],
+    footerLines: Array.isArray(raw.footer_lines) ? raw.footer_lines.filter(Boolean) : null,
+    show: {
+      address: show.address ?? true,
+      phone: show.phone ?? false,
+      customer: show.customer ?? true,
+      paymentMethod: show.payment_method ?? true,
+      vat: show.vat ?? true,
+    },
+  };
+}
+
+function separatorChar(style: ReceiptConfig["separator"]): string {
+  switch (style) {
+    case "solid": return "_";
+    case "double": return "=";
+    case "stars": return "*";
+    case "none": return "";
+    default: return "-";
+  }
+}
+
+function separatorLine(style: ReceiptConfig["separator"]): string {
+  const ch = separatorChar(style);
+  return ch ? ch.repeat(ESC_POS_WIDTH) : "";
 }
 
 interface TemporaryTransferBillData {
@@ -204,32 +275,219 @@ function buildKitchenEscPos(data: KitchenTicketData): number[] {
   return buildEscPos(rows);
 }
 
-function buildReceiptEscPos(data: ReceiptTicketData): number[] {
-  const rows: Array<string | number[]> = [
+function buildReceiptEscPos(data: ReceiptTicketData, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): number[] {
+  const SEP = separatorLine(cfg.separator);
+  const footers = cfg.footerLines ?? ["Cam on quy khach!"];
+  const rows: Array<string | number[]> = [];
+
+  // Khoảng trắng đầu phiếu để kẹp vào thanh/gai hóa đơn
+  for (let i = 0; i < cfg.topFeedLines; i++) rows.push(" ");
+
+  rows.push(
     centerLine(data.businessName),
-    data.address ? centerLine(data.address) : "",
-    ESC_POS_SEPARATOR,
+    ...cfg.headerLines.map((l) => centerLine(l)),
+    cfg.show.address && data.address ? centerLine(data.address) : "",
+    cfg.show.phone && data.phone ? centerLine(`DT: ${data.phone}`) : "",
+    SEP,
     centerLine("HOA DON"),
     `Don hang: #${data.orderNumber}`,
     formatDateTime(data.createdAt),
-    data.customerName ? `Khach: ${plainLine(data.customerName, 34)}` : "",
-    ESC_POS_SEPARATOR,
-  ].filter(Boolean);
+    cfg.show.customer && data.customerName ? `Khach: ${plainLine(data.customerName, 34)}` : "",
+    SEP,
+  );
 
   for (const item of data.items) {
     rows.push(twoCol(`${item.quantity}x ${plainLine(item.name, 26)}`, moneyPlain(item.total)));
   }
 
   rows.push(
-    ESC_POS_SEPARATOR,
+    SEP,
     twoCol("Tam tinh", moneyPlain(data.subtotal)),
-    twoCol("VAT", moneyPlain(data.tax)),
+    cfg.show.vat ? twoCol("VAT", moneyPlain(data.tax)) : "",
     twoCol("TONG CONG", moneyPlain(data.total)),
-    data.paymentMethod ? `Thanh toan: ${plainLine(data.paymentMethod, 28)}` : "",
-    ESC_POS_SEPARATOR,
-    centerLine("Cam on quy khach!"),
+    cfg.show.paymentMethod && data.paymentMethod ? `Thanh toan: ${plainLine(data.paymentMethod, 28)}` : "",
+    SEP,
+    ...footers.map((l) => centerLine(l)),
   );
-  return buildEscPos(rows.filter(Boolean));
+  return buildEscPos(rows.filter((r) => r !== ""));
+}
+
+// ---------------------------------------------------------------------------
+// In tiếng Việt CÓ DẤU: render hóa đơn thành ảnh đen trắng trên canvas rồi gửi
+// lệnh raster GS v 0 — máy in nhiệt nào cũng in được ảnh, không phụ thuộc
+// codepage tiếng Việt của máy (thứ mà ESC/POS text thô không có).
+// ---------------------------------------------------------------------------
+
+type RasterSeg =
+  | { kind: "text"; text: string; align?: "left" | "center"; bold?: boolean; big?: boolean }
+  | { kind: "twoCol"; left: string; right: string; bold?: boolean; big?: boolean }
+  | { kind: "sep" }
+  | { kind: "space" };
+
+function moneyVi(cents: number): string {
+  return `${Math.round(cents / 100).toLocaleString("vi-VN")}đ`;
+}
+
+function receiptRasterSegments(data: ReceiptTicketData, cfg: ReceiptConfig): RasterSeg[] {
+  const footers = cfg.footerLines ?? ["Cảm ơn quý khách và Hẹn gặp lại!"];
+  const segs: RasterSeg[] = [
+    { kind: "text", text: data.businessName, align: "center", bold: true, big: true },
+    ...cfg.headerLines.map((l): RasterSeg => ({ kind: "text", text: l, align: "center" })),
+  ];
+  if (cfg.show.address && data.address) segs.push({ kind: "text", text: data.address, align: "center" });
+  if (cfg.show.phone && data.phone) segs.push({ kind: "text", text: `ĐT: ${data.phone}`, align: "center" });
+  segs.push({ kind: "sep" });
+  segs.push({ kind: "text", text: "HÓA ĐƠN", align: "center", bold: true });
+  segs.push({ kind: "text", text: `Đơn hàng: #${data.orderNumber}` });
+  segs.push({ kind: "text", text: formatDateTime(data.createdAt) });
+  if (cfg.show.customer && data.customerName) segs.push({ kind: "text", text: `Khách: ${data.customerName}` });
+  segs.push({ kind: "sep" });
+  for (const item of data.items) {
+    segs.push({ kind: "twoCol", left: `${item.quantity}x ${item.name}`, right: moneyVi(item.total) });
+  }
+  segs.push({ kind: "sep" });
+  segs.push({ kind: "twoCol", left: "Tạm tính", right: moneyVi(data.subtotal) });
+  if (cfg.show.vat) segs.push({ kind: "twoCol", left: "Thuế VAT", right: moneyVi(data.tax) });
+  segs.push({ kind: "twoCol", left: "TỔNG CỘNG", right: moneyVi(data.total), bold: true, big: true });
+  if (cfg.show.paymentMethod && data.paymentMethod) {
+    segs.push({ kind: "text", text: `Thanh toán: ${data.paymentMethod}` });
+  }
+  segs.push({ kind: "sep" });
+  for (const l of footers) segs.push({ kind: "text", text: l, align: "center" });
+  return segs;
+}
+
+function drawSegmentsToCanvas(segs: RasterSeg[], cfg: ReceiptConfig): HTMLCanvasElement | null {
+  if (typeof document === "undefined") return null;
+  const width = cfg.paper === "58" ? 384 : 576;
+  const FONT = 22;
+  const FONT_BIG = 30;
+  const lineH = (big?: boolean) => Math.round((big ? FONT_BIG : FONT) * 1.45);
+  const fontOf = (s: { bold?: boolean; big?: boolean }) =>
+    `${s.bold ? "bold " : ""}${s.big ? FONT_BIG : FONT}px 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`;
+
+  const measure = document.createElement("canvas").getContext("2d");
+  if (!measure) return null;
+
+  // Cắt bớt chữ quá dài (giữ 1 dòng/segment cho khớp khổ giấy)
+  const fit = (text: string, font: string, maxW: number): string => {
+    measure.font = font;
+    if (measure.measureText(text).width <= maxW) return text;
+    let t = text;
+    while (t.length > 1 && measure.measureText(`${t}…`).width > maxW) t = t.slice(0, -1);
+    return `${t}…`;
+  };
+
+  let height = 8;
+  for (const s of segs) {
+    if (s.kind === "sep") height += cfg.separator === "none" ? 6 : 14;
+    else if (s.kind === "space") height += FONT;
+    else height += lineH((s as any).big);
+  }
+  height += 8;
+
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return null;
+
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, width, height);
+  ctx.fillStyle = "#000";
+  ctx.textBaseline = "top";
+
+  let y = 8;
+  for (const s of segs) {
+    if (s.kind === "sep") {
+      if (cfg.separator !== "none") {
+        const mid = y + 6;
+        ctx.save();
+        ctx.strokeStyle = "#000";
+        ctx.lineWidth = cfg.separator === "double" ? 1 : 2;
+        if (cfg.separator === "dashed" || cfg.separator === "stars") ctx.setLineDash([6, 5]);
+        ctx.beginPath();
+        ctx.moveTo(0, mid);
+        ctx.lineTo(width, mid);
+        if (cfg.separator === "double") {
+          ctx.moveTo(0, mid + 4);
+          ctx.lineTo(width, mid + 4);
+        }
+        ctx.stroke();
+        ctx.restore();
+        y += 14;
+      } else {
+        y += 6;
+      }
+      continue;
+    }
+    if (s.kind === "space") {
+      y += FONT;
+      continue;
+    }
+    const font = fontOf(s);
+    ctx.font = font;
+    if (s.kind === "twoCol") {
+      const rightW = ctx.measureText(s.right).width;
+      const left = fit(s.left, font, width - rightW - 12);
+      ctx.textAlign = "left";
+      ctx.fillText(left, 0, y);
+      ctx.textAlign = "right";
+      ctx.fillText(s.right, width, y);
+    } else {
+      const text = fit(s.text, font, width);
+      if (s.align === "center") {
+        ctx.textAlign = "center";
+        ctx.fillText(text, width / 2, y);
+      } else {
+        ctx.textAlign = "left";
+        ctx.fillText(text, 0, y);
+      }
+    }
+    y += lineH((s as any).big);
+  }
+  return canvas;
+}
+
+function canvasToEscPosRaster(canvas: HTMLCanvasElement): number[] {
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  if (!ctx) return [];
+  const { width, height } = canvas;
+  const img = ctx.getImageData(0, 0, width, height).data;
+  const bytesPerRow = Math.ceil(width / 8);
+  const out: number[] = [];
+  const CHUNK_ROWS = 240; // chia block nhỏ tránh tràn buffer máy in
+
+  for (let y0 = 0; y0 < height; y0 += CHUNK_ROWS) {
+    const rows = Math.min(CHUNK_ROWS, height - y0);
+    out.push(0x1d, 0x76, 0x30, 0x00, bytesPerRow & 0xff, (bytesPerRow >> 8) & 0xff, rows & 0xff, (rows >> 8) & 0xff);
+    for (let y = y0; y < y0 + rows; y++) {
+      for (let xb = 0; xb < bytesPerRow; xb++) {
+        let byte = 0;
+        for (let bit = 0; bit < 8; bit++) {
+          const x = xb * 8 + bit;
+          if (x >= width) continue;
+          const i = (y * width + x) * 4;
+          const lum = 0.299 * img[i] + 0.587 * img[i + 1] + 0.114 * img[i + 2];
+          if (img[i + 3] > 128 && lum < 160) byte |= 0x80 >> bit;
+        }
+        out.push(byte);
+      }
+    }
+  }
+  return out;
+}
+
+function buildReceiptRasterEscPos(data: ReceiptTicketData, cfg: ReceiptConfig): number[] | null {
+  const canvas = drawSegmentsToCanvas(receiptRasterSegments(data, cfg), cfg);
+  if (!canvas) return null;
+  const raster = canvasToEscPosRaster(canvas);
+  if (!raster.length) return null;
+  const bytes: number[] = [0x1b, 0x40];
+  for (let i = 0; i < cfg.topFeedLines; i++) bytes.push(0x0a);
+  bytes.push(...raster);
+  bytes.push(0x0a, 0x0a, 0x1d, 0x56, 0x42, 0x00);
+  return bytes;
 }
 
 function buildTemporaryTransferEscPos(data: TemporaryTransferBillData): number[] {
@@ -471,7 +729,7 @@ function thermalStyles(widthMm: number = 80): string {
   `;
 }
 
-function buildReceiptTicketHtml(data: ReceiptTicketData): string {
+function buildReceiptTicketHtml(data: ReceiptTicketData, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): string {
   let lang = "vi";
   try {
     lang = useLangStore.getState()?.lang || "vi";
@@ -479,6 +737,12 @@ function buildReceiptTicketHtml(data: ReceiptTicketData): string {
     // Ignore server-side hydration errors
   }
   const t = receiptTranslations[lang === "vi" ? "vi" : "en"];
+  const sepStyle =
+    cfg.separator === "none" ? "border-top:none;height:3px;"
+    : cfg.separator === "solid" ? "border-top:1px solid #000;"
+    : cfg.separator === "double" ? "border-top:3px double #000;"
+    : cfg.separator === "stars" ? "border-top:1px dotted #000;"
+    : "border-top:1px dashed #000;";
 
   const itemsHtml = data.items
     .map(
@@ -524,19 +788,23 @@ function buildReceiptTicketHtml(data: ReceiptTicketData): string {
   <meta charset="utf-8">
   <title>${docTitle} - #${data.orderNumber}</title>
   <style>
-    ${thermalStyles(80)}
+    ${thermalStyles(cfg.paper === "58" ? 58 : 80)}
+    .divider { ${sepStyle} margin: 3px 0; }
     .totals td { padding: 1px 0; }
   </style>
 </head>
 <body>
+  <div style="height:${cfg.topFeedLines * 4}mm;"></div>
   <div class="center bold" style="font-size:14px;">${data.businessName}</div>
+  ${cfg.headerLines.map((l) => `<div class="center" style="font-size:10px;">${escapeHtml(l)}</div>`).join("")}
   ${data.ruc ? `<div class="center" style="font-size:10px;">${t.ruc}: ${data.ruc}</div>` : ""}
-  ${data.address ? `<div class="center" style="font-size:10px;">${data.address}</div>` : ""}
+  ${cfg.show.address && data.address ? `<div class="center" style="font-size:10px;">${data.address}</div>` : ""}
+  ${cfg.show.phone && data.phone ? `<div class="center" style="font-size:10px;">ĐT: ${escapeHtml(data.phone)}</div>` : ""}
   <div class="divider"></div>
   <div class="center bold">${docTitle}</div>
   <div class="center" style="font-size:10px;">${formatDateTime(data.createdAt)}</div>
   <div class="center">${t.order}: #${data.orderNumber}</div>
-  ${docInfoHtml}
+  ${cfg.show.customer ? docInfoHtml : ""}
   <div class="divider"></div>
   <table>${itemsHtml}</table>
   <div class="divider"></div>
@@ -545,19 +813,19 @@ function buildReceiptTicketHtml(data: ReceiptTicketData): string {
       <td>${t.subtotal}</td>
       <td style="text-align:right;">${formatCents(data.subtotal)}</td>
     </tr>
-    <tr>
+    ${cfg.show.vat ? `<tr>
       <td>${t.tax}</td>
       <td style="text-align:right;">${formatCents(data.tax)}</td>
-    </tr>
+    </tr>` : ""}
     <tr class="bold">
       <td style="font-size:13px;padding-top:2px;">${t.total}</td>
       <td style="text-align:right;font-size:13px;font-weight:bold;padding-top:2px;">${formatCents(data.total)}</td>
     </tr>
   </table>
   <div class="divider"></div>
-  ${data.paymentMethod ? `<div>${t.paymentMethod} ${methodLabel}</div>` : ""}
+  ${cfg.show.paymentMethod && data.paymentMethod ? `<div>${t.paymentMethod} ${methodLabel}</div>` : ""}
   <div class="divider"></div>
-  <div class="center" style="font-size:10px;margin-top:4px;">${t.thanks}</div>
+  ${(cfg.footerLines ?? [t.thanks]).map((l) => `<div class="center" style="font-size:10px;margin-top:4px;">${escapeHtml(l)}</div>`).join("")}
   <div class="center" style="font-size:9px;">${t.endOfTicket}</div>
 </body>
 </html>`;
@@ -820,10 +1088,20 @@ export function usePrintReceipt() {
   const { data: branchSettings } = useBranchSettings();
   return useCallback(async (data: ReceiptTicketData) => {
     const driver = currentPrintDriver(branchSettings);
+    const cfg = getReceiptConfig(branchSettings);
+    // Bổ sung địa chỉ/SĐT từ cấu hình chi nhánh nếu caller chưa truyền
+    const enriched: ReceiptTicketData = {
+      ...data,
+      address: data.address ?? branchSettings?.address ?? undefined,
+      phone: data.phone ?? branchSettings?.phone ?? undefined,
+    };
     if (driver !== "browser_print") {
-      if (await printEscPos(buildReceiptEscPos(data), driver)) return;
+      const bytes = cfg.utf8Bitmap
+        ? buildReceiptRasterEscPos(enriched, cfg) ?? buildReceiptEscPos(enriched, cfg)
+        : buildReceiptEscPos(enriched, cfg);
+      if (await printEscPos(bytes, driver)) return;
     }
-    const html = buildReceiptTicketHtml(data);
+    const html = buildReceiptTicketHtml(enriched, cfg);
     printHtml(html);
   }, [branchSettings]);
 }

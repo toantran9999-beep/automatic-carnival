@@ -388,7 +388,7 @@ export default function DashboardLayout({
           className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
           style={{ paddingTop: "env(safe-area-inset-top)" }}
         >
-          <div className="flex items-center justify-between h-14 px-4">
+          <div className="flex items-center justify-between h-12 px-4">
             <div className="flex items-center gap-3">
               <Button
                 variant="ghost"
@@ -572,7 +572,7 @@ export default function DashboardLayout({
         )}
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 md:p-6 pb-28 md:pb-6">{children}</main>
+        <main className="flex-1 overflow-y-auto p-4 md:px-4 md:py-3 pb-28 md:pb-3">{children}</main>
 
         {/* Mobile bottom nav */}
         <nav

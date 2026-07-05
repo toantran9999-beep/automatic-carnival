@@ -379,7 +379,7 @@ export default function TablesPage() {
   }
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-3">
       {/* Header */}
       <PageHeader
         title={`${t("tables.title")} & ${t("tables.spaces")}`}

@@ -239,7 +239,7 @@ export function ShiftBar({ shift, canManage }: { shift: CurrentShift; canManage:
   });
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-1.5 text-xs dark:border-emerald-800/50 dark:bg-emerald-950/20">
+    <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-0.5 text-xs dark:border-emerald-800/50 dark:bg-emerald-950/20">
       <span className="flex items-center gap-2 font-medium text-emerald-800 dark:text-emerald-300">
         <span className="h-2 w-2 rounded-full bg-emerald-500" />
         {vi ? `Ca mở lúc ${openedTime}` : `Shift since ${openedTime}`}
@@ -250,8 +250,8 @@ export function ShiftBar({ shift, canManage }: { shift: CurrentShift; canManage:
       {canManage && (
         <Button
           size="sm"
-          variant="outline"
-          className="h-10 border-emerald-300 px-3 text-sm text-emerald-800 dark:text-emerald-300"
+          variant="ghost"
+          className="h-9 px-3 text-sm text-emerald-800 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
           onClick={() => setCloseOpen(true)}
         >
           <Lock className="mr-1 h-3.5 w-3.5" />

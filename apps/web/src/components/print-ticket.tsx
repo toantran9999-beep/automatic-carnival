@@ -88,6 +88,10 @@ interface ReceiptTicketData {
 export interface ReceiptConfig {
   /** Số dòng trống đầu phiếu (khoảng trắng để kẹp vào gai/thanh hóa đơn) */
   topFeedLines: number;
+  /** Số dòng trống cuối phiếu trước khi cắt giấy (0 = sát nhất có thể) */
+  bottomFeedLines: number;
+  /** Cỡ chữ khi in (áp dụng cho cả 3 loại phiếu) */
+  fontSize: "small" | "medium" | "large";
   /** Khổ giấy máy in nhiệt — quyết định bề rộng khi in bitmap */
   paper: "58" | "80";
   /** In tiếng Việt CÓ DẤU bằng cách render ảnh (bitmap) thay vì text ESC/POS bỏ dấu */
@@ -109,13 +113,13 @@ export interface ReceiptConfig {
   kitchen: {
     title: string;
     footerLines: string[];
-    show: { staff: boolean; time: boolean };
+    show: { staff: boolean; time: boolean; orderNumber: boolean };
   };
   /** Cấu hình riêng cho phiếu tạm tính (kèm QR chuyển khoản) */
   transfer: {
     title: string;
     note: string;
-    show: { address: boolean; customer: boolean; bankInfo: boolean };
+    show: { address: boolean; customer: boolean; bankInfo: boolean; expiry: boolean };
   };
 }
 
@@ -126,6 +130,8 @@ const DEFAULT_TRANSFER_NOTE = "Mã quá hạn vui lòng xin phiếu mới.";
 
 const DEFAULT_RECEIPT_CONFIG: ReceiptConfig = {
   topFeedLines: 4,
+  bottomFeedLines: 1,
+  fontSize: "medium",
   paper: "80",
   utf8Bitmap: false,
   separator: "dashed",
@@ -135,12 +141,12 @@ const DEFAULT_RECEIPT_CONFIG: ReceiptConfig = {
   kitchen: {
     title: DEFAULT_KITCHEN_TITLE,
     footerLines: DEFAULT_KITCHEN_FOOTER,
-    show: { staff: true, time: true },
+    show: { staff: true, time: true, orderNumber: true },
   },
   transfer: {
     title: DEFAULT_TRANSFER_TITLE,
     note: DEFAULT_TRANSFER_NOTE,
-    show: { address: true, customer: true, bankInfo: true },
+    show: { address: true, customer: true, bankInfo: true, expiry: true },
   },
 };
 
@@ -153,6 +159,8 @@ export function getReceiptConfig(branchSettings: any): ReceiptConfig {
   const tShow = tc.show || {};
   return {
     topFeedLines: Math.min(10, Math.max(0, Number(raw.top_feed_lines ?? DEFAULT_RECEIPT_CONFIG.topFeedLines))),
+    bottomFeedLines: Math.min(5, Math.max(0, Number(raw.bottom_feed_lines ?? DEFAULT_RECEIPT_CONFIG.bottomFeedLines))),
+    fontSize: raw.font_size === "small" || raw.font_size === "large" ? raw.font_size : "medium",
     paper: raw.paper === "58" ? "58" : "80",
     utf8Bitmap: !!raw.utf8_bitmap,
     separator: ["dashed", "solid", "double", "stars", "none"].includes(raw.separator)
@@ -170,7 +178,7 @@ export function getReceiptConfig(branchSettings: any): ReceiptConfig {
     kitchen: {
       title: typeof kc.title === "string" && kc.title.trim() ? kc.title.trim() : DEFAULT_KITCHEN_TITLE,
       footerLines: Array.isArray(kc.footer_lines) ? kc.footer_lines.filter(Boolean) : DEFAULT_KITCHEN_FOOTER,
-      show: { staff: kShow.staff ?? true, time: kShow.time ?? true },
+      show: { staff: kShow.staff ?? true, time: kShow.time ?? true, orderNumber: kShow.order_number ?? true },
     },
     transfer: {
       title: typeof tc.title === "string" && tc.title.trim() ? tc.title.trim() : DEFAULT_TRANSFER_TITLE,
@@ -179,6 +187,7 @@ export function getReceiptConfig(branchSettings: any): ReceiptConfig {
         address: tShow.address ?? true,
         customer: tShow.customer ?? true,
         bankInfo: tShow.bank_info ?? true,
+        expiry: tShow.expiry ?? true,
       },
     },
   };
@@ -299,8 +308,10 @@ function escposQrBytes(value: string): number[] {
   ];
 }
 
-function buildEscPos(lines: Array<string | number[]>): number[] {
+function buildEscPos(lines: Array<string | number[]>, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): number[] {
   const bytes: number[] = [0x1b, 0x40, 0x1b, 0x74, 0x00, ...escposAlign("left")];
+  // Chế độ chữ chỉ phóng được theo bậc phần cứng: large = cao gấp đôi (GS ! 0x01)
+  if (cfg.fontSize === "large") bytes.push(0x1d, 0x21, 0x01);
   for (const item of lines) {
     if (Array.isArray(item)) {
       bytes.push(...item);
@@ -308,7 +319,8 @@ function buildEscPos(lines: Array<string | number[]>): number[] {
       bytes.push(...textBytes(`${item}\n`));
     }
   }
-  bytes.push(0x0a, 0x0a, 0x1d, 0x56, 0x42, 0x00);
+  for (let i = 0; i < cfg.bottomFeedLines; i++) bytes.push(0x0a);
+  bytes.push(0x1d, 0x56, 0x42, 0x00);
   return bytes;
 }
 
@@ -326,7 +338,7 @@ function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAUL
     SEP,
     cfg.kitchen.show.time ? twoCol(`Gio: ${time}`, `Ngay: ${date}`, width) : "",
     cfg.kitchen.show.staff ? `Nhan vien: ${plainLine(staff || data.customerName || "-", width - 11)}` : "",
-    `So thu tu: #${data.orderNumber}`,
+    cfg.kitchen.show.orderNumber ? `So thu tu: #${data.orderNumber}` : "",
     SEP,
   ].filter((r) => r !== "");
 
@@ -339,7 +351,7 @@ function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAUL
   if (cfg.kitchen.footerLines.length) {
     rows.push(SEP, ...cfg.kitchen.footerLines.map((l) => centered(l, width)));
   }
-  return buildEscPos(rows.filter((r) => r !== ""));
+  return buildEscPos(rows.filter((r) => r !== ""), cfg);
 }
 
 function buildReceiptEscPos(data: ReceiptTicketData, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): number[] {
@@ -378,7 +390,7 @@ function buildReceiptEscPos(data: ReceiptTicketData, cfg: ReceiptConfig = DEFAUL
     SEP,
     ...footers.map((l) => centered(l, W)),
   );
-  return buildEscPos(rows.filter((r) => r !== ""));
+  return buildEscPos(rows.filter((r) => r !== ""), cfg);
 }
 
 // ---------------------------------------------------------------------------
@@ -430,8 +442,8 @@ function receiptRasterSegments(data: ReceiptTicketData, cfg: ReceiptConfig): Ras
 function drawSegmentsToCanvas(segs: Exclude<RasterSeg, { kind: "qr" }>[], cfg: ReceiptConfig): HTMLCanvasElement | null {
   if (typeof document === "undefined") return null;
   const width = cfg.paper === "58" ? 384 : 576;
-  const FONT = 22;
-  const FONT_BIG = 30;
+  const FONT = cfg.fontSize === "small" ? 20 : cfg.fontSize === "large" ? 28 : 24;
+  const FONT_BIG = cfg.fontSize === "small" ? 26 : cfg.fontSize === "large" ? 38 : 32;
   const lineH = (big?: boolean) => Math.round((big ? FONT_BIG : FONT) * 1.45);
   const fontOf = (s: { bold?: boolean; big?: boolean }) =>
     `${s.bold ? "bold " : ""}${s.big ? FONT_BIG : FONT}px 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif`;
@@ -577,17 +589,18 @@ function segsToEscPosBytes(segs: RasterSeg[], cfg: ReceiptConfig): number[] | nu
   return out;
 }
 
-function wrapRasterTicket(content: number[] | null, topFeedLines: number): number[] | null {
+function wrapRasterTicket(content: number[] | null, cfg: ReceiptConfig): number[] | null {
   if (!content || !content.length) return null;
   const bytes: number[] = [0x1b, 0x40];
-  for (let i = 0; i < topFeedLines; i++) bytes.push(0x0a);
+  for (let i = 0; i < cfg.topFeedLines; i++) bytes.push(0x0a);
   bytes.push(...content);
-  bytes.push(0x0a, 0x0a, 0x1d, 0x56, 0x42, 0x00);
+  for (let i = 0; i < cfg.bottomFeedLines; i++) bytes.push(0x0a);
+  bytes.push(0x1d, 0x56, 0x42, 0x00);
   return bytes;
 }
 
 function buildReceiptRasterEscPos(data: ReceiptTicketData, cfg: ReceiptConfig): number[] | null {
-  return wrapRasterTicket(segsToEscPosBytes(receiptRasterSegments(data, cfg), cfg), cfg.topFeedLines);
+  return wrapRasterTicket(segsToEscPosBytes(receiptRasterSegments(data, cfg), cfg), cfg);
 }
 
 function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): RasterSeg[] {
@@ -601,7 +614,7 @@ function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): Ras
   segs.push({ kind: "sep" });
   if (cfg.kitchen.show.time) segs.push({ kind: "twoCol", left: `Giờ: ${time}`, right: `Ngày: ${date}` });
   if (cfg.kitchen.show.staff) segs.push({ kind: "text", text: `Nhân viên: ${staff || data.customerName || "-"}` });
-  segs.push({ kind: "text", text: `Số thứ tự: #${data.orderNumber}` });
+  if (cfg.kitchen.show.orderNumber) segs.push({ kind: "text", text: `Số thứ tự: #${data.orderNumber}` });
   segs.push({ kind: "sep" });
   for (const item of data.items) {
     segs.push({ kind: "text", text: `${item.quantity} x ${item.name}${item.unit ? ` (${item.unit})` : ""}`, bold: true });
@@ -619,7 +632,7 @@ function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): Ras
 }
 
 function buildKitchenRasterEscPos(data: KitchenTicketData, cfg: ReceiptConfig): number[] | null {
-  return wrapRasterTicket(segsToEscPosBytes(kitchenRasterSegments(data, cfg), cfg), cfg.topFeedLines);
+  return wrapRasterTicket(segsToEscPosBytes(kitchenRasterSegments(data, cfg), cfg), cfg);
 }
 
 function transferRasterSegments(data: TemporaryTransferBillData, cfg: ReceiptConfig): RasterSeg[] {
@@ -655,13 +668,13 @@ function transferRasterSegments(data: TemporaryTransferBillData, cfg: ReceiptCon
     if (data.bank?.accountNumber) segs.push({ kind: "text", text: `STK: ${data.bank.accountNumber}` });
   }
   segs.push({ kind: "text", text: `Nội dung: ${data.paymentCode}` });
-  segs.push({ kind: "text", text: `Hiệu lực đến: ${expires}` });
+  if (cfg.transfer.show.expiry) segs.push({ kind: "text", text: `Hiệu lực đến: ${expires}` });
   if (cfg.transfer.note.trim()) segs.push({ kind: "text", text: cfg.transfer.note.trim() });
   return segs;
 }
 
 function buildTransferRasterEscPos(data: TemporaryTransferBillData, cfg: ReceiptConfig): number[] | null {
-  return wrapRasterTicket(segsToEscPosBytes(transferRasterSegments(data, cfg), cfg), cfg.topFeedLines);
+  return wrapRasterTicket(segsToEscPosBytes(transferRasterSegments(data, cfg), cfg), cfg);
 }
 
 function buildTemporaryTransferEscPos(data: TemporaryTransferBillData, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): number[] {
@@ -703,10 +716,10 @@ function buildTemporaryTransferEscPos(data: TemporaryTransferBillData, cfg: Rece
     cfg.transfer.show.bankInfo && data.bank?.bankCode ? `Ngan hang: ${plainLine(data.bank.bankCode, width - 11)}` : "",
     cfg.transfer.show.bankInfo && data.bank?.accountNumber ? `STK: ${plainLine(data.bank.accountNumber, width - 5)}` : "",
     `Noi dung: ${data.paymentCode}`,
-    `Hieu luc den: ${expires}`,
+    cfg.transfer.show.expiry ? `Hieu luc den: ${expires}` : "",
     cfg.transfer.note.trim() ? plainLine(cfg.transfer.note, width) : "",
   );
-  return buildEscPos(rows.filter(Boolean));
+  return buildEscPos(rows.filter(Boolean), cfg);
 }
 
 function formatCents(cents: number): string {
@@ -845,7 +858,7 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
   <meta charset="utf-8">
   <title>${L.title} - #${data.orderNumber}</title>
   <style>
-    ${thermalStyles(80)}
+    ${thermalStyles(cfg.paper === "58" ? 58 : 80, cfg.fontSize)}
     .ticket-title { font-size: 18px; font-weight: 800; text-align: center; letter-spacing: 1px; }
     .ticket-sub { font-size: 14px; font-weight: 700; text-align: center; margin-top: 2px; }
     .meta { width: 100%; margin: 6px 0 4px; font-size: 12px; }
@@ -869,7 +882,7 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
     </tr>` : ""}
     <tr>
       ${cfg.kitchen.show.staff ? `<td><b>${L.staff}:</b> ${escapeHtml(staff || (data.customerName || "-"))}</td>` : "<td></td>"}
-      <td><b>${L.no}:</b> #${data.orderNumber}</td>
+      ${cfg.kitchen.show.orderNumber ? `<td><b>${L.no}:</b> #${data.orderNumber}</td>` : "<td></td>"}
     </tr>
   </table>
   <table class="items">
@@ -888,8 +901,9 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
 </html>`;
 }
 
-function thermalStyles(widthMm: number = 80): string {
+function thermalStyles(widthMm: number = 80, fontSize: ReceiptConfig["fontSize"] = "medium"): string {
   const contentWidth = widthMm - 4;
+  const fontPx = fontSize === "small" ? 11 : fontSize === "large" ? 15 : 13;
   return `
     @page { size: ${widthMm}mm auto; margin: 0; padding: 0; }
     @media print {
@@ -897,7 +911,7 @@ function thermalStyles(widthMm: number = 80): string {
     }
     * { margin: 0; padding: 0; box-sizing: border-box; }
     html, body { width: ${contentWidth}mm; margin: 0; padding: 1mm 2mm; }
-    body { font-family: 'Courier New', Courier, monospace; font-size: 12px; color: #000; line-height: 1.3; }
+    body { font-family: 'Courier New', Courier, monospace; font-size: ${fontPx}px; color: #000; line-height: 1.3; }
     .center { text-align: center; }
     .bold { font-weight: bold; }
     .divider { border-top: 1px dashed #000; margin: 3px 0; }
@@ -965,7 +979,7 @@ function buildReceiptTicketHtml(data: ReceiptTicketData, cfg: ReceiptConfig = DE
   <meta charset="utf-8">
   <title>${docTitle} - #${data.orderNumber}</title>
   <style>
-    ${thermalStyles(cfg.paper === "58" ? 58 : 80)}
+    ${thermalStyles(cfg.paper === "58" ? 58 : 80, cfg.fontSize)}
     .divider { ${sepStyle} margin: 3px 0; }
     .totals td { padding: 1px 0; }
   </style>
@@ -1031,7 +1045,7 @@ function buildTemporaryTransferBillHtml(data: TemporaryTransferBillData, cfg: Re
   <meta charset="utf-8">
   <title>Phiếu tạm tính #${data.orderNumber}</title>
   <style>
-    ${thermalStyles(80)}
+    ${thermalStyles(cfg.paper === "58" ? 58 : 80, cfg.fontSize)}
     .totals td { padding: 1px 0; }
     .qr { width: 42mm; height: 42mm; object-fit: contain; margin: 4px auto; display: block; }
     .box { border: 1px solid #000; padding: 4px; margin-top: 4px; }
@@ -1062,7 +1076,7 @@ function buildTemporaryTransferBillHtml(data: TemporaryTransferBillData, cfg: Re
     ${cfg.transfer.show.bankInfo && data.bank?.bankCode ? `<div><b>Ngân hàng:</b> ${escapeHtml(data.bank.bankCode)}</div>` : ""}
     ${cfg.transfer.show.bankInfo && data.bank?.accountNumber ? `<div><b>STK:</b> ${escapeHtml(data.bank.accountNumber)}</div>` : ""}
     <div><b>Nội dung:</b> ${escapeHtml(data.paymentCode)}</div>
-    <div><b>Hiệu lực đến:</b> ${expires}</div>
+    ${cfg.transfer.show.expiry ? `<div><b>Hiệu lực đến:</b> ${expires}</div>` : ""}
   </div>
   ${cfg.transfer.note.trim() ? `<div class="center" style="font-size:10px;margin-top:4px;">${escapeHtml(cfg.transfer.note.trim())}</div>` : ""}
 </body>

@@ -75,6 +75,7 @@ settings.patch("/branch", requirePermission("settings:update"), zValidator("json
     body.waiterTableAssignmentEnabled !== undefined ||
     body.printMode !== undefined ||
     body.printDriver !== undefined ||
+    body.hidePosNav !== undefined ||
     body.receipt !== undefined
   ) {
     // Fetch current settings to merge
@@ -88,6 +89,7 @@ settings.patch("/branch", requirePermission("settings:update"), zValidator("json
     if (body.waiterTableAssignmentEnabled !== undefined) merged.waiter_table_assignment_enabled = body.waiterTableAssignmentEnabled;
     if (body.printMode !== undefined) merged.print_mode = body.printMode;
     if (body.printDriver !== undefined) merged.print_driver = body.printDriver;
+    if (body.hidePosNav !== undefined) merged.hide_pos_nav = body.hidePosNav;
     if (body.receipt !== undefined) merged.receipt = body.receipt;
     updateData.settings = merged;
   }

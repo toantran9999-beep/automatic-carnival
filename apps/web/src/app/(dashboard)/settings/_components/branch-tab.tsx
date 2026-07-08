@@ -37,6 +37,7 @@ export function BranchTab() {
     currency: "VND",
     inventoryEnabled: false,
     waiterTableAssignmentEnabled: false,
+    hidePosNav: false,
     printMode: "combined" as "combined" | "per_item",
     printDriver: "browser_print" as "browser_print" | "rawbt_intent" | "android_bridge",
   });
@@ -52,6 +53,7 @@ export function BranchTab() {
         currency: branchData.currency || "VND",
         inventoryEnabled: branchData.settings?.inventory_enabled ?? false,
         waiterTableAssignmentEnabled: branchData.settings?.waiter_table_assignment_enabled ?? false,
+        hidePosNav: branchData.settings?.hide_pos_nav ?? false,
         printMode: branchData.settings?.print_mode === "per_item" ? "per_item" : "combined",
         printDriver: ["rawbt_intent", "android_bridge"].includes(branchData.settings?.print_driver)
           ? branchData.settings.print_driver
@@ -72,6 +74,7 @@ export function BranchTab() {
         currency: branchForm.currency,
         inventoryEnabled: branchForm.inventoryEnabled,
         waiterTableAssignmentEnabled: branchForm.waiterTableAssignmentEnabled,
+        hidePosNav: branchForm.hidePosNav,
         printMode: branchForm.printMode,
         printDriver: branchForm.printDriver,
       });
@@ -213,6 +216,33 @@ export function BranchTab() {
                   className={cn(
                     "pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform",
                     branchForm.waiterTableAssignmentEnabled ? "translate-x-5" : "translate-x-0"
+                  )}
+                />
+              </button>
+            </div>
+            <div className="flex items-center justify-between rounded-lg border p-4">
+              <div>
+                <p className="text-sm font-medium">
+                  {t("settings.hidePosNav", "Ẩn mục \"POS (Bán hàng)\" trên menu")}
+                </p>
+                <p className="text-xs text-muted-foreground">
+                  {t("settings.hidePosNavHelp", "Nhân viên vào bán hàng qua màn Bàn ăn: chọn bàn hoặc Mang về là mở POS. Menu gọn hơn, tránh mở POS khi chưa chọn bàn.")}
+                </p>
+              </div>
+              <button
+                type="button"
+                role="switch"
+                aria-checked={branchForm.hidePosNav}
+                onClick={() => setBranchForm({ ...branchForm, hidePosNav: !branchForm.hidePosNav })}
+                className={cn(
+                  "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                  branchForm.hidePosNav ? "bg-primary" : "bg-muted"
+                )}
+              >
+                <span
+                  className={cn(
+                    "pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform",
+                    branchForm.hidePosNav ? "translate-x-5" : "translate-x-0"
                   )}
                 />
               </button>

@@ -103,6 +103,13 @@ export default function PosPage() {
   const { data: categories } = useCategories();
   // Lấy toàn bộ món 1 lần, lọc danh mục/tìm kiếm phía client (đổi danh mục tức thì + đếm số món).
   const { data: menuItems, isLoading: itemsLoading } = useMenuItems();
+
+  // Không có "Tất cả" — mặc định vào thẳng danh mục đầu tiên cho lưới nhẹ, đỡ render 50+ ô
+  useEffect(() => {
+    if (selectedCategory === null && categories?.length) {
+      setSelectedCategory(categories[0].id);
+    }
+  }, [categories, selectedCategory]);
   const { data: tablesData } = useTables();
   const createOrder = useCreateOrder();
   const createPaymentRequest = useCreatePaymentRequest();

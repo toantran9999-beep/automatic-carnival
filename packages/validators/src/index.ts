@@ -263,6 +263,8 @@ export const updateBranchSettingsSchema = z.object({
   waiterTableAssignmentEnabled: z.boolean().optional(),
   printMode: z.enum(["combined", "per_item"]).optional(),
   printDriver: z.enum(["browser_print", "rawbt_intent", "android_bridge"]).optional(),
+  // Ẩn mục "POS (Bán hàng)" trên menu — nhân viên vào POS qua màn Bàn ăn (chọn bàn/mang về)
+  hidePosNav: z.boolean().optional(),
   // Cấu hình mẫu hóa đơn — merge vào settings.receipt (không ghi đè settings khác như sepay)
   receipt: z.record(z.unknown()).optional(),
 });

@@ -27,7 +27,7 @@ import {
 import { Button } from "@restai/ui/components/button";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@restai/ui/components/select";
 import { cn } from "@/lib/utils";
-import { useOrgSettings, useBranches } from "@/hooks/use-settings";
+import { useOrgSettings, useBranches, useBranchSettings } from "@/hooks/use-settings";
 import { NotificationBell } from "@/components/notification-bell";
 import { useTranslation } from "@/stores/lang-store";
 import { LanguageSwitcher } from "@/components/language-switcher";
@@ -172,6 +172,9 @@ export default function DashboardLayout({
   const hasSession = !!user && !!accessToken;
   const { data: org } = useOrgSettings({ enabled: hasSession });
   const { data: branches } = useBranches({ enabled: hasSession });
+  const { data: branchSettings } = useBranchSettings();
+  // Ẩn "POS (Bán hàng)" khỏi menu khi bật trong Cài đặt — vào POS qua màn Bàn ăn
+  const hidePosNav = !!branchSettings?.settings?.hide_pos_nav;
   const availableBranches = branches ?? [];
   const canSwitchBranch = availableBranches.length > 1;
 
@@ -191,6 +194,11 @@ export default function DashboardLayout({
       router.push("/login");
     }
   }, [isAuthenticated, router]);
+
+  // Vào màn POS thì tự thu gọn sidebar để dành chỗ cho lưới món (vẫn mở lại được bằng nút)
+  useEffect(() => {
+    if (pathname.startsWith("/pos")) setCollapsed(true);
+  }, [pathname]);
 
   useEffect(() => {
     if (availableBranches.length === 0) return;
@@ -220,7 +228,12 @@ export default function DashboardLayout({
 
   const orgName = org?.name || "TODA POS";
 
-  const filteredNavGroups = getFilteredNavGroups(user.role, t);
+  const filteredNavGroups = getFilteredNavGroups(user.role, t)
+    .map((group) => ({
+      ...group,
+      items: hidePosNav ? group.items.filter((item) => item.href !== "/pos") : group.items,
+    }))
+    .filter((group) => group.items.length > 0);
   const allFilteredItems = filteredNavGroups.flatMap((g) => g.items);
   const mobileNavItems = allFilteredItems.slice(0, 5);
 

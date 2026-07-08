@@ -75,7 +75,6 @@ export function ProductGrid({
     () => items.filter((i: any) => i.is_available),
     [items]
   );
-  const countAll = availableItems.length;
 
   const countByCategory = useMemo(() => {
     const counts = new Map<string, number>();
@@ -94,27 +93,19 @@ export function ProductGrid({
 
   const filteredItems = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
-    return availableItems.filter((item: any) => {
-      if (selectedCategory && item.category_id !== selectedCategory) return false;
-      if (normalizedSearch) return item.name.toLowerCase().includes(normalizedSearch);
-      return true;
-    });
+    // Đang tìm kiếm → quét TOÀN BỘ món (bỏ lọc danh mục) vì không còn tab "Tất cả"
+    if (normalizedSearch) {
+      return availableItems.filter((item: any) => item.name.toLowerCase().includes(normalizedSearch));
+    }
+    return availableItems.filter(
+      (item: any) => !selectedCategory || item.category_id === selectedCategory
+    );
   }, [availableItems, search, selectedCategory]);
 
   return (
     <div className="flex min-w-0 flex-1 gap-0">
-      {/* Rail danh mục dọc bên trái (tablet/desktop) — kiểu iPOS */}
+      {/* Rail danh mục dọc bên trái (tablet/desktop) — kiểu iPOS, không có "Tất cả" cho nhẹ */}
       <div className="hidden w-40 shrink-0 flex-col gap-1 overflow-y-auto border-r pr-2 md:flex xl:w-44">
-        <Button
-          variant={selectedCategory === null ? "default" : "ghost"}
-          className="h-12 w-full shrink-0 justify-between rounded-lg px-3 text-sm font-semibold"
-          onClick={() => onCategoryChange(null)}
-        >
-          <span className="truncate">{t("common.all")}</span>
-          <span className="rounded-full bg-black/15 px-1.5 text-[11px] font-bold tabular-nums dark:bg-white/15">
-            {countAll}
-          </span>
-        </Button>
         {categories.map((cat: any) => (
           <Button
             key={cat.id}
@@ -154,17 +145,6 @@ export function ProductGrid({
 
         {/* Pill ngang chỉ dùng cho điện thoại (màn hẹp không đủ chỗ cho rail) */}
         <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 md:hidden">
-          <Button
-            variant={selectedCategory === null ? "default" : "outline"}
-            size="sm"
-            className="h-10 shrink-0 gap-1.5 rounded-lg px-4 text-sm font-semibold whitespace-nowrap"
-            onClick={() => onCategoryChange(null)}
-          >
-            {t("common.all")}
-            <span className="rounded-full bg-black/15 px-1.5 text-[11px] font-bold tabular-nums dark:bg-white/15">
-              {countAll}
-            </span>
-          </Button>
           {categories.map((cat: any) => (
             <Button
               key={cat.id}

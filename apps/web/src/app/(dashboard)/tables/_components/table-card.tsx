@@ -15,6 +15,7 @@ import {
   Circle,
   BellRing,
   ArrowRightLeft,
+  Clock,
 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
@@ -24,8 +25,17 @@ interface TableServiceRequestIndicator {
   customerName: string;
 }
 
+/** "54p" khi dưới 1 giờ, "1h26p" khi trên — giống iPOS */
+function formatElapsed(startedAt: string, now: number): string {
+  const mins = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 60000));
+  if (mins < 60) return `${mins}p`;
+  return `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, "0")}p`;
+}
+
 interface TableCardProps {
   table: any;
+  /** Mốc thời gian hiện tại từ GridView (1 interval chung) để tính thời gian ngồi */
+  now?: number;
   canManage?: boolean;
   waiterAssignmentEnabled: boolean;
   statusChangePending: boolean;
@@ -52,27 +62,28 @@ const STATUS_METADATA: Record<
   }
 > = {
   available: {
-    bg: "bg-emerald-50 dark:bg-emerald-950/30",
+    bg: "bg-emerald-50/70 border border-emerald-200/70 dark:bg-emerald-950/20 dark:border-emerald-800/40",
     text: "text-emerald-700 dark:text-emerald-300",
     number: "text-emerald-900 dark:text-emerald-100",
     actionTarget: "occupied",
     actionBg: "bg-blue-600 hover:bg-blue-700 text-white",
   },
   occupied: {
-    bg: "bg-blue-50 dark:bg-blue-950/30",
+    // Bàn có khách tô đậm rõ (kiểu iPOS) để liếc là thấy khác bàn trống
+    bg: "bg-blue-100 border border-blue-300 dark:bg-blue-900/40 dark:border-blue-700",
     text: "text-blue-700 dark:text-blue-300",
     number: "text-blue-900 dark:text-blue-100",
     actionTarget: "available",
     actionBg: "bg-emerald-600 hover:bg-emerald-700 text-white",
   },
   reserved: {
-    bg: "bg-amber-50 dark:bg-amber-950/30",
+    bg: "bg-amber-100 border border-amber-300 dark:bg-amber-900/40 dark:border-amber-700",
     text: "text-amber-700 dark:text-amber-300",
     number: "text-amber-900 dark:text-amber-100",
     actionBg: "",
   },
   maintenance: {
-    bg: "bg-red-50 dark:bg-red-950/30",
+    bg: "bg-red-50 border border-red-200 dark:bg-red-950/30 dark:border-red-800/50",
     text: "text-red-700 dark:text-red-300",
     number: "text-red-900 dark:text-red-100",
     actionBg: "",
@@ -81,6 +92,7 @@ const STATUS_METADATA: Record<
 
 export function TableCard({
   table,
+  now,
   canManage,
   waiterAssignmentEnabled,
   statusChangePending,
@@ -143,6 +155,13 @@ export function TableCard({
           <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/60 dark:bg-white/10", meta.text)}>
             {statusLabel}
           </span>
+          {/* Thời gian ngồi (kiểu iPOS: 54p, 1h26p) */}
+          {table.activeSession?.startedAt && (
+            <span className={cn("inline-flex items-center gap-1 text-xs font-bold tabular-nums", meta.text)}>
+              <Clock className="h-3.5 w-3.5" />
+              {formatElapsed(table.activeSession.startedAt, now ?? Date.now())}
+            </span>
+          )}
           {serviceRequest && (
             <span
               className={cn(
@@ -167,11 +186,11 @@ export function TableCard({
       {/* Active Session Info */}
       {table.activeSession && (
         <div className="mt-1 p-2 rounded-lg bg-background/60 dark:bg-background/25 border text-xs space-y-1 animate-in fade-in duration-200">
-          <div className="flex justify-between font-semibold">
-            <span className="truncate text-muted-foreground">
+          <div className="flex items-center justify-between gap-2 font-semibold">
+            <span className="min-w-0 truncate text-muted-foreground">
               {lang === "vi" ? "Khách" : "Guest"}: {table.activeSession.customerName}
             </span>
-            <span className="text-primary tabular-nums shrink-0">
+            <span className="shrink-0 text-base font-bold text-primary tabular-nums">
               {formatCurrency(table.activeSession.total)}
             </span>
           </div>

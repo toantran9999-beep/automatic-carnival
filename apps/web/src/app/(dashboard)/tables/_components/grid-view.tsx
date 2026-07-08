@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
 import { TableCard } from "./table-card";
 
@@ -61,6 +62,13 @@ export function GridView({
   onPay,
   onVoid,
 }: GridViewProps) {
+  // 1 đồng hồ chung cho mọi card (hiện thời gian ngồi), tick mỗi 30s
+  const [now, setNow] = useState(() => Date.now());
+  useEffect(() => {
+    const timer = setInterval(() => setNow(Date.now()), 30_000);
+    return () => clearInterval(timer);
+  }, []);
+
   return (
     <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 mt-4">
       {isLoading
@@ -71,6 +79,7 @@ export function GridView({
             <TableCard
               key={table.id}
               table={table}
+              now={now}
               canManage={canManage}
               waiterAssignmentEnabled={waiterAssignmentEnabled}
               statusChangePending={statusChangePending}

@@ -87,6 +87,7 @@ export default function TablesPage() {
   const router = useRouter();
   const [activeTab, setActiveTab] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "planner">("grid");
+  const [withBillOnly, setWithBillOnly] = useState(false);
   const [qrDialog, setQrDialog] = useState<any>(null);
   const [createTableDialog, setCreateTableDialog] = useState(false);
   const [createSpaceDialog, setCreateSpaceDialog] = useState(false);
@@ -183,11 +184,16 @@ export default function TablesPage() {
     setPendingSessions((pendingData ?? []) as PendingSessionRequest[]);
   }, [pendingData]);
 
-  const filteredTables = useMemo(() => {
+  const zoneTables = useMemo(() => {
     if (activeTab === "all") return allTables;
     if (activeTab === "unassigned") return allTables.filter((t: any) => !t.space_id);
     return allTables.filter((t: any) => t.space_id === activeTab);
   }, [allTables, activeTab]);
+
+  const filteredTables = useMemo(
+    () => (withBillOnly ? zoneTables.filter((t: any) => t.activeSession) : zoneTables),
+    [zoneTables, withBillOnly]
+  );
 
   const counts = {
     total: allTables.length,
@@ -424,24 +430,36 @@ export default function TablesPage() {
         }
       />
 
-      {/* Summary Cards */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {[
-          { label: t("common.total"), value: counts.total, color: "text-foreground" },
-          { label: t("tables.free"), value: counts.available, color: "text-green-600 dark:text-green-400" },
-          { label: t("tables.occupied"), value: counts.occupied, color: "text-blue-600 dark:text-blue-400" },
-          { label: t("tables.reserved"), value: counts.reserved, color: "text-orange-600 dark:text-orange-400" },
-        ].map((stat) => (
-          <Card key={stat.label}>
-            <CardContent className="p-4">
-              <p className="text-sm text-muted-foreground">{stat.label}</p>
-              <p className={cn("text-2xl font-bold", stat.color)}>
-                {isLoading ? "-" : stat.value}
-              </p>
-            </CardContent>
-          </Card>
-        ))}
-      </div>
+      {/* Dòng tổng gọn kiểu iPOS (thay 4 thẻ thống kê để dành chỗ cho sơ đồ bàn) */}
+      {!isLoading && (
+        <p className="text-sm text-muted-foreground">
+          {lang === "vi" ? "Toàn quán" : "All areas"}:{" "}
+          <span className="font-bold text-foreground">
+            {lang === "vi" ? "Trống" : "Free"} {counts.available}/{counts.total}{" "}
+            {lang === "vi" ? "bàn" : "tables"}
+          </span>
+          {counts.reserved > 0 && (
+            <span className="text-amber-600 dark:text-amber-400">
+              {" "}· {lang === "vi" ? "Đặt trước" : "Reserved"}: {counts.reserved}
+            </span>
+          )}
+          {activeTab !== "all" && (
+            <>
+              {" "}—{" "}
+              <span className="font-bold text-foreground">
+                {activeTab === "unassigned"
+                  ? t("tables.unassigned")
+                  : spaces.find((s: any) => s.id === activeTab)?.name}
+              </span>
+              : {lang === "vi" ? "Trống" : "Free"}{" "}
+              <span className="font-bold text-foreground">
+                {zoneTables.filter((tb: any) => tb.status === "available").length}/{zoneTables.length}{" "}
+                {lang === "vi" ? "bàn" : "tables"}
+              </span>
+            </>
+          )}
+        </p>
+      )}
 
       {/* Pending Session Requests */}
       {showCustomerQrFlow && pendingSessions.length > 0 && (
@@ -513,16 +531,52 @@ export default function TablesPage() {
 
       {/* Tabs: All / Per Space / Unassigned */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex items-center gap-2 overflow-x-auto">
-          <TabsList>
-            <TabsTrigger value="all">{t("tables.all")}</TabsTrigger>
-            {spaces.map((space: any) => (
-              <TabsTrigger key={space.id} value={space.id}>
-                {space.name}
+        <div className="flex items-center gap-2">
+          <div className="min-w-0 flex-1 overflow-x-auto">
+            <TabsList className="h-11">
+              <TabsTrigger value="all" className="h-9 px-4 text-sm font-semibold">
+                {t("tables.all")}
               </TabsTrigger>
-            ))}
-            <TabsTrigger value="unassigned">{t("tables.unassigned")}</TabsTrigger>
-          </TabsList>
+              {spaces.map((space: any) => (
+                <TabsTrigger key={space.id} value={space.id} className="h-9 px-4 text-sm font-semibold">
+                  {space.name}
+                </TabsTrigger>
+              ))}
+              <TabsTrigger value="unassigned" className="h-9 px-4 text-sm font-semibold">
+                {t("tables.unassigned")}
+              </TabsTrigger>
+            </TabsList>
+          </div>
+          {/* Lọc bàn có hóa đơn (kiểu iPOS) */}
+          <button
+            type="button"
+            role="switch"
+            aria-checked={withBillOnly}
+            onClick={() => setWithBillOnly((v) => !v)}
+            className={cn(
+              "flex h-11 shrink-0 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors",
+              withBillOnly
+                ? "border-primary bg-primary/10 text-primary"
+                : "bg-background text-muted-foreground hover:bg-muted"
+            )}
+          >
+            <span
+              className={cn(
+                "relative inline-flex h-5 w-9 rounded-full border-2 border-transparent transition-colors",
+                withBillOnly ? "bg-primary" : "bg-muted-foreground/30"
+              )}
+            >
+              <span
+                className={cn(
+                  "pointer-events-none block h-4 w-4 rounded-full bg-white shadow transition-transform",
+                  withBillOnly ? "translate-x-4" : "translate-x-0"
+                )}
+              />
+            </span>
+            <span className="hidden sm:inline whitespace-nowrap">
+              {lang === "vi" ? "Bàn có hóa đơn" : "With bill"}
+            </span>
+          </button>
         </div>
 
         {/* Space info card */}

@@ -5,11 +5,20 @@ import { Input } from "@restai/ui/components/input";
 import { Button } from "@restai/ui/components/button";
 import { Badge } from "@restai/ui/components/badge";
 import { Search, Loader2, X } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
 import { toThumbUrl } from "@/lib/image-thumb";
 import { TodaMark } from "@/components/toda-mark";
 import { useTranslation } from "@/stores/lang-store";
 import type { PosCartItem } from "../page";
+
+/** Giá gọn kiểu iPOS: 1.500.000 cents → "15K", 1.550.000 → "15.5K" */
+function formatK(cents: number): string {
+  const thousands = cents / 100 / 1000;
+  if (thousands >= 1) {
+    const rounded = Math.round(thousands * 10) / 10;
+    return `${Number.isInteger(rounded) ? rounded : rounded.toFixed(1)}K`;
+  }
+  return `${Math.round(cents / 100).toLocaleString("vi-VN")}`;
+}
 
 function catHue(key: string): number {
   let h = 0;
@@ -93,9 +102,37 @@ export function ProductGrid({
   }, [availableItems, search, selectedCategory]);
 
   return (
-    <div className="flex min-w-0 flex-1 flex-col">
+    <div className="flex min-w-0 flex-1 gap-0">
+      {/* Rail danh mục dọc bên trái (tablet/desktop) — kiểu iPOS */}
+      <div className="hidden w-40 shrink-0 flex-col gap-1 overflow-y-auto border-r pr-2 md:flex xl:w-44">
+        <Button
+          variant={selectedCategory === null ? "default" : "ghost"}
+          className="h-12 w-full shrink-0 justify-between rounded-lg px-3 text-sm font-semibold"
+          onClick={() => onCategoryChange(null)}
+        >
+          <span className="truncate">{t("common.all")}</span>
+          <span className="rounded-full bg-black/15 px-1.5 text-[11px] font-bold tabular-nums dark:bg-white/15">
+            {countAll}
+          </span>
+        </Button>
+        {categories.map((cat: any) => (
+          <Button
+            key={cat.id}
+            variant={selectedCategory === cat.id ? "default" : "ghost"}
+            className="h-12 w-full shrink-0 justify-between rounded-lg px-3 text-sm font-semibold"
+            onClick={() => onCategoryChange(cat.id)}
+          >
+            <span className="min-w-0 truncate text-left">{cat.name}</span>
+            <span className="ml-1.5 rounded-full bg-black/15 px-1.5 text-[11px] font-bold tabular-nums dark:bg-white/15">
+              {countByCategory.get(cat.id) ?? 0}
+            </span>
+          </Button>
+        ))}
+      </div>
+
+      <div className="flex min-w-0 flex-1 flex-col md:pl-3">
       <div className="sticky top-0 z-10 bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="relative mb-2">
+        <div className="relative">
           <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
             placeholder={t("pos.searchPlaceholder")}
@@ -115,7 +152,8 @@ export function ProductGrid({
           )}
         </div>
 
-        <div className="flex gap-1.5 overflow-x-auto pb-1">
+        {/* Pill ngang chỉ dùng cho điện thoại (màn hẹp không đủ chỗ cho rail) */}
+        <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 md:hidden">
           <Button
             variant={selectedCategory === null ? "default" : "outline"}
             size="sm"
@@ -188,19 +226,20 @@ export function ProductGrid({
                         seed={item.id}
                       />
                     )}
+                    {/* Badge giá kiểu iPOS ở góc trên-phải */}
+                    <span className="absolute right-1 top-1 rounded bg-black/70 px-1.5 py-0.5 text-xs font-bold tabular-nums text-white shadow">
+                      {formatK(item.price)}
+                    </span>
                     {inCartQty > 0 && (
-                      <Badge className="absolute right-1.5 top-1.5 h-6 min-w-6 justify-center rounded-full text-xs shadow-lg">
+                      <Badge className="absolute left-1 top-1 h-6 min-w-6 justify-center rounded-full text-xs shadow-lg">
                         {inCartQty}
                       </Badge>
                     )}
                   </div>
 
-                  <div className="grid min-h-[68px] content-between p-2.5">
+                  <div className="flex min-h-[44px] items-center p-2">
                     <p className="line-clamp-2 text-[13px] font-semibold leading-snug">
                       {item.name}
-                    </p>
-                    <p className="mt-1 text-sm font-bold text-primary tabular-nums">
-                      {formatCurrency(item.price)}
                     </p>
                   </div>
                 </button>
@@ -208,6 +247,7 @@ export function ProductGrid({
             })}
           </div>
         )}
+      </div>
       </div>
     </div>
   );

@@ -12,7 +12,12 @@ import { Download } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { useTranslation } from "@/stores/lang-store";
 
-const APP_URL = process.env.NEXT_PUBLIC_APP_URL || "https://app.hosteleria.me";
+/** Domain của chính quán: ưu tiên env, không có thì lấy domain đang chạy (menu khách cùng web app) */
+function appUrl(): string {
+  if (process.env.NEXT_PUBLIC_APP_URL) return process.env.NEXT_PUBLIC_APP_URL;
+  if (typeof window !== "undefined") return window.location.origin;
+  return "";
+}
 
 interface QrDialogProps {
   table: any | null;
@@ -22,7 +27,7 @@ interface QrDialogProps {
 
 export function QrDialog({ table, branchSlug, onClose }: QrDialogProps) {
   const { t } = useTranslation();
-  const qrUrl = table ? `${APP_URL}/${branchSlug}/${table.qr_code}` : "";
+  const qrUrl = table ? `${appUrl()}/${branchSlug}/${table.qr_code}` : "";
 
   const handleDownloadQR = () => {
     if (!table) return;

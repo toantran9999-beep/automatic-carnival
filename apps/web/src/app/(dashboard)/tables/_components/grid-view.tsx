@@ -31,6 +31,7 @@ interface GridViewProps {
   tables: any[];
   isLoading: boolean;
   canManage?: boolean;
+  hideQr?: boolean;
   waiterAssignmentEnabled: boolean;
   statusChangePending: boolean;
   requestByTableId: Record<string, TableServiceRequestIndicator>;
@@ -49,6 +50,7 @@ export function GridView({
   tables,
   isLoading,
   canManage,
+  hideQr,
   waiterAssignmentEnabled,
   statusChangePending,
   requestByTableId,
@@ -81,6 +83,7 @@ export function GridView({
               table={table}
               now={now}
               canManage={canManage}
+              hideQr={hideQr}
               waiterAssignmentEnabled={waiterAssignmentEnabled}
               statusChangePending={statusChangePending}
               serviceRequest={requestByTableId[table.id]}

@@ -37,6 +37,8 @@ interface TableCardProps {
   /** Mốc thời gian hiện tại từ GridView (1 interval chung) để tính thời gian ngồi */
   now?: number;
   canManage?: boolean;
+  /** Ẩn nút QR bàn (quán không dùng luồng khách tự quét) */
+  hideQr?: boolean;
   waiterAssignmentEnabled: boolean;
   statusChangePending: boolean;
   serviceRequest?: TableServiceRequestIndicator;
@@ -94,6 +96,7 @@ export function TableCard({
   table,
   now,
   canManage,
+  hideQr,
   waiterAssignmentEnabled,
   statusChangePending,
   serviceRequest,
@@ -204,7 +207,9 @@ export function TableCard({
 
       {/* Actions row */}
       <div className="flex items-center gap-1 mt-auto" onClick={(e) => e.stopPropagation()}>
-        <IconBtn icon={<QrCode className="h-3.5 w-3.5" />} title="QR" onClick={() => onQr(table)} />
+        {!hideQr && (
+          <IconBtn icon={<QrCode className="h-3.5 w-3.5" />} title="QR" onClick={() => onQr(table)} />
+        )}
         <IconBtn icon={<History className="h-3.5 w-3.5" />} title={t("tables.history")} onClick={() => onHistory(table)} />
         {waiterAssignmentEnabled && (
           <IconBtn icon={<UserPlus className="h-3.5 w-3.5" />} title={t("tables.assign")} onClick={() => onAssign(table)} />

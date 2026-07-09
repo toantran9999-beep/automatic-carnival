@@ -76,6 +76,7 @@ settings.patch("/branch", requirePermission("settings:update"), zValidator("json
     body.printMode !== undefined ||
     body.printDriver !== undefined ||
     body.hidePosNav !== undefined ||
+    body.hideTableQr !== undefined ||
     body.receipt !== undefined
   ) {
     // Fetch current settings to merge
@@ -90,6 +91,7 @@ settings.patch("/branch", requirePermission("settings:update"), zValidator("json
     if (body.printMode !== undefined) merged.print_mode = body.printMode;
     if (body.printDriver !== undefined) merged.print_driver = body.printDriver;
     if (body.hidePosNav !== undefined) merged.hide_pos_nav = body.hidePosNav;
+    if (body.hideTableQr !== undefined) merged.hide_table_qr = body.hideTableQr;
     if (body.receipt !== undefined) merged.receipt = body.receipt;
     updateData.settings = merged;
   }

@@ -171,6 +171,8 @@ export default function TablesPage() {
   const { data: branchSettingsData } = useBranchSettings();
 
   const waiterAssignmentEnabled = (branchSettingsData as any)?.settings?.waiter_table_assignment_enabled ?? false;
+  // Ẩn chức năng QR bàn (quán chưa dùng luồng khách tự quét) — bật/tắt trong Cài đặt → Chi nhánh
+  const hideTableQr = (branchSettingsData as any)?.settings?.hide_table_qr ?? false;
   const spaces: any[] = spacesData ?? [];
   const allTables: any[] = tablesData?.tables ?? [];
   const branchSlug: string = tablesData?.branchSlug ?? "";
@@ -613,6 +615,7 @@ export default function TablesPage() {
             tables={filteredTables}
             isLoading={isLoading}
             canManage={canManageTables}
+            hideQr={hideTableQr}
             waiterAssignmentEnabled={waiterAssignmentEnabled}
             statusChangePending={updateTableStatus.isPending}
             requestByTableId={requestByTableId}

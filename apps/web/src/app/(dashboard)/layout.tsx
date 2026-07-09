@@ -195,10 +195,14 @@ export default function DashboardLayout({
     }
   }, [isAuthenticated, router]);
 
+  // Nhân viên vận hành (thu ngân/phục vụ/bếp) dùng 1 thanh menu cố định phía dưới trên MỌI
+  // cỡ màn hình — không render sidebar/drawer để nhẹ DOM, hết đổi bố cục theo breakpoint.
+  const staffNav = !!user && ["cashier", "waiter", "kitchen"].includes(user.role);
+
   // Vào màn POS thì tự thu gọn sidebar để dành chỗ cho lưới món (vẫn mở lại được bằng nút)
   useEffect(() => {
-    if (pathname.startsWith("/pos")) setCollapsed(true);
-  }, [pathname]);
+    if (!staffNav && pathname.startsWith("/pos")) setCollapsed(true);
+  }, [pathname, staffNav]);
 
   useEffect(() => {
     if (availableBranches.length === 0) return;
@@ -241,7 +245,8 @@ export default function DashboardLayout({
     <div className="h-screen flex overflow-hidden">
       {/* Trạm in tại quầy: nghe order:new & tự in (chỉ khi máy này bật trạm) */}
       <StationProvider />
-      {/* Desktop Sidebar */}
+      {/* Desktop Sidebar — chỉ cho admin/quản lý; nhân viên dùng thanh menu dưới */}
+      {!staffNav && (
       <aside
         className={cn(
           "hidden md:flex flex-col border-r bg-sidebar transition-all duration-300 relative",
@@ -393,6 +398,7 @@ export default function DashboardLayout({
           )}
         </div>
       </aside>
+      )}
 
       {/* Main content area */}
       <div className="flex-1 flex flex-col overflow-hidden">
@@ -403,19 +409,21 @@ export default function DashboardLayout({
         >
           <div className="flex items-center justify-between h-12 px-4">
             <div className="flex items-center gap-3">
-              <Button
-                variant="ghost"
-                size="icon"
-                className="md:hidden"
-                onClick={() => setMobileOpen(!mobileOpen)}
-              >
-                {mobileOpen ? (
-                  <X className="h-5 w-5" />
-                ) : (
-                  <Menu className="h-5 w-5" />
-                )}
-              </Button>
-              <span className="font-semibold md:hidden">{orgName}</span>
+              {!staffNav && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="md:hidden"
+                  onClick={() => setMobileOpen(!mobileOpen)}
+                >
+                  {mobileOpen ? (
+                    <X className="h-5 w-5" />
+                  ) : (
+                    <Menu className="h-5 w-5" />
+                  )}
+                </Button>
+              )}
+              <span className={cn("font-semibold", !staffNav && "md:hidden")}>{orgName}</span>
             </div>
 
             <div className="flex items-center gap-3">
@@ -458,12 +466,23 @@ export default function DashboardLayout({
                   {user.name}
                 </span>
               </div>
+              {/* Nhân viên không có sidebar → nút đăng xuất nằm trên header */}
+              {staffNav && (
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  title={t("nav.logout")}
+                  onClick={handleLogout}
+                >
+                  <LogOut className="h-4 w-4" />
+                </Button>
+              )}
             </div>
           </div>
         </header>
 
         {/* Mobile sidebar overlay */}
-        {mobileOpen && (
+        {!staffNav && mobileOpen && (
           <div className="md:hidden fixed inset-0 z-50">
             <div
               className="absolute inset-0 bg-black/40 backdrop-blur-sm"
@@ -585,11 +604,21 @@ export default function DashboardLayout({
         )}
 
         {/* Page content */}
-        <main className="flex-1 overflow-y-auto p-4 md:px-4 md:py-3 pb-28 md:pb-3">{children}</main>
+        <main
+          className={cn(
+            "flex-1 overflow-y-auto p-4 md:px-4 md:py-3",
+            staffNav ? "pb-24" : "pb-28 md:pb-3"
+          )}
+        >
+          {children}
+        </main>
 
-        {/* Mobile bottom nav */}
+        {/* Bottom nav: nhân viên = cố định mọi cỡ màn hình; admin = chỉ mobile */}
         <nav
-          className="md:hidden fixed bottom-0 left-0 right-0 bg-background border-t z-40"
+          className={cn(
+            "fixed bottom-0 left-0 right-0 bg-background border-t z-40",
+            !staffNav && "md:hidden"
+          )}
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
           <div className="flex items-center justify-around h-16">

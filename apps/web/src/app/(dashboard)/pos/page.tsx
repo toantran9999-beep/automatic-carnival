@@ -480,17 +480,23 @@ export default function PosPage() {
     needsTable: orderType === "dine_in" && !tableId,
   };
 
+  // Nhân viên có thanh menu cố định dưới ở MỌI cỡ màn hình → luôn trừ 7.5rem (header + bottom nav)
+  const staffNav = !!user && ["cashier", "waiter", "kitchen"].includes(user.role);
+  const posHeightClass = staffNav
+    ? "h-[calc(100dvh-7.5rem)]"
+    : "h-[calc(100dvh-7.5rem)] md:h-[calc(100dvh-5rem)]";
+
   // Cổng: chưa mở ca → khóa toàn bộ màn đặt món (mở ca mới xài được chức năng).
   if (!shiftLoading && !currentShift) {
     return (
-      <div className="flex h-[calc(100dvh-7.5rem)] md:h-[calc(100dvh-5rem)]">
+      <div className={`flex ${posHeightClass}`}>
         <ShiftClosedBlocker canManage={canManageShift} />
       </div>
     );
   }
 
   return (
-    <div className="flex h-[calc(100dvh-7.5rem)] md:h-[calc(100dvh-5rem)] flex-col gap-2">
+    <div className={`flex ${posHeightClass} flex-col gap-2`}>
       {currentShift && <ShiftBar shift={currentShift} canManage={canManageShift} />}
       <div className="flex min-h-0 flex-1 gap-3">
         <ProductGrid

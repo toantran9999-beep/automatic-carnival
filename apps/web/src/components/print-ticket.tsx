@@ -13,6 +13,8 @@ interface OrderItem {
   notes?: string;
   /** Đơn vị tính (Ly, Phần, Dĩa...) — tùy chọn */
   unit?: string;
+  /** Topping/tùy chọn — phiếu đặt món in mỗi topping 1 dòng riêng cho dễ pha chế */
+  modifiers?: string[];
 }
 
 function currentStaffName(): string {
@@ -376,7 +378,7 @@ function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAUL
   ].filter((r) => r !== "");
 
   for (const item of data.items) {
-    // Xuống dòng đầy đủ tên món + topping (không cắt cụt "T...")
+    // Xuống dòng đầy đủ tên món (không cắt cụt "T...")
     const head = `${item.quantity} x `;
     const nameLines = wrapPlain(
       `${item.name}${item.unit ? ` (${item.unit})` : ""}`,
@@ -385,6 +387,12 @@ function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAUL
     rows.push(`${head}${nameLines[0] ?? ""}`);
     for (let li = 1; li < nameLines.length; li++) {
       rows.push(`${" ".repeat(head.length)}${nameLines[li]}`);
+    }
+    // Mỗi topping/tùy chọn 1 dòng riêng
+    for (const mod of item.modifiers ?? []) {
+      for (const ml of wrapPlain(mod, Math.max(8, width - 6))) {
+        rows.push(`    - ${ml}`);
+      }
     }
     if (item.notes) {
       for (const nl of wrapPlain(item.notes, Math.max(8, width - 4))) {
@@ -711,6 +719,10 @@ function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): Ras
   segs.push({ kind: "sep" });
   for (const item of data.items) {
     segs.push({ kind: "text", text: `${item.quantity} x ${item.name}${item.unit ? ` (${item.unit})` : ""}`, bold: true });
+    // Mỗi topping/tùy chọn 1 dòng riêng cho dễ pha chế
+    for (const mod of item.modifiers ?? []) {
+      segs.push({ kind: "text", text: `    - ${mod}` });
+    }
     if (item.notes) segs.push({ kind: "text", text: `  * ${item.notes}` });
   }
   if (data.notes) {
@@ -925,10 +937,13 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
 
   const rowsHtml = data.items
     .map((item) => {
+      const mods = (item.modifiers ?? [])
+        .map((m) => `<div class="sub">- ${escapeHtml(m)}</div>`)
+        .join("");
       const note = item.notes ? `<div class="sub">* ${escapeHtml(item.notes)}</div>` : "";
       return `<tr>
         <td class="c">${item.quantity}</td>
-        <td>${escapeHtml(item.name)}${note}</td>
+        <td>${escapeHtml(item.name)}${mods}${note}</td>
         <td class="c">${escapeHtml(item.unit || "")}</td>
       </tr>`;
     })
@@ -1450,11 +1465,12 @@ export function usePrintSampleKitchen() {
       createdAt: new Date().toISOString(),
       items: [
         {
-          name: "Cà phê đá (Bình thường, Ít ngọt, Ít đá, Thêm thạch cà phê)",
+          name: "Cà phê đá",
           quantity: 1,
           unit_price: 1500000,
           total: 1500000,
           unit: "Ly",
+          modifiers: ["Bình thường", "Ít ngọt", "Ít đá", "Thêm thạch cà phê"],
         },
         { name: "Cà phê sữa", quantity: 2, unit_price: 2500000, total: 5000000, notes: "Ít đường", unit: "Ly" },
       ],

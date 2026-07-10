@@ -318,9 +318,11 @@ export function ReceiptTab() {
       {form.kitchenShowStaff && <div>Nhân viên: Toàn</div>}
       {form.kitchenShowOrderNumber && <div>Số thứ tự: #A-042</div>}
       {previewSep}
+      <div className="font-bold">1 x Cà phê đá (Ly)</div>
+      <div>&nbsp;&nbsp;&nbsp;&nbsp;- Ít ngọt</div>
+      <div>&nbsp;&nbsp;&nbsp;&nbsp;- Thêm thạch cà phê</div>
       <div className="font-bold">2 x Cà phê sữa (Ly)</div>
       <div className="italic">&nbsp;&nbsp;* Ít đường</div>
-      <div className="font-bold">1 x Bạc xỉu (Ly)</div>
       {previewSep}
       {form.kitchenFooterText.split("\n").filter(Boolean).map((l, i) => (
         <div key={`kf${i}`} className="text-center">{l}</div>

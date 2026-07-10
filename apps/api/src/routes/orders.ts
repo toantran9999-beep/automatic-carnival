@@ -263,7 +263,9 @@ orders.post(
           const mods = modsByItem.get(i.id) ?? [];
           return {
             id: i.id,
-            name: mods.length ? `${i.name} (${mods.join(", ")})` : i.name,
+            name: i.name,
+            // Topping/tùy chọn tách riêng để phiếu in mỗi topping 1 dòng
+            modifiers: mods,
             quantity: i.quantity,
             status: i.status,
             notes: i.notes,

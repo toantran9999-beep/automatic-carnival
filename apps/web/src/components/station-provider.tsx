@@ -84,6 +84,7 @@ export function StationProvider() {
           createdAt: p.createdAt || new Date().toISOString(),
           items: (p.items ?? []).map((i) => ({
             name: i.name,
+            modifiers: (i as any).modifiers ?? undefined,
             quantity: i.quantity,
             unit_price: 0,
             total: 0,

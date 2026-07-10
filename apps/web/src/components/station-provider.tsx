@@ -79,6 +79,7 @@ export function StationProvider() {
         {
           orderNumber: p.orderNumber,
           tableNumber: p.tableNumber ?? undefined,
+          tableZone: (p as any).tableZone ?? undefined,
           customerName: p.customerName ?? undefined,
           createdAt: p.createdAt || new Date().toISOString(),
           items: (p.items ?? []).map((i) => ({

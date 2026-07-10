@@ -72,6 +72,7 @@ const DEFAULT_FORM = {
   // Phiếu đặt món
   kitchenTitle: "PHIẾU ĐẶT ĐỒ",
   kitchenFooterText: "Toda Cafe",
+  kitchenShowTitle: true,
   kitchenShowStaff: true,
   kitchenShowTime: true,
   kitchenShowOrderNumber: true,
@@ -125,6 +126,7 @@ export function ReceiptTab() {
       title: form.kitchenTitle.trim() || "PHIẾU ĐẶT ĐỒ",
       footerLines: form.kitchenFooterText.split("\n").map((l) => l.trim()).filter(Boolean),
       show: {
+        title: form.kitchenShowTitle,
         staff: form.kitchenShowStaff,
         time: form.kitchenShowTime,
         orderNumber: form.kitchenShowOrderNumber,
@@ -193,6 +195,7 @@ export function ReceiptTab() {
         kitchenFooterText: Array.isArray(kc.footer_lines)
           ? kc.footer_lines.join("\n")
           : DEFAULT_FORM.kitchenFooterText,
+        kitchenShowTitle: kShow.title ?? true,
         kitchenShowStaff: kShow.staff ?? true,
         kitchenShowTime: kShow.time ?? true,
         kitchenShowOrderNumber: kShow.order_number ?? true,
@@ -229,6 +232,7 @@ export function ReceiptTab() {
             title: form.kitchenTitle.trim() || "PHIẾU ĐẶT ĐỒ",
             footer_lines: form.kitchenFooterText.split("\n").map((l) => l.trim()).filter(Boolean),
             show: {
+              title: form.kitchenShowTitle,
               staff: form.kitchenShowStaff,
               time: form.kitchenShowTime,
               order_number: form.kitchenShowOrderNumber,
@@ -303,10 +307,12 @@ export function ReceiptTab() {
       className="rounded-lg border bg-white text-black p-3 font-mono leading-relaxed shadow-sm"
       style={{ fontSize: `${previewFontPx}px` }}
     >
-      <div className="text-center font-bold" style={{ fontSize: `${previewFontPx + 2}px` }}>
-        {form.kitchenTitle.trim() || "PHIẾU ĐẶT ĐỒ"}
-      </div>
-      <div className="text-center font-bold">BÀN 5</div>
+      {form.kitchenShowTitle && (
+        <div className="text-center font-bold" style={{ fontSize: `${previewFontPx + 2}px` }}>
+          {form.kitchenTitle.trim() || "PHIẾU ĐẶT ĐỒ"}
+        </div>
+      )}
+      <div className="text-center font-bold">BÀN 5 - Khu B</div>
       {previewSep}
       {form.kitchenShowTime && <div className="flex justify-between"><span>Giờ: 10:30</span><span>Ngày: 05/07</span></div>}
       {form.kitchenShowStaff && <div>Nhân viên: Toàn</div>}
@@ -525,6 +531,7 @@ export function ReceiptTab() {
                 </div>
                 <div className="space-y-1 rounded-lg border p-4">
                   <p className="text-sm font-medium mb-1">{t("settings.receiptShowTitle", "Ẩn/hiện từng mục")}</p>
+                  <ToggleRow label={t("settings.kitchenShowTitleRow", "Dòng tiêu đề (PHIẾU ĐẶT ĐỒ)")} checked={form.kitchenShowTitle} onChange={() => set({ kitchenShowTitle: !form.kitchenShowTitle })} />
                   <ToggleRow label={t("settings.kitchenShowTime", "Dòng Giờ / Ngày")} checked={form.kitchenShowTime} onChange={() => set({ kitchenShowTime: !form.kitchenShowTime })} />
                   <ToggleRow label={t("settings.kitchenShowStaff", "Tên nhân viên")} checked={form.kitchenShowStaff} onChange={() => set({ kitchenShowStaff: !form.kitchenShowStaff })} />
                   <ToggleRow label={t("settings.kitchenShowOrderNo", "Số thứ tự đơn")} checked={form.kitchenShowOrderNumber} onChange={() => set({ kitchenShowOrderNumber: !form.kitchenShowOrderNumber })} />

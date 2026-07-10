@@ -53,6 +53,8 @@ function escapeHtml(s: string): string {
 interface KitchenTicketData {
   orderNumber: string;
   tableNumber?: string | number;
+  /** Tên khu vực của bàn (Khu A, Khu B...) — in kèm số bàn cho dễ tìm */
+  tableZone?: string;
   customerName?: string;
   createdAt: string;
   items: OrderItem[];
@@ -113,7 +115,7 @@ export interface ReceiptConfig {
   kitchen: {
     title: string;
     footerLines: string[];
-    show: { staff: boolean; time: boolean; orderNumber: boolean };
+    show: { title: boolean; staff: boolean; time: boolean; orderNumber: boolean };
   };
   /** Cấu hình riêng cho phiếu tạm tính (kèm QR chuyển khoản) */
   transfer: {
@@ -141,7 +143,7 @@ const DEFAULT_RECEIPT_CONFIG: ReceiptConfig = {
   kitchen: {
     title: DEFAULT_KITCHEN_TITLE,
     footerLines: DEFAULT_KITCHEN_FOOTER,
-    show: { staff: true, time: true, orderNumber: true },
+    show: { title: true, staff: true, time: true, orderNumber: true },
   },
   transfer: {
     title: DEFAULT_TRANSFER_TITLE,
@@ -178,7 +180,12 @@ export function getReceiptConfig(branchSettings: any): ReceiptConfig {
     kitchen: {
       title: typeof kc.title === "string" && kc.title.trim() ? kc.title.trim() : DEFAULT_KITCHEN_TITLE,
       footerLines: Array.isArray(kc.footer_lines) ? kc.footer_lines.filter(Boolean) : DEFAULT_KITCHEN_FOOTER,
-      show: { staff: kShow.staff ?? true, time: kShow.time ?? true, orderNumber: kShow.order_number ?? true },
+      show: {
+        title: kShow.title ?? true,
+        staff: kShow.staff ?? true,
+        time: kShow.time ?? true,
+        orderNumber: kShow.order_number ?? true,
+      },
     },
     transfer: {
       title: typeof tc.title === "string" && tc.title.trim() ? tc.title.trim() : DEFAULT_TRANSFER_TITLE,
@@ -243,6 +250,30 @@ function removeVietnameseMarks(value: string): string {
 function plainLine(value = "", width = ESC_POS_WIDTH): string {
   const clean = removeVietnameseMarks(value).replace(/\s+/g, " ").trim();
   return clean.length > width ? clean.slice(0, width) : clean;
+}
+
+/** Xuống dòng theo từ (không cắt cụt) — dùng cho tên món + topping dài ở chế độ chữ */
+function wrapPlain(value = "", width = ESC_POS_WIDTH): string[] {
+  const clean = removeVietnameseMarks(value).replace(/\s+/g, " ").trim();
+  if (!clean) return [];
+  const lines: string[] = [];
+  let cur = "";
+  for (const word of clean.split(" ")) {
+    if ((cur ? cur.length + 1 : 0) + word.length <= width) {
+      cur = cur ? `${cur} ${word}` : word;
+    } else {
+      if (cur) lines.push(cur);
+      // Từ đơn dài hơn cả dòng thì cắt cứng theo bề rộng
+      let w = word;
+      while (w.length > width) {
+        lines.push(w.slice(0, width));
+        w = w.slice(width);
+      }
+      cur = w;
+    }
+  }
+  if (cur) lines.push(cur);
+  return lines;
 }
 
 function centerLine(value = "", width = ESC_POS_WIDTH): string {
@@ -328,11 +359,13 @@ function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAUL
   const width = widthForPaper(cfg.paper);
   const { time, date } = vnTimeParts(data.createdAt);
   const staff = currentStaffName();
-  const subtitle = data.tableNumber ? `BAN ${data.tableNumber}` : "MANG VE";
+  const subtitle = data.tableNumber
+    ? `BAN ${data.tableNumber}${data.tableZone ? ` - ${data.tableZone}` : ""}`
+    : "MANG VE";
   const ch = separatorChar(cfg.separator);
   const SEP = ch ? ch.repeat(width) : "";
   const rows: Array<string | number[]> = [
-    centered(cfg.kitchen.title, width),
+    cfg.kitchen.show.title ? centered(cfg.kitchen.title, width) : "",
     centered(subtitle, width),
     data.ticketLabel ? centered(`Phieu ${data.ticketLabel}`, width) : "",
     SEP,
@@ -343,11 +376,27 @@ function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAUL
   ].filter((r) => r !== "");
 
   for (const item of data.items) {
-    rows.push(`${item.quantity} x ${plainLine(item.name, width - 8)} ${plainLine(item.unit || "", 4)}`);
-    if (item.notes) rows.push(`  * ${plainLine(item.notes, width - 4)}`);
+    // Xuống dòng đầy đủ tên món + topping (không cắt cụt "T...")
+    const head = `${item.quantity} x `;
+    const nameLines = wrapPlain(
+      `${item.name}${item.unit ? ` (${item.unit})` : ""}`,
+      Math.max(8, width - head.length)
+    );
+    rows.push(`${head}${nameLines[0] ?? ""}`);
+    for (let li = 1; li < nameLines.length; li++) {
+      rows.push(`${" ".repeat(head.length)}${nameLines[li]}`);
+    }
+    if (item.notes) {
+      for (const nl of wrapPlain(item.notes, Math.max(8, width - 4))) {
+        rows.push(`  * ${nl}`);
+      }
+    }
   }
 
-  if (data.notes) rows.push(SEP, `Ghi chu: ${plainLine(data.notes, width - 9)}`);
+  if (data.notes) {
+    rows.push(SEP);
+    for (const nl of wrapPlain(`Ghi chu: ${data.notes}`, width)) rows.push(nl);
+  }
   if (cfg.kitchen.footerLines.length) {
     rows.push(SEP, ...cfg.kitchen.footerLines.map((l) => centered(l, width)));
   }
@@ -451,20 +500,53 @@ function drawSegmentsToCanvas(segs: Exclude<RasterSeg, { kind: "qr" }>[], cfg: R
   const measure = document.createElement("canvas").getContext("2d");
   if (!measure) return null;
 
-  // Cắt bớt chữ quá dài (giữ 1 dòng/segment cho khớp khổ giấy)
-  const fit = (text: string, font: string, maxW: number): string => {
+  // Xuống dòng theo từ (KHÔNG cắt cụt) — tên món + topping dài in đủ
+  const wrap = (text: string, font: string, maxW: number): string[] => {
     measure.font = font;
-    if (measure.measureText(text).width <= maxW) return text;
-    let t = text;
-    while (t.length > 1 && measure.measureText(`${t}…`).width > maxW) t = t.slice(0, -1);
-    return `${t}…`;
+    const clean = text.replace(/\s+/g, " ").trim();
+    if (!clean) return [""];
+    const lines: string[] = [];
+    let cur = "";
+    for (const word of clean.split(" ")) {
+      const next = cur ? `${cur} ${word}` : word;
+      if (measure.measureText(next).width <= maxW) {
+        cur = next;
+      } else {
+        if (cur) lines.push(cur);
+        // Từ đơn dài hơn cả dòng → cắt cứng theo ký tự
+        let w = word;
+        while (measure.measureText(w).width > maxW && w.length > 1) {
+          let cut = w.length - 1;
+          while (cut > 1 && measure.measureText(w.slice(0, cut)).width > maxW) cut--;
+          lines.push(w.slice(0, cut));
+          w = w.slice(cut);
+        }
+        cur = w;
+      }
+    }
+    if (cur) lines.push(cur);
+    return lines.length ? lines : [""];
   };
 
+  // Tiền xử lý: tính sẵn các dòng đã wrap cho từng segment để đo chiều cao
+  const prepared = segs.map((s) => {
+    if (s.kind === "text") {
+      return { seg: s, lines: wrap(s.text, fontOf(s), s.align === "center" ? width - 8 : width) };
+    }
+    if (s.kind === "twoCol") {
+      measure.font = fontOf(s);
+      const rightW = measure.measureText(s.right).width;
+      return { seg: s, lines: wrap(s.left, fontOf(s), width - rightW - 12) };
+    }
+    return { seg: s, lines: null as string[] | null };
+  });
+
   let height = 8;
-  for (const s of segs) {
+  for (const p of prepared) {
+    const s = p.seg;
     if (s.kind === "sep") height += cfg.separator === "none" ? 6 : 14;
     else if (s.kind === "space") height += FONT;
-    else height += lineH((s as any).big);
+    else height += lineH((s as any).big) * (p.lines?.length || 1);
   }
   height += 8;
 
@@ -480,7 +562,8 @@ function drawSegmentsToCanvas(segs: Exclude<RasterSeg, { kind: "qr" }>[], cfg: R
   ctx.textBaseline = "top";
 
   let y = 8;
-  for (const s of segs) {
+  for (const p of prepared) {
+    const s = p.seg;
     if (s.kind === "sep") {
       if (cfg.separator !== "none") {
         const mid = y + 6;
@@ -509,24 +592,25 @@ function drawSegmentsToCanvas(segs: Exclude<RasterSeg, { kind: "qr" }>[], cfg: R
     }
     const font = fontOf(s);
     ctx.font = font;
+    const rowH = lineH((s as any).big);
     if (s.kind === "twoCol") {
-      const rightW = ctx.measureText(s.right).width;
-      const left = fit(s.left, font, width - rightW - 12);
+      const lines = p.lines || [s.left];
       ctx.textAlign = "left";
-      ctx.fillText(left, 0, y);
+      lines.forEach((line, li) => ctx.fillText(line, 0, y + li * rowH));
       ctx.textAlign = "right";
-      ctx.fillText(s.right, width, y);
+      ctx.fillText(s.right, width, y); // số tiền nằm ở dòng đầu
+      y += rowH * lines.length;
     } else {
-      const text = fit(s.text, font, width);
+      const lines = p.lines || [s.text];
       if (s.align === "center") {
         ctx.textAlign = "center";
-        ctx.fillText(text, width / 2, y);
+        lines.forEach((line, li) => ctx.fillText(line, width / 2, y + li * rowH));
       } else {
         ctx.textAlign = "left";
-        ctx.fillText(text, 0, y);
+        lines.forEach((line, li) => ctx.fillText(line, 0, y + li * rowH));
       }
+      y += rowH * lines.length;
     }
-    y += lineH((s as any).big);
   }
   return canvas;
 }
@@ -606,10 +690,19 @@ function buildReceiptRasterEscPos(data: ReceiptTicketData, cfg: ReceiptConfig): 
 function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): RasterSeg[] {
   const { time, date } = vnTimeParts(data.createdAt);
   const staff = currentStaffName();
-  const segs: RasterSeg[] = [
-    { kind: "text", text: cfg.kitchen.title, align: "center", bold: true, big: true },
-    { kind: "text", text: data.tableNumber ? `BÀN ${data.tableNumber}` : "MANG VỀ", align: "center", bold: true },
-  ];
+  const segs: RasterSeg[] = [];
+  if (cfg.kitchen.show.title) {
+    segs.push({ kind: "text", text: cfg.kitchen.title, align: "center", bold: true, big: true });
+  }
+  segs.push({
+    kind: "text",
+    text: data.tableNumber
+      ? `BÀN ${data.tableNumber}${data.tableZone ? ` - ${data.tableZone}` : ""}`
+      : "MANG VỀ",
+    align: "center",
+    bold: true,
+    big: !cfg.kitchen.show.title,
+  });
   if (data.ticketLabel) segs.push({ kind: "text", text: `Phiếu ${data.ticketLabel}`, align: "center" });
   segs.push({ kind: "sep" });
   if (cfg.kitchen.show.time) segs.push({ kind: "twoCol", left: `Giờ: ${time}`, right: `Ngày: ${date}` });
@@ -827,7 +920,7 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
   const { time, date } = vnTimeParts(data.createdAt);
   const staff = currentStaffName();
   const subtitle = data.tableNumber
-    ? `${(isVi ? "BÀN" : "TABLE")} ${data.tableNumber}`
+    ? `${(isVi ? "BÀN" : "TABLE")} ${data.tableNumber}${data.tableZone ? ` - ${data.tableZone}` : ""}`
     : t.takeaway.toUpperCase();
 
   const rowsHtml = data.items
@@ -872,8 +965,8 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
   </style>
 </head>
 <body>
-  <div class="ticket-title">${L.title}</div>
-  <div class="ticket-sub">${subtitle}</div>
+  ${cfg.kitchen.show.title ? `<div class="ticket-title">${escapeHtml(L.title)}</div>` : ""}
+  <div class="ticket-sub">${escapeHtml(subtitle)}</div>
   ${data.ticketLabel ? `<div class="center bold" style="font-size:12px;margin-top:2px;">${t.ticket} ${data.ticketLabel}</div>` : ""}
   <table class="meta">
     ${cfg.kitchen.show.time ? `<tr>
@@ -1353,10 +1446,17 @@ export function usePrintSampleKitchen() {
     const data: KitchenTicketData = {
       orderNumber: "IN-THU-01",
       tableNumber: 5,
+      tableZone: "Khu B",
       createdAt: new Date().toISOString(),
       items: [
+        {
+          name: "Cà phê đá (Bình thường, Ít ngọt, Ít đá, Thêm thạch cà phê)",
+          quantity: 1,
+          unit_price: 1500000,
+          total: 1500000,
+          unit: "Ly",
+        },
         { name: "Cà phê sữa", quantity: 2, unit_price: 2500000, total: 5000000, notes: "Ít đường", unit: "Ly" },
-        { name: "Bạc xỉu", quantity: 1, unit_price: 2900000, total: 2900000, unit: "Ly" },
       ],
       notes: "Khách ngồi ngoài sân",
     };

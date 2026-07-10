@@ -217,14 +217,17 @@ orders.post(
     //  - table number (from the session, if any)
     //  - modifier names per item (e.g. "Cà phê đá (nhẹ, ít đường)")
     let ticketTableNumber: number | null = null;
+    let ticketTableZone: string | null = null;
     if (order.table_session_id) {
       const [tbl] = await db
-        .select({ number: schema.tables.number })
+        .select({ number: schema.tables.number, zone: schema.spaces.name })
         .from(schema.tableSessions)
         .innerJoin(schema.tables, eq(schema.tableSessions.table_id, schema.tables.id))
+        .leftJoin(schema.spaces, eq(schema.tables.space_id, schema.spaces.id))
         .where(eq(schema.tableSessions.id, order.table_session_id))
         .limit(1);
       ticketTableNumber = tbl?.number ?? null;
+      ticketTableZone = tbl?.zone ?? null;
     }
 
     const createdItemIds = createdItems.map((i) => i.id);
@@ -252,6 +255,7 @@ orders.post(
         orderNumber: order.order_number,
         status: order.status,
         tableNumber: ticketTableNumber,
+        tableZone: ticketTableZone,
         customerName: order.customer_name,
         createdAt: order.created_at,
         orderType: order.type,

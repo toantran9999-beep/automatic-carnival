@@ -2,6 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware } from "../middleware/tenant.js";
+import { requirePermission } from "../middleware/rbac.js";
 import { storeUpload, deleteUpload } from "../lib/r2.js";
 import { t } from "../lib/i18n.js";
 
@@ -31,6 +32,8 @@ function extFromMime(mime: string): string {
 
 const uploads = new Hono<AppEnv>();
 uploads.use("*", authMiddleware, tenantMiddleware);
+// Chỉ vai trò được quản lý menu/thương hiệu mới upload/xóa ảnh (thu ngân/phục vụ không).
+uploads.use("*", requirePermission("menu:update"));
 
 // POST / — Upload single image
 uploads.post("/", async (c) => {
@@ -97,9 +100,11 @@ uploads.post("/", async (c) => {
   return c.json({ success: true, data: { url, key } });
 });
 
-// DELETE /:key — Delete image
+// DELETE /* — Delete image (key nằm sau /api/uploads/)
 uploads.delete("/*", async (c) => {
-  const key = c.req.path.slice(1); // remove leading /
+  const tenant = c.get("tenant") as any;
+  const key = c.req.param("*") || "";
+
   if (!key) {
     return c.json(
       {
@@ -110,8 +115,30 @@ uploads.delete("/*", async (c) => {
     );
   }
 
-  await deleteUpload(key);
-  return c.json({ success: true, data: { deleted: key } });
+  // Chống path traversal: cấm "..", ký tự "\\", đường dẫn tuyệt đối.
+  const normalized = key.replace(/\\/g, "/");
+  if (
+    normalized.includes("..") ||
+    normalized.startsWith("/") ||
+    /^[a-zA-Z]:/.test(normalized)
+  ) {
+    return c.json(
+      { success: false, error: { code: "BAD_REQUEST", message: t(c, "file_key_required") } },
+      400,
+    );
+  }
+
+  // Chỉ được xóa ảnh trong thư mục của chính tổ chức mình.
+  const prefix = `${tenant.organizationId}/`;
+  if (!normalized.startsWith(prefix)) {
+    return c.json(
+      { success: false, error: { code: "FORBIDDEN", message: t(c, "no_permission") } },
+      403,
+    );
+  }
+
+  await deleteUpload(normalized);
+  return c.json({ success: true, data: { deleted: normalized } });
 });
 
 export { uploads };

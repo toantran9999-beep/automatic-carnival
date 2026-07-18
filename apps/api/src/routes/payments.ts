@@ -309,7 +309,23 @@ payments.post("/webhooks/sepay", async (c) => {
     c.req.header("authorization")?.replace(/^Bearer\s+/i, ""),
   );
 
-  if (expectedSecret && providedSecret !== expectedSecret) {
+  // Bắt buộc phải cấu hình secret. Nếu chưa cấu hình, từ chối để tránh webhook
+  // giả mạo báo "đã thanh toán" khi chi nhánh chưa đặt secret.
+  if (!expectedSecret) {
+    await logWebhookEvent({
+      providerTransactionId,
+      paymentRequestId: request.id,
+      branchId: request.branch_id,
+      amount,
+      content,
+      matched: false,
+      reason: "webhook_secret_not_configured",
+      payload: body,
+    });
+    return c.json({ success: false, error: "webhook secret not configured" }, 401);
+  }
+
+  if (providedSecret !== expectedSecret) {
     await logWebhookEvent({
       providerTransactionId,
       paymentRequestId: request.id,

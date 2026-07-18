@@ -9,9 +9,43 @@ import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { hashPassword } from "../lib/hash.js";
+import { ROLES } from "@restai/config";
 import { t } from "../lib/i18n.js";
 
 const staff = new Hono<AppEnv>();
+
+/** Cấp bậc của vai trò (số nhỏ = quyền cao). Vai trò không hợp lệ coi như thấp nhất. */
+function roleLevel(role: string): number {
+  return (ROLES as Record<string, { level: number }>)[role]?.level ?? 99;
+}
+
+/** true nếu actor được phép tác động lên vai trò `targetRole` (không được tạo/sửa vai trò cao hơn chính mình). */
+function canManageRole(actorRole: string, targetRole: string): boolean {
+  return roleLevel(targetRole) >= roleLevel(actorRole);
+}
+
+/**
+ * Trả về danh sách branchId hợp lệ thuộc đúng tổ chức. Nếu có branchId lạ (khác tổ chức
+ * hoặc không tồn tại) thì trả về null để caller từ chối.
+ */
+async function validateBranchIds(
+  branchIds: string[],
+  organizationId: string,
+): Promise<string[] | null> {
+  if (branchIds.length === 0) return [];
+  const rows = await db
+    .select({ id: schema.branches.id })
+    .from(schema.branches)
+    .where(
+      and(
+        inArray(schema.branches.id, branchIds),
+        eq(schema.branches.organization_id, organizationId),
+      ),
+    );
+  const found = new Set(rows.map((r) => r.id));
+  if (found.size !== new Set(branchIds).size) return null;
+  return branchIds;
+}
 
 staff.use("*", authMiddleware);
 staff.use("*", tenantMiddleware);
@@ -86,6 +120,24 @@ staff.post(
   async (c) => {
     const body = c.req.valid("json");
     const tenant = c.get("tenant") as any;
+    const actor = c.get("user") as any;
+
+    // Không cho tạo tài khoản có vai trò cao hơn chính mình (chống leo thang quyền).
+    if (!canManageRole(actor.role, body.role)) {
+      return c.json(
+        { success: false, error: { code: "FORBIDDEN", message: t(c, "no_permission") } },
+        403,
+      );
+    }
+
+    // Chỉ được gán chi nhánh thuộc đúng tổ chức của mình.
+    const validBranchIds = await validateBranchIds(body.branchIds, tenant.organizationId);
+    if (validBranchIds === null) {
+      return c.json(
+        { success: false, error: { code: "FORBIDDEN", message: t(c, "no_branch_access") } },
+        403,
+      );
+    }
 
     // Check email uniqueness
     const [existing] = await db
@@ -154,10 +206,11 @@ staff.patch(
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
     const tenant = c.get("tenant") as any;
+    const actor = c.get("user") as any;
 
     // Verify user belongs to this org
     const [user] = await db
-      .select({ id: schema.users.id })
+      .select({ id: schema.users.id, role: schema.users.role })
       .from(schema.users)
       .where(
         and(
@@ -171,6 +224,33 @@ staff.patch(
         { success: false, error: { code: "NOT_FOUND", message: t(c, "user_not_found") } },
         404,
       );
+    }
+
+    // Không được sửa tài khoản có quyền cao hơn mình.
+    if (!canManageRole(actor.role, user.role)) {
+      return c.json(
+        { success: false, error: { code: "FORBIDDEN", message: t(c, "no_permission") } },
+        403,
+      );
+    }
+
+    // Không được nâng vai trò lên cao hơn mình.
+    if (body.role !== undefined && !canManageRole(actor.role, body.role)) {
+      return c.json(
+        { success: false, error: { code: "FORBIDDEN", message: t(c, "no_permission") } },
+        403,
+      );
+    }
+
+    // Chi nhánh gán mới phải thuộc đúng tổ chức.
+    if (body.branchIds !== undefined) {
+      const valid = await validateBranchIds(body.branchIds, tenant.organizationId);
+      if (valid === null) {
+        return c.json(
+          { success: false, error: { code: "FORBIDDEN", message: t(c, "no_branch_access") } },
+          403,
+        );
+      }
     }
 
     // Build update object
@@ -221,9 +301,10 @@ staff.patch(
     const { id } = c.req.valid("param");
     const body = c.req.valid("json");
     const tenant = c.get("tenant") as any;
+    const actor = c.get("user") as any;
 
     const [user] = await db
-      .select({ id: schema.users.id })
+      .select({ id: schema.users.id, role: schema.users.role })
       .from(schema.users)
       .where(
         and(
@@ -236,6 +317,14 @@ staff.patch(
       return c.json(
         { success: false, error: { code: "NOT_FOUND", message: t(c, "user_not_found") } },
         404,
+      );
+    }
+
+    // Không được đặt lại mật khẩu của tài khoản quyền cao hơn mình.
+    if (!canManageRole(actor.role, user.role)) {
+      return c.json(
+        { success: false, error: { code: "FORBIDDEN", message: t(c, "no_permission") } },
+        403,
       );
     }
 

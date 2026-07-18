@@ -17,8 +17,12 @@ setInterval(() => {
 
 export function rateLimiter(maxRequests = 100, windowMs = 60_000, prefix = "global") {
   return createMiddleware(async (c, next) => {
+    // Lấy IP phần TỬ CUỐI của X-Forwarded-For — giá trị do reverse proxy (Caddy) của
+    // ta thêm vào là đáng tin; phần tử đầu do client tự gửi nên spoof được.
+    const xff = c.req.header("x-forwarded-for");
+    const parts = xff?.split(",").map((s) => s.trim()).filter(Boolean);
     const ip =
-      c.req.header("x-forwarded-for")?.split(",")[0]?.trim() ||
+      (parts && parts.length > 0 ? parts[parts.length - 1] : undefined) ||
       c.req.header("x-real-ip") ||
       "unknown";
 

@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq } from "drizzle-orm";
+import { eq, and, gt } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import { registerOrgSchema, loginSchema } from "@restai/validators";
 import { hashPassword, verifyPassword } from "../lib/hash.js";
@@ -217,6 +217,34 @@ auth.post(
     if (!user || !user.is_active) {
       return c.json(
         { success: false, error: { code: "UNAUTHORIZED", message: t(c, "user_not_found") } },
+        401,
+      );
+    }
+
+    // Refresh token phải còn tồn tại trong DB (chưa bị logout/thu hồi) và chưa hết hạn.
+    // Nếu không đối chiếu, một token đã đăng xuất vẫn refresh được suốt 7 ngày.
+    const now = new Date();
+    const storedTokens = await db
+      .select({ id: schema.refreshTokens.id, token_hash: schema.refreshTokens.token_hash })
+      .from(schema.refreshTokens)
+      .where(
+        and(
+          eq(schema.refreshTokens.user_id, user.id),
+          gt(schema.refreshTokens.expires_at, now),
+        ),
+      );
+
+    let matched = false;
+    for (const row of storedTokens) {
+      if (await verifyPassword(row.token_hash, refreshToken)) {
+        matched = true;
+        break;
+      }
+    }
+
+    if (!matched) {
+      return c.json(
+        { success: false, error: { code: "UNAUTHORIZED", message: t(c, "token_expired") } },
         401,
       );
     }

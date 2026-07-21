@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, gte, desc, sql, sum } from "drizzle-orm";
+import { eq, and, gte, lt, desc, sql, sum } from "drizzle-orm";
 import { alias } from "drizzle-orm/pg-core";
 import { z } from "zod";
 import { db, schema } from "@restai/db";
@@ -93,7 +93,7 @@ async function computeDaySummary(branchId: string, openedAt: Date) {
         eq(schema.orders.branch_id, branchId),
         eq(schema.orders.status, "completed"),
         gte(schema.orders.created_at, dayStart),
-        sql`${schema.orders.created_at} < ${dayEnd}`,
+        lt(schema.orders.created_at, dayEnd),
       ),
     );
 
@@ -105,7 +105,7 @@ async function computeDaySummary(branchId: string, openedAt: Date) {
         eq(schema.orders.branch_id, branchId),
         eq(schema.orders.status, "cancelled"),
         gte(schema.orders.created_at, dayStart),
-        sql`${schema.orders.created_at} < ${dayEnd}`,
+        lt(schema.orders.created_at, dayEnd),
       ),
     );
 

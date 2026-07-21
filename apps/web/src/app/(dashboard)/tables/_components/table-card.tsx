@@ -64,17 +64,18 @@ const STATUS_METADATA: Record<
   }
 > = {
   available: {
-    bg: "bg-emerald-50/70 border border-emerald-200/70 dark:bg-emerald-950/20 dark:border-emerald-800/40",
-    text: "text-emerald-700 dark:text-emerald-300",
-    number: "text-emerald-900 dark:text-emerald-100",
+    // Bàn trống = nền trung tính/trắng, lùi lại cho bàn có khách nổi lên
+    bg: "bg-card border border-border dark:bg-card",
+    text: "text-muted-foreground",
+    number: "text-foreground/70 dark:text-foreground/70",
     actionTarget: "occupied",
     actionBg: "bg-blue-600 hover:bg-blue-700 text-white",
   },
   occupied: {
-    // Bàn có khách tô đậm rõ (kiểu iPOS) để liếc là thấy khác bàn trống
-    bg: "bg-blue-100 border border-blue-300 dark:bg-blue-900/40 dark:border-blue-700",
-    text: "text-blue-700 dark:text-blue-300",
-    number: "text-blue-900 dark:text-blue-100",
+    // Bàn có khách = tô xanh đậm + viền dày 2px + đổ bóng để nổi bật hẳn so với bàn trống
+    bg: "bg-blue-200/80 border-2 border-blue-500 shadow-sm dark:bg-blue-900/60 dark:border-blue-400",
+    text: "text-blue-800 dark:text-blue-200",
+    number: "text-blue-900 dark:text-blue-50",
     actionTarget: "available",
     actionBg: "bg-emerald-600 hover:bg-emerald-700 text-white",
   },

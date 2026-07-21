@@ -43,6 +43,26 @@ interface NavGroup {
   items: { href: string; label: string; icon: React.ElementType }[];
 }
 
+type NavItem = NavGroup["items"][number];
+
+// Thứ tự ưu tiên cho thanh menu dưới (tối đa 5 mục). "Bán hàng" (POS) đứng đầu vì là
+// màn chính của nhân viên; đảm bảo Thanh toán không bị cắt mất khi thừa mục.
+const BOTTOM_NAV_PRIORITY = [
+  "/pos",
+  "/tables",
+  "/orders",
+  "/payments",
+  "/connections",
+  "/dashboard",
+  "/menu",
+  "/kitchen",
+  "/inventory",
+  "/staff",
+  "/loyalty",
+  "/reports",
+  "/settings",
+];
+
 interface Branch {
   id: string;
   name: string;
@@ -233,14 +253,25 @@ export default function DashboardLayout({
 
   const orgName = org?.name || "TODA POS";
 
+  // Sidebar/drawer (chủ yếu cho admin): tôn trọng công tắc "Ẩn mục POS" cho gọn.
   const filteredNavGroups = getFilteredNavGroups(user.role, t)
     .map((group) => ({
       ...group,
       items: hidePosNav ? group.items.filter((item) => item.href !== "/pos") : group.items,
     }))
     .filter((group) => group.items.length > 0);
-  const allFilteredItems = filteredNavGroups.flatMap((g) => g.items);
-  const mobileNavItems = allFilteredItems.slice(0, 5);
+
+  // Thanh menu dưới: LUÔN có "Bán hàng" (POS) — với nhân viên đây là màn chính, không
+  // ẩn theo hidePosNav; chọn 5 mục quan trọng nhất theo BOTTOM_NAV_PRIORITY (giữ Thanh toán).
+  const bottomCandidates = new Map<string, NavItem>(
+    getFilteredNavGroups(user.role, t)
+      .flatMap((g) => g.items)
+      .map((i) => [i.href, i]),
+  );
+  const mobileNavItems: NavItem[] = BOTTOM_NAV_PRIORITY
+    .map((href) => bottomCandidates.get(href))
+    .filter((x): x is NavItem => Boolean(x))
+    .slice(0, 5);
 
   // Nhãn ngắn cho thanh menu dưới (tab bar) — chữ dài như "Bảng điều khiển"
   // xuống 2 dòng làm lệch icon. Chỉ rút gọn khi nhãn quá dài để canh đều.

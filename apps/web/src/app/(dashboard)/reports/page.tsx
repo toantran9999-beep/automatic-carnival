@@ -19,6 +19,7 @@ import { ReportStats } from "./_components/report-stats";
 import { SalesChart } from "./_components/sales-chart";
 import { PaymentMethodsChart } from "./_components/payment-methods-chart";
 import { TopItemsList } from "./_components/top-items-list";
+import { ShiftHistoryList } from "./_components/shift-history-list";
 import { useTranslation } from "@/stores/lang-store";
 
 function getDefaultDates() {
@@ -305,6 +306,8 @@ export default function ReportsPage() {
       </div>
 
       <TopItemsList topItems={topItems} isLoading={topItemsLoading} />
+
+      <ShiftHistoryList />
     </div>
   );
 }

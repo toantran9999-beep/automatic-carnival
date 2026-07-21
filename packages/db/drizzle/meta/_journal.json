@@ -64,6 +64,13 @@
       "when": 1784692800000,
       "tag": "0008_custom_order_items",
       "breakpoints": true
+    },
+    {
+      "idx": 9,
+      "version": "7",
+      "when": 1784779200000,
+      "tag": "0009_shift_day_summary",
+      "breakpoints": true
     }
   ]
 }

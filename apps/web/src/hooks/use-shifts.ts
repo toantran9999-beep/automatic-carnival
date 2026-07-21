@@ -10,12 +10,38 @@ export interface ShiftSummary {
   byMethod: Record<string, number>;
 }
 
+export interface DaySummary {
+  dayStart: string;
+  totalOrders: number;
+  totalRevenue: number;
+  cancelledOrders: number;
+}
+
 export interface CurrentShift {
   id: string;
   status: string;
   opened_at: string;
   opening_cash: number;
   summary: ShiftSummary;
+  daySummary: DaySummary;
+}
+
+export interface ShiftHistoryEntry {
+  id: string;
+  opened_at: string;
+  closed_at: string;
+  opening_cash: number;
+  closing_cash: number;
+  expected_cash: number;
+  cash_difference: number;
+  cash_sales: number;
+  total_sales: number;
+  order_count: number;
+  sales_by_method: Record<string, number>;
+  day_summary: DaySummary | null;
+  note: string | null;
+  opened_by_name: string | null;
+  closed_by_name: string | null;
 }
 
 /** Ca đang mở của chi nhánh (null nếu chưa mở). */
@@ -24,6 +50,14 @@ export function useCurrentShift() {
     queryKey: ["shifts", "current"],
     queryFn: () => apiFetch("/api/shifts/current"),
     refetchInterval: 30000,
+  });
+}
+
+/** Lịch sử các ca đã đóng (thống kê hàng ngày), mới nhất trước. */
+export function useShiftHistory(limit = 30) {
+  return useQuery<ShiftHistoryEntry[]>({
+    queryKey: ["shifts", "history", limit],
+    queryFn: () => apiFetch(`/api/shifts/history?limit=${limit}`),
   });
 }
 
@@ -47,3 +81,4 @@ export function useCloseShift() {
     },
   });
 }
+

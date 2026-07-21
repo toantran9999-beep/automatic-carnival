@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Dialog,
   DialogContent,
@@ -10,7 +11,7 @@ import {
 import { Button } from "@restai/ui/components/button";
 import { Input } from "@restai/ui/components/input";
 import { Label } from "@restai/ui/components/label";
-import { Lock, LockOpen, Receipt, Loader2, ChevronDown } from "lucide-react";
+import { Lock, LockOpen, Receipt, Loader2, ChevronDown, AlertTriangle, ArrowRight } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
@@ -18,6 +19,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useOpenShift, useCloseShift, useCurrentShift, type CurrentShift } from "@/hooks/use-shifts";
 import { usePrintShiftReport } from "@/components/print-ticket";
 import { useBranchSettings } from "@/hooks/use-settings";
+import { useTables, useTakeawayOrders } from "@/hooks/use-tables";
 
 /** Người dùng nhập số tiền theo đồng (VND) → quy về cents (×100) để lưu. */
 function vndToCents(s: string): number {
@@ -166,8 +168,31 @@ export function CloseShiftDialog({
           </DialogTitle>
         </DialogHeader>
         <div className="space-y-3 text-sm">
+          {shift.daySummary && (
+            <div className="space-y-1 rounded-lg border border-primary/30 bg-primary/5 p-3">
+              <p className="mb-1 text-xs font-semibold uppercase tracking-wide text-primary">
+                {vi ? "Tổng quan cả ngày" : "Full-day overview"}
+              </p>
+              <Row
+                label={vi ? "Đơn hoàn tất" : "Completed orders"}
+                value={String(shift.daySummary.totalOrders)}
+              />
+              {shift.daySummary.cancelledOrders > 0 && (
+                <Row
+                  label={vi ? "Đơn đã hủy" : "Cancelled orders"}
+                  value={String(shift.daySummary.cancelledOrders)}
+                />
+              )}
+              <Row
+                label={vi ? "Doanh thu cả ngày" : "Full-day revenue"}
+                value={formatCurrency(shift.daySummary.totalRevenue)}
+                strong
+              />
+            </div>
+          )}
+
           <div className="space-y-1 rounded-lg border p-3">
-            <Row label={vi ? "Số đơn" : "Orders"} value={String(s.orderCount)} />
+            <Row label={vi ? "Số đơn (ca này)" : "Orders (this shift)"} value={String(s.orderCount)} />
             {Object.entries(s.byMethod).map(([m, amt]) => (
               <Row key={m} label={methodLabel(m, vi)} value={formatCurrency(amt as number)} />
             ))}
@@ -243,9 +268,32 @@ export function PosShiftControl() {
   const vi = lang === "vi";
   const [closeOpen, setCloseOpen] = useState(false);
   const [openOpen, setOpenOpen] = useState(false);
+  const [warnOpen, setWarnOpen] = useState(false);
 
   const canManage =
     !!user && ["super_admin", "org_admin", "branch_manager", "cashier"].includes(user.role);
+
+  // Chỉ cần tải dữ liệu bàn/mang về khi ca đang mở (để kiểm tra trước khi cho đóng ca).
+  const { data: tablesData } = useTables();
+  const { data: takeawayOrders } = useTakeawayOrders();
+  const occupiedTables = useMemo(
+    () => ((tablesData?.tables ?? []) as any[]).filter((t) => t.activeSession),
+    [tablesData],
+  );
+  const openTakeaway = takeawayOrders ?? [];
+  const pendingDue =
+    occupiedTables.reduce((sum, t) => sum + (t.activeSession?.total || 0), 0) +
+    openTakeaway.reduce((sum: number, o: any) => sum + (o.total || 0), 0);
+  const hasPending = occupiedTables.length > 0 || openTakeaway.length > 0;
+
+  const handleClosePress = () => {
+    if (!canManage) return;
+    if (hasPending) {
+      setWarnOpen(true);
+    } else {
+      setCloseOpen(true);
+    }
+  };
 
   // Chưa mở ca: hiện nút "Mở ca" gọn cho người quản lý (đầu ngày mở ngay từ header).
   if (!shift) {
@@ -275,7 +323,7 @@ export function PosShiftControl() {
     <>
       <button
         type="button"
-        onClick={() => canManage && setCloseOpen(true)}
+        onClick={handleClosePress}
         disabled={!canManage}
         title={vi ? "Ca làm việc" : "Shift"}
         className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-default disabled:opacity-90 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
@@ -285,9 +333,97 @@ export function PosShiftControl() {
         {canManage && <ChevronDown className="h-3 w-3 opacity-60" />}
       </button>
       {canManage && (
-        <CloseShiftDialog open={closeOpen} onOpenChange={setCloseOpen} shift={shift} />
+        <>
+          <PendingTablesWarningDialog
+            open={warnOpen}
+            onOpenChange={setWarnOpen}
+            occupiedCount={occupiedTables.length}
+            takeawayCount={openTakeaway.length}
+            totalDue={pendingDue}
+            onKeepAndClose={() => {
+              setWarnOpen(false);
+              setCloseOpen(true);
+            }}
+          />
+          <CloseShiftDialog open={closeOpen} onOpenChange={setCloseOpen} shift={shift} />
+        </>
       )}
     </>
+  );
+}
+
+/**
+ * Cảnh báo còn bàn/đơn mang về chưa thanh toán khi bấm đóng ca — cho chọn
+ * "Đi thanh toán trước" (huỷ, sang màn Bàn ăn) hoặc "Vẫn đóng ca, giữ bàn qua ca sau".
+ */
+function PendingTablesWarningDialog({
+  open,
+  onOpenChange,
+  occupiedCount,
+  takeawayCount,
+  totalDue,
+  onKeepAndClose,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  occupiedCount: number;
+  takeawayCount: number;
+  totalDue: number;
+  onKeepAndClose: () => void;
+}) {
+  const { lang } = useTranslation();
+  const vi = lang === "vi";
+  const router = useRouter();
+
+  const parts: string[] = [];
+  if (occupiedCount > 0) {
+    parts.push(vi ? `${occupiedCount} bàn đang phục vụ` : `${occupiedCount} tables in service`);
+  }
+  if (takeawayCount > 0) {
+    parts.push(vi ? `${takeawayCount} đơn mang về` : `${takeawayCount} takeaway orders`);
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2 text-amber-700 dark:text-amber-400">
+            <AlertTriangle className="h-5 w-5" />
+            {vi ? "Còn bàn/đơn chưa thanh toán" : "Unpaid tables/orders"}
+          </DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 text-sm">
+          <p className="text-muted-foreground">
+            {vi
+              ? `Hiện có ${parts.join(" và ")}, tổng cộng chưa thu:`
+              : `There are ${parts.join(" and ")}, unpaid total:`}
+          </p>
+          <p className="text-center text-2xl font-bold text-amber-700 dark:text-amber-400">
+            {formatCurrency(totalDue)}
+          </p>
+          <p className="text-xs text-muted-foreground">
+            {vi
+              ? "Anh có thể đi thanh toán các bàn này trước, hoặc vẫn đóng ca và giữ nguyên các bàn để ca sau tiếp tục phục vụ."
+              : "You can settle these tables first, or still close the shift and keep them open for the next shift."}
+          </p>
+          <div className="flex flex-col gap-2 pt-1">
+            <Button
+              variant="outline"
+              onClick={() => {
+                onOpenChange(false);
+                router.push("/tables");
+              }}
+            >
+              <ArrowRight className="mr-1.5 h-4 w-4" />
+              {vi ? "Đi thanh toán bàn trước" : "Go settle tables first"}
+            </Button>
+            <Button variant="ghost" onClick={onKeepAndClose}>
+              {vi ? "Vẫn đóng ca (giữ bàn qua ca sau)" : "Close anyway (keep tables for next shift)"}
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }
 

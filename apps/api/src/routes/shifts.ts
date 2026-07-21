@@ -2,12 +2,15 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
 import { eq, and, gte, desc, sql, sum } from "drizzle-orm";
+import { alias } from "drizzle-orm/pg-core";
+import { z } from "zod";
 import { db, schema } from "@restai/db";
 import { openShiftSchema, closeShiftSchema } from "@restai/validators";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { wsManager } from "../ws/manager.js";
+import { peruStartOfDay } from "../lib/timezone.js";
 
 const shifts = new Hono<AppEnv>();
 
@@ -22,7 +25,11 @@ interface ShiftSummary {
   byMethod: Record<string, number>;
 }
 
-/** Tổng tiền thu được (payments completed) của chi nhánh kể từ lúc mở ca. */
+/**
+ * Tổng tiền thu được (payments completed) của chi nhánh kể từ lúc mở ca — dùng để đối
+ * soát tiền mặt (expectedCash/chênh lệch) nên PHẢI theo đúng khoảng thời gian ca đang mở,
+ * không tính gộp ca trước đó (nếu có nhiều ca trong 1 ngày, tiền mặt ca trước đã chốt riêng).
+ */
 async function computeSummary(branchId: string, openedAt: Date): Promise<ShiftSummary> {
   const rows = await db
     .select({
@@ -66,6 +73,50 @@ async function computeSummary(branchId: string, openedAt: Date): Promise<ShiftSu
   };
 }
 
+/**
+ * Báo cáo tổng quan CẢ NGÀY (0h giờ VN chứa `openedAt`) — dựa trên đơn hàng (orders),
+ * không chỉ ca hiện tại. Dùng để hiển thị khi đóng ca + lưu vào thống kê hàng ngày,
+ * KHÔNG dùng để đối soát tiền mặt (việc đó vẫn theo đúng khoảng thời gian ca).
+ */
+async function computeDaySummary(branchId: string, openedAt: Date) {
+  const dayStart = peruStartOfDay(openedAt);
+  const dayEnd = new Date(dayStart.getTime() + 24 * 60 * 60 * 1000);
+
+  const [orderStats] = await db
+    .select({
+      totalOrders: sql<number>`count(*)::int`,
+      totalRevenue: sum(schema.orders.total),
+    })
+    .from(schema.orders)
+    .where(
+      and(
+        eq(schema.orders.branch_id, branchId),
+        eq(schema.orders.status, "completed"),
+        gte(schema.orders.created_at, dayStart),
+        sql`${schema.orders.created_at} < ${dayEnd}`,
+      ),
+    );
+
+  const cancelledRows = await db
+    .select({ c: sql<number>`count(*)::int` })
+    .from(schema.orders)
+    .where(
+      and(
+        eq(schema.orders.branch_id, branchId),
+        eq(schema.orders.status, "cancelled"),
+        gte(schema.orders.created_at, dayStart),
+        sql`${schema.orders.created_at} < ${dayEnd}`,
+      ),
+    );
+
+  return {
+    dayStart: dayStart.toISOString(),
+    totalOrders: Number(orderStats?.totalOrders || 0),
+    totalRevenue: Number(orderStats?.totalRevenue || 0),
+    cancelledOrders: Number(cancelledRows[0]?.c || 0),
+  };
+}
+
 async function getOpenShift(branchId: string) {
   const [shift] = await db
     .select()
@@ -87,12 +138,16 @@ shifts.get("/current", requirePermission("shifts:read"), async (c) => {
   const shift = await getOpenShift(tenant.branchId);
   if (!shift) return c.json({ success: true, data: null });
 
-  const summary = await computeSummary(tenant.branchId, shift.opened_at);
+  const [summary, daySummary] = await Promise.all([
+    computeSummary(tenant.branchId, shift.opened_at),
+    computeDaySummary(tenant.branchId, shift.opened_at),
+  ]);
   return c.json({
     success: true,
     data: {
       ...shift,
       summary: { ...summary, expectedCash: shift.opening_cash + summary.cashSales },
+      daySummary,
     },
   });
 });
@@ -155,7 +210,10 @@ shifts.post("/close", requirePermission("shifts:manage"), zValidator("json", clo
     );
   }
 
-  const summary = await computeSummary(tenant.branchId, shift.opened_at);
+  const [summary, daySummary] = await Promise.all([
+    computeSummary(tenant.branchId, shift.opened_at),
+    computeDaySummary(tenant.branchId, shift.opened_at),
+  ]);
   const expectedCash = shift.opening_cash + summary.cashSales;
   const now = new Date();
 
@@ -172,6 +230,7 @@ shifts.post("/close", requirePermission("shifts:manage"), zValidator("json", clo
       total_sales: summary.totalSales,
       order_count: summary.orderCount,
       sales_by_method: summary.byMethod,
+      day_summary: daySummary,
       note: body.note ?? shift.note,
       updated_at: now,
     })
@@ -186,8 +245,59 @@ shifts.post("/close", requirePermission("shifts:manage"), zValidator("json", clo
 
   return c.json({
     success: true,
-    data: { ...closed, summary: { ...summary, expectedCash } },
+    data: { ...closed, summary: { ...summary, expectedCash }, daySummary },
   });
 });
+
+// GET /history - Lịch sử các ca đã đóng (thống kê hàng ngày, mới nhất trước)
+shifts.get(
+  "/history",
+  requirePermission("shifts:read"),
+  zValidator(
+    "query",
+    z.object({
+      limit: z.coerce.number().int().min(1).max(100).default(30),
+    }),
+  ),
+  async (c) => {
+    const tenant = c.get("tenant") as any;
+    const { limit } = c.req.valid("query");
+
+    const opener = alias(schema.users, "opener");
+    const closer = alias(schema.users, "closer");
+
+    const rows = await db
+      .select({
+        id: schema.registerShifts.id,
+        opened_at: schema.registerShifts.opened_at,
+        closed_at: schema.registerShifts.closed_at,
+        opening_cash: schema.registerShifts.opening_cash,
+        closing_cash: schema.registerShifts.closing_cash,
+        expected_cash: schema.registerShifts.expected_cash,
+        cash_difference: schema.registerShifts.cash_difference,
+        cash_sales: schema.registerShifts.cash_sales,
+        total_sales: schema.registerShifts.total_sales,
+        order_count: schema.registerShifts.order_count,
+        sales_by_method: schema.registerShifts.sales_by_method,
+        day_summary: schema.registerShifts.day_summary,
+        note: schema.registerShifts.note,
+        opened_by_name: opener.name,
+        closed_by_name: closer.name,
+      })
+      .from(schema.registerShifts)
+      .leftJoin(opener, eq(opener.id, schema.registerShifts.opened_by))
+      .leftJoin(closer, eq(closer.id, schema.registerShifts.closed_by))
+      .where(
+        and(
+          eq(schema.registerShifts.branch_id, tenant.branchId),
+          eq(schema.registerShifts.status, "closed"),
+        ),
+      )
+      .orderBy(desc(schema.registerShifts.closed_at))
+      .limit(limit);
+
+    return c.json({ success: true, data: rows });
+  },
+);
 
 export { shifts };

@@ -38,6 +38,9 @@ export const registerShifts = pgTable("register_shifts", {
   total_sales: integer("total_sales"),
   order_count: integer("order_count"),
   sales_by_method: jsonb("sales_by_method"),
+  // Báo cáo tổng quan CẢ NGÀY (đơn hàng completed từ 0h giờ VN) tại thời điểm đóng ca —
+  // lưu lại để xem thống kê hàng ngày kể cả sau này (không phụ thuộc query lại orders).
+  day_summary: jsonb("day_summary"),
   note: text("note"),
   created_at: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
   updated_at: timestamp("updated_at", { withTimezone: true }).notNull().defaultNow(),

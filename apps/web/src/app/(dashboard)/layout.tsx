@@ -435,8 +435,11 @@ export default function DashboardLayout({
             </div>
 
             <div className="flex items-center gap-3">
-              {/* Ca làm việc — chỉ hiện trên màn Bán hàng, gọn trên header */}
-              {pathname.startsWith("/pos") && <PosShiftControl />}
+              {/* Ca làm việc — hiện trên màn Bán hàng VÀ Bàn ăn để đầu/cuối ca
+                  (không có khách, không cần chọn bàn) vẫn mở/đóng ca ngay từ header */}
+              {(pathname.startsWith("/pos") || pathname.startsWith("/tables")) && (
+                <PosShiftControl />
+              )}
               {/* Trạm in tại quầy (theo thiết bị) */}
               <StationToggle />
               {/* Real-time clock */}

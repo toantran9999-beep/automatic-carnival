@@ -231,9 +231,10 @@ export function CloseShiftDialog({
 
 /**
  * Nút điều khiển ca GỌN đặt trên header (thay thanh ShiftBar chình ì).
- * - Chưa mở ca: không hiện gì (màn khóa lớn trong POS lo việc mở ca).
- * - Đang mở ca: pill nhỏ "● giờ mở" — quản lý/thu ngân bấm để mở bảng Đóng ca.
- * Tự lấy ca hiện tại + quyền, dùng ở layout header (chỉ khi đang ở /pos).
+ * - Chưa mở ca: nút "Mở ca" nhỏ (chỉ người quản lý/thu ngân).
+ * - Đang mở ca: pill "● giờ mở" — bấm để mở bảng Đóng ca.
+ * Dùng ở layout header trên màn Bán hàng VÀ màn Bàn ăn, nên đầu/cuối ca (không có
+ * khách, không cần chọn bàn) vẫn mở/đóng ca được ngay từ header.
  */
 export function PosShiftControl() {
   const { user } = useAuthStore();
@@ -241,11 +242,29 @@ export function PosShiftControl() {
   const { lang } = useTranslation();
   const vi = lang === "vi";
   const [closeOpen, setCloseOpen] = useState(false);
+  const [openOpen, setOpenOpen] = useState(false);
 
   const canManage =
     !!user && ["super_admin", "org_admin", "branch_manager", "cashier"].includes(user.role);
 
-  if (!shift) return null;
+  // Chưa mở ca: hiện nút "Mở ca" gọn cho người quản lý (đầu ngày mở ngay từ header).
+  if (!shift) {
+    if (!canManage) return null;
+    return (
+      <>
+        <button
+          type="button"
+          onClick={() => setOpenOpen(true)}
+          title={vi ? "Mở ca làm việc" : "Open shift"}
+          className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-900/40"
+        >
+          <LockOpen className="h-3.5 w-3.5" />
+          {vi ? "Mở ca" : "Open shift"}
+        </button>
+        <OpenShiftDialog open={openOpen} onOpenChange={setOpenOpen} />
+      </>
+    );
+  }
 
   const openedTime = new Date(shift.opened_at).toLocaleTimeString(vi ? "vi-VN" : "en-US", {
     hour: "2-digit",

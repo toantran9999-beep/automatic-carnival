@@ -4,7 +4,7 @@ import { useMemo } from "react";
 import { Input } from "@restai/ui/components/input";
 import { Button } from "@restai/ui/components/button";
 import { Badge } from "@restai/ui/components/badge";
-import { Search, Loader2, X } from "lucide-react";
+import { Search, Loader2, X, PencilLine } from "lucide-react";
 import { toThumbUrl } from "@/lib/image-thumb";
 import { TodaMark } from "@/components/toda-mark";
 import { useTranslation } from "@/stores/lang-store";
@@ -58,6 +58,7 @@ export function ProductGrid({
   onCategoryChange,
   cart,
   onItemClick,
+  onAddCustom,
 }: {
   categories: any[];
   items: any[];
@@ -68,8 +69,9 @@ export function ProductGrid({
   onCategoryChange: (id: string | null) => void;
   cart: PosCartItem[];
   onItemClick: (item: any) => void;
+  onAddCustom?: () => void;
 }) {
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   const availableItems = useMemo(
     () => items.filter((i: any) => i.is_available),
@@ -123,23 +125,39 @@ export function ProductGrid({
 
       <div className="flex min-w-0 flex-1 flex-col md:pl-3">
       <div className="sticky top-0 z-10 bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
-          <Input
-            placeholder={t("pos.searchPlaceholder")}
-            value={search}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="h-11 rounded-lg border-border/70 bg-card pl-9 pr-11 text-base shadow-sm md:text-sm"
-          />
-          {search && (
-            <button
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
+            <Input
+              placeholder={t("pos.searchPlaceholder")}
+              value={search}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="h-11 rounded-lg border-border/70 bg-card pl-9 pr-11 text-base shadow-sm md:text-sm"
+            />
+            {search && (
+              <button
+                type="button"
+                aria-label="Clear search"
+                onClick={() => onSearchChange("")}
+                className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4.5 w-4.5" />
+              </button>
+            )}
+          </div>
+          {onAddCustom && (
+            <Button
               type="button"
-              aria-label="Clear search"
-              onClick={() => onSearchChange("")}
-              className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center text-muted-foreground hover:text-foreground"
+              variant="outline"
+              onClick={onAddCustom}
+              className="h-11 shrink-0 gap-1.5 rounded-lg px-3 font-semibold"
+              title={lang === "vi" ? "Món ngoài menu" : "Off-menu item"}
             >
-              <X className="h-4.5 w-4.5" />
-            </button>
+              <PencilLine className="h-4 w-4" />
+              <span className="hidden sm:inline">
+                {lang === "vi" ? "Món khác" : "Custom"}
+              </span>
+            </Button>
           )}
         </div>
 

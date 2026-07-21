@@ -131,14 +131,23 @@ export const startSessionSchema = z.object({
 });
 
 // Order validators
-export const createOrderItemSchema = z.object({
-  menuItemId: z.string().uuid(),
-  quantity: z.number().int().min(1).max(99),
-  notes: z.string().max(500).optional(),
-  modifiers: z.array(z.object({
-    modifierId: z.string().uuid(),
-  })).default([]),
-});
+// Món thường: có menuItemId. Món nhập tay (ngoài menu): bỏ menuItemId, truyền
+// customName + customPrice (cents, tối đa 10 triệu đồng/món để chặn gõ nhầm).
+export const createOrderItemSchema = z
+  .object({
+    menuItemId: z.string().uuid().optional(),
+    customName: z.string().trim().min(1).max(255).optional(),
+    customPrice: z.number().int().min(0).max(1_000_000_000).optional(),
+    quantity: z.number().int().min(1).max(99),
+    notes: z.string().max(500).optional(),
+    modifiers: z.array(z.object({
+      modifierId: z.string().uuid(),
+    })).default([]),
+  })
+  .refine(
+    (i) => i.menuItemId || (i.customName && i.customPrice !== undefined),
+    { message: "Món phải có menuItemId hoặc customName + customPrice" },
+  );
 
 export const createOrderSchema = z.object({
   type: z.enum(["dine_in", "takeout", "delivery"]).default("dine_in"),

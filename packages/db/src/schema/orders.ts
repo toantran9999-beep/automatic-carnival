@@ -58,9 +58,10 @@ export const orderItems = pgTable("order_items", {
   order_id: uuid("order_id")
     .notNull()
     .references(() => orders.id, { onDelete: "cascade" }),
-  menu_item_id: uuid("menu_item_id")
-    .notNull()
-    .references(() => menuItems.id, { onDelete: "restrict" }),
+  // Null = món nhập tay (khách gọi ngoài menu) — tên/giá lấy từ cột snapshot bên dưới.
+  menu_item_id: uuid("menu_item_id").references(() => menuItems.id, {
+    onDelete: "restrict",
+  }),
   name: varchar("name", { length: 255 }).notNull(), // snapshot
   unit_price: integer("unit_price").notNull(), // snapshot in cents
   quantity: integer("quantity").notNull().default(1),

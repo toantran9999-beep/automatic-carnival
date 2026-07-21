@@ -7,7 +7,10 @@ import { deductForOrder } from "./inventory.service.js";
 
 // Types for order creation input
 interface OrderItemInput {
-  menuItemId: string;
+  /** Không có = món nhập tay (ngoài menu), dùng customName + customPrice. */
+  menuItemId?: string;
+  customName?: string;
+  customPrice?: number;
   quantity: number;
   notes?: string;
   modifiers?: Array<{ modifierId: string }>;
@@ -51,12 +54,16 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     lang,
   } = params;
 
-  // Get menu items for price calculation
-  const menuItemIds = items.map((i) => i.menuItemId);
-  const menuItemsResult = await db
-    .select()
-    .from(schema.menuItems)
-    .where(inArray(schema.menuItems.id, menuItemIds));
+  // Get menu items for price calculation (bỏ qua món nhập tay không có menuItemId)
+  const menuItemIds = items
+    .map((i) => i.menuItemId)
+    .filter((id): id is string => !!id);
+  const menuItemsResult = menuItemIds.length
+    ? await db
+        .select()
+        .from(schema.menuItems)
+        .where(inArray(schema.menuItems.id, menuItemIds))
+    : [];
 
   const menuItemMap = new Map(menuItemsResult.map((mi) => [mi.id, mi]));
 
@@ -84,7 +91,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
   // Validate items and calculate totals
   let subtotal = 0;
   const orderItemsData: Array<{
-    menu_item_id: string;
+    menu_item_id: string | null;
     name: string;
     unit_price: number;
     quantity: number;
@@ -95,6 +102,26 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
   }> = [];
 
   for (const item of items) {
+    // Món nhập tay: không tra menu, lấy thẳng tên + giá nhân viên nhập.
+    if (!item.menuItemId) {
+      if (!item.customName || item.customPrice === undefined || item.customPrice < 0) {
+        throw new OrderValidationError("Món nhập tay thiếu tên hoặc giá");
+      }
+      const itemTotal = item.customPrice * item.quantity;
+      subtotal += itemTotal;
+      orderItemsData.push({
+        menu_item_id: null,
+        name: item.customName,
+        unit_price: item.customPrice,
+        quantity: item.quantity,
+        total: itemTotal,
+        notes: item.notes,
+        unit: null,
+        modifiers: [],
+      });
+      continue;
+    }
+
     const menuItem = menuItemMap.get(item.menuItemId);
     if (!menuItem) {
       throw new OrderValidationError(`Item no encontrado: ${item.menuItemId}`);
@@ -263,7 +290,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
 interface ApplyCouponParams {
   couponCode: string;
   organizationId: string;
-  orderItems: Array<{ menu_item_id: string; unit_price: number; quantity: number; total: number }>;
+  orderItems: Array<{ menu_item_id: string | null; unit_price: number; quantity: number; total: number }>;
   subtotal: number;
   customerId: string | null;
   lang?: "vi" | "en";
@@ -397,7 +424,7 @@ async function applyCoupon(params: ApplyCouponParams, tx: TxOrDb): Promise<{ dis
           .where(eq(schema.menuItems.category_id, coupon.category_id));
         const catIds = new Set(categoryItemIds.map((c) => c.id));
         const matchingTotal = orderItems
-          .filter((i) => catIds.has(i.menu_item_id))
+          .filter((i) => i.menu_item_id !== null && catIds.has(i.menu_item_id))
           .reduce((sum, i) => sum + i.total, 0);
         discount = Math.round(matchingTotal * ((coupon.discount_value || 0) / 100));
       }

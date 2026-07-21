@@ -713,6 +713,15 @@ customer.post("/orders", customerAuth, requireActiveSession, zValidator("json", 
   const user = c.get("user") as any;
   const session = c.get("session") as any;
 
+  // Khách tự order chỉ được chọn món trong menu — món nhập tay (tự đặt giá)
+  // là đặc quyền của nhân viên trên POS.
+  if (body.items.some((i) => !i.menuItemId)) {
+    return c.json(
+      { success: false, error: { code: "BAD_REQUEST", message: t(c, "invalid_input") } },
+      400,
+    );
+  }
+
   const branchId = user.branch;
   const organizationId = user.org;
 

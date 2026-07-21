@@ -18,6 +18,7 @@ import { useTranslation } from "@/stores/lang-store";
 import { ProductGrid } from "./_components/product-grid";
 import { CartSidebar } from "./_components/cart-sidebar";
 import { ModifierDialog, type CartModifier } from "./_components/modifier-dialog";
+import { CustomItemDialog } from "./_components/custom-item-dialog";
 import { SuccessDialog } from "./_components/success-dialog";
 import { useBranchSettings } from "@/hooks/use-settings";
 import { usePrintTemporaryTransferBill } from "@/components/print-ticket";
@@ -34,7 +35,8 @@ import { useQueryClient } from "@tanstack/react-query";
 
 export interface PosCartItem {
   lineId: string;
-  menuItemId: string;
+  /** Rỗng = món nhập tay (khách gọi ngoài menu). */
+  menuItemId?: string;
   name: string;
   imageUrl: string | null;
   unitPrice: number;
@@ -99,6 +101,7 @@ export default function PosPage() {
   // Modifier dialog state
   const [modDialogItem, setModDialogItem] = useState<any>(null);
   const [modDialogOpen, setModDialogOpen] = useState(false);
+  const [customDialogOpen, setCustomDialogOpen] = useState(false);
 
   const { data: categories } = useCategories();
   // Lấy toàn bộ món 1 lần, lọc danh mục/tìm kiếm phía client (đổi danh mục tức thì + đếm số món).
@@ -172,6 +175,45 @@ export default function PosPage() {
     [cart]
   );
 
+  /** Thêm món nhập tay (ngoài menu) — nhân viên tự đặt tên + giá (đồng). */
+  const handleAddCustomItem = useCallback(
+    (name: string, priceVnd: number, qty: number, notes: string) => {
+      setCart((prev) => [
+        ...prev,
+        {
+          lineId: nextLineId(),
+          menuItemId: undefined,
+          name: name.trim(),
+          imageUrl: null,
+          unitPrice: Math.round(priceVnd) * 100, // đồng -> cents
+          quantity: qty,
+          notes: notes || undefined,
+          modifiers: [],
+        },
+      ]);
+    },
+    []
+  );
+
+  /** Chuyển giỏ POS thành payload gửi API (phân biệt món menu vs món nhập tay). */
+  const toOrderItems = (items: PosCartItem[]) =>
+    items.map((item) =>
+      item.menuItemId
+        ? {
+            menuItemId: item.menuItemId,
+            quantity: item.quantity,
+            notes: item.notes || undefined,
+            modifiers: item.modifiers.map((m) => ({ modifierId: m.modifierId })),
+          }
+        : {
+            customName: item.name,
+            customPrice: item.unitPrice,
+            quantity: item.quantity,
+            notes: item.notes || undefined,
+            modifiers: [],
+          }
+    );
+
   const updateCartQty = (lineId: string, qty: number) => {
     if (qty <= 0) {
       setCart((prev) => prev.filter((c) => c.lineId !== lineId));
@@ -243,12 +285,7 @@ export default function PosPage() {
         const result = await createOrder.mutateAsync({
           type: orderType,
           customerName: customerName || t("pos.customerPOS"),
-          items: cart.map((item) => ({
-            menuItemId: item.menuItemId,
-            quantity: item.quantity,
-            notes: item.notes || undefined,
-            modifiers: item.modifiers.map((m) => ({ modifierId: m.modifierId })),
-          })),
+          items: toOrderItems(cart),
           notes: orderNotes || undefined,
           tableId: orderType === "dine_in" ? (tableId || undefined) : undefined,
         });
@@ -321,12 +358,7 @@ export default function PosPage() {
       const result = await createOrder.mutateAsync({
         type: orderType,
         customerName: customerName || t("pos.customerPOS"),
-        items: cart.map((item) => ({
-          menuItemId: item.menuItemId,
-          quantity: item.quantity,
-          notes: item.notes || undefined,
-          modifiers: item.modifiers.map((m) => ({ modifierId: m.modifierId })),
-        })),
+        items: toOrderItems(cart),
         notes: orderNotes || undefined,
         tableId: orderType === "dine_in" ? (tableId || undefined) : undefined,
       });
@@ -509,6 +541,7 @@ export default function PosPage() {
           onCategoryChange={setSelectedCategory}
           cart={cart}
           onItemClick={handleItemClick}
+          onAddCustom={() => setCustomDialogOpen(true)}
         />
 
         {/* Desktop cart (inline sidebar) */}
@@ -572,6 +605,12 @@ export default function PosPage() {
         open={modDialogOpen}
         onClose={() => setModDialogOpen(false)}
         onAdd={handleAddFromDialog}
+      />
+
+      <CustomItemDialog
+        open={customDialogOpen}
+        onClose={() => setCustomDialogOpen(false)}
+        onAdd={handleAddCustomItem}
       />
 
       <PosPaymentDialog

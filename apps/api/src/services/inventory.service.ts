@@ -89,6 +89,8 @@ export async function deductForOrder(params: {
   // Wrap all deductions + flag in a transaction
   await db.transaction(async (tx) => {
     for (const orderItem of orderItemsList) {
+      // Món nhập tay không gắn menu item → không có công thức, bỏ qua trừ kho.
+      if (!orderItem.menu_item_id) continue;
       const recipeIngredients = await tx
         .select()
         .from(schema.recipeIngredients)

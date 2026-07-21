@@ -144,14 +144,14 @@ export function TableCard({
     <div
       onClick={() => onCardClick?.(table)}
       className={cn(
-        "rounded-2xl p-4 flex flex-col gap-3 transition-shadow duration-200 hover:shadow-lg cursor-pointer select-none",
+        "rounded-2xl p-3 sm:p-4 flex flex-col gap-2.5 sm:gap-3 transition-shadow duration-200 hover:shadow-lg cursor-pointer select-none",
         meta.bg,
         hasServiceRequest && requestAccent
       )}
     >
       {/* Header: number + status */}
-      <div className="flex items-center justify-between">
-        <p className={cn("text-[2.5rem] font-black leading-none tracking-tight tabular-nums", meta.number)}>
+      <div className="flex items-center justify-between gap-2">
+        <p className={cn("text-3xl sm:text-[2.5rem] font-black leading-none tracking-tight tabular-nums", meta.number)}>
           {table.number}
         </p>
         <div className="flex flex-col items-end gap-1">
@@ -186,21 +186,21 @@ export function TableCard({
         {table.capacity} {table.capacity === 1 ? t("tables.person") : t("tables.people")}
       </p>
 
-      {/* Active Session Info */}
+      {/* Active Session Info — mobile gọn: tên khách + tiền TO rõ, ẩn dòng chi tiết món cho thoáng */}
       {table.activeSession && (
-        <div className="mt-1 p-2 rounded-lg bg-background/60 dark:bg-background/25 border text-xs space-y-1 animate-in fade-in duration-200">
-          <div className="flex items-center justify-between gap-2 font-semibold">
-            <span className="min-w-0 truncate text-muted-foreground">
-              {lang === "vi" ? "Khách" : "Guest"}: {table.activeSession.customerName}
-            </span>
-            <span className="shrink-0 text-base font-bold text-primary tabular-nums">
-              {formatCurrency(table.activeSession.total)}
-            </span>
-          </div>
+        <div className="mt-1 p-2 rounded-lg bg-background/60 dark:bg-background/25 border space-y-1 animate-in fade-in duration-200">
+          <span className="block min-w-0 truncate text-xs font-semibold text-muted-foreground">
+            {table.activeSession.customerName}
+          </span>
+          <span className="block text-lg font-bold text-primary tabular-nums leading-tight">
+            {formatCurrency(table.activeSession.total)}
+          </span>
           {table.activeSession.itemSummary && (
-            <p className="text-[11px] text-muted-foreground line-clamp-2 leading-relaxed italic border-t pt-1 mt-1">
-              {table.activeSession.itemSummary}
-            </p>
+            <span className="hidden sm:block border-t pt-1 mt-1">
+              <span className="line-clamp-2 text-[11px] text-muted-foreground leading-relaxed italic">
+                {table.activeSession.itemSummary}
+              </span>
+            </span>
           )}
         </div>
       )}

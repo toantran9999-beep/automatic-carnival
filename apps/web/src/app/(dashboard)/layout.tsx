@@ -165,7 +165,7 @@ export default function DashboardLayout({
   const pathname = usePathname();
   const [collapsed, setCollapsed] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
-  const { t } = useTranslation();
+  const { t, lang } = useTranslation();
 
   const queryClient = useQueryClient();
 
@@ -240,6 +240,13 @@ export default function DashboardLayout({
     .filter((group) => group.items.length > 0);
   const allFilteredItems = filteredNavGroups.flatMap((g) => g.items);
   const mobileNavItems = allFilteredItems.slice(0, 5);
+
+  // Nhãn ngắn cho thanh menu dưới (tab bar) — chữ dài như "Bảng điều khiển"
+  // xuống 2 dòng làm lệch icon. Chỉ rút gọn khi nhãn quá dài để canh đều.
+  const bottomNavLabel = (href: string, fallback: string): string => {
+    if (href === "/dashboard") return lang === "vi" ? "Tổng quan" : "Home";
+    return fallback;
+  };
 
   return (
     <div className="h-screen flex overflow-hidden">
@@ -616,27 +623,50 @@ export default function DashboardLayout({
         {/* Bottom nav: nhân viên = cố định mọi cỡ màn hình; admin = chỉ mobile */}
         <nav
           className={cn(
-            "fixed bottom-0 left-0 right-0 bg-background border-t z-40",
+            "fixed bottom-0 left-0 right-0 z-40 border-t border-border bg-background shadow-[0_-1px_8px_rgba(0,0,0,0.06)] dark:shadow-[0_-1px_8px_rgba(0,0,0,0.4)]",
             !staffNav && "md:hidden"
           )}
           style={{ paddingBottom: "env(safe-area-inset-bottom)" }}
         >
-          <div className="flex items-center justify-around h-16">
+          <div
+            className="grid h-16"
+            style={{ gridTemplateColumns: `repeat(${mobileNavItems.length}, minmax(0, 1fr))` }}
+          >
             {mobileNavItems.map((item) => {
               const active = isActive(pathname, item.href);
               return (
                 <Link
                   key={item.href}
                   href={item.href}
+                  aria-label={item.label}
+                  aria-current={active ? "page" : undefined}
                   className={cn(
-                    "flex flex-col items-center gap-1 px-3 py-2 text-xs transition-colors",
+                    "relative flex min-w-0 flex-col items-center justify-center gap-1 px-1 transition-colors",
                     active
-                      ? "text-primary font-medium"
-                      : "text-muted-foreground"
+                      ? "text-primary"
+                      : "text-foreground/65 hover:text-foreground active:text-foreground"
                   )}
                 >
-                  <item.icon className="h-5 w-5" />
-                  <span>{item.label}</span>
+                  {/* Chỉ báo tab đang chọn: gạch trên + nền pill nhạt */}
+                  {active && (
+                    <span className="absolute inset-x-3 top-0 h-0.5 rounded-b-full bg-primary" />
+                  )}
+                  <span
+                    className={cn(
+                      "flex h-8 w-full items-center justify-center rounded-lg transition-colors",
+                      active && "bg-primary/10"
+                    )}
+                  >
+                    <item.icon className="h-5.5 w-5.5" strokeWidth={active ? 2.4 : 2} />
+                  </span>
+                  <span
+                    className={cn(
+                      "max-w-full truncate text-[11px] leading-none",
+                      active ? "font-semibold" : "font-medium"
+                    )}
+                  >
+                    {bottomNavLabel(item.href, item.label)}
+                  </span>
                 </Link>
               );
             })}

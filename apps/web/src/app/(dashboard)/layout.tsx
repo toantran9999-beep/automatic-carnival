@@ -36,6 +36,7 @@ import { ClockNow } from "@/components/clock-now";
 import { TodaMark } from "@/components/toda-mark";
 import { StationToggle } from "@/components/station-toggle";
 import { StationProvider } from "@/components/station-provider";
+import { PosShiftControl } from "./pos/_components/shift-controls";
 
 interface NavGroup {
   label: string;
@@ -434,6 +435,8 @@ export default function DashboardLayout({
             </div>
 
             <div className="flex items-center gap-3">
+              {/* Ca làm việc — chỉ hiện trên màn Bán hàng, gọn trên header */}
+              {pathname.startsWith("/pos") && <PosShiftControl />}
               {/* Trạm in tại quầy (theo thiết bị) */}
               <StationToggle />
               {/* Real-time clock */}

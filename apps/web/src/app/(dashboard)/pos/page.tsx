@@ -23,7 +23,7 @@ import { SuccessDialog } from "./_components/success-dialog";
 import { useBranchSettings } from "@/hooks/use-settings";
 import { usePrintTemporaryTransferBill } from "@/components/print-ticket";
 import { PosPaymentDialog } from "./_components/pos-payment-dialog";
-import { ShiftBar, ShiftClosedBlocker } from "./_components/shift-controls";
+import { ShiftClosedBlocker } from "./_components/shift-controls";
 import { useTableActiveSession } from "@/hooks/use-tables";
 import { useCurrentShift } from "@/hooks/use-shifts";
 import { useAuthStore } from "@/stores/auth-store";
@@ -529,7 +529,6 @@ export default function PosPage() {
 
   return (
     <div className={`flex ${posHeightClass} flex-col gap-2`}>
-      {currentShift && <ShiftBar shift={currentShift} canManage={canManageShift} />}
       <div className="flex min-h-0 flex-1 gap-3">
         <ProductGrid
           categories={categories ?? []}

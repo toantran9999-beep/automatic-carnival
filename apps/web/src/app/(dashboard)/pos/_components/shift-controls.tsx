@@ -10,11 +10,12 @@ import {
 import { Button } from "@restai/ui/components/button";
 import { Input } from "@restai/ui/components/input";
 import { Label } from "@restai/ui/components/label";
-import { Lock, LockOpen, Receipt, Loader2 } from "lucide-react";
+import { Lock, LockOpen, Receipt, Loader2, ChevronDown } from "lucide-react";
 import { toast } from "sonner";
 import { formatCurrency } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
-import { useOpenShift, useCloseShift, type CurrentShift } from "@/hooks/use-shifts";
+import { useAuthStore } from "@/stores/auth-store";
+import { useOpenShift, useCloseShift, useCurrentShift, type CurrentShift } from "@/hooks/use-shifts";
 import { usePrintShiftReport } from "@/components/print-ticket";
 import { useBranchSettings } from "@/hooks/use-settings";
 
@@ -228,38 +229,46 @@ export function CloseShiftDialog({
   );
 }
 
-/** Thanh trạng thái ca (hiện trên POS khi ca đang mở). */
-export function ShiftBar({ shift, canManage }: { shift: CurrentShift; canManage: boolean }) {
+/**
+ * Nút điều khiển ca GỌN đặt trên header (thay thanh ShiftBar chình ì).
+ * - Chưa mở ca: không hiện gì (màn khóa lớn trong POS lo việc mở ca).
+ * - Đang mở ca: pill nhỏ "● giờ mở" — quản lý/thu ngân bấm để mở bảng Đóng ca.
+ * Tự lấy ca hiện tại + quyền, dùng ở layout header (chỉ khi đang ở /pos).
+ */
+export function PosShiftControl() {
+  const { user } = useAuthStore();
+  const { data: shift } = useCurrentShift();
   const { lang } = useTranslation();
   const vi = lang === "vi";
   const [closeOpen, setCloseOpen] = useState(false);
+
+  const canManage =
+    !!user && ["super_admin", "org_admin", "branch_manager", "cashier"].includes(user.role);
+
+  if (!shift) return null;
+
   const openedTime = new Date(shift.opened_at).toLocaleTimeString(vi ? "vi-VN" : "en-US", {
     hour: "2-digit",
     minute: "2-digit",
   });
 
   return (
-    <div className="flex items-center justify-between gap-2 rounded-lg border border-emerald-200 bg-emerald-50 px-3 py-0.5 text-xs dark:border-emerald-800/50 dark:bg-emerald-950/20">
-      <span className="flex items-center gap-2 font-medium text-emerald-800 dark:text-emerald-300">
+    <>
+      <button
+        type="button"
+        onClick={() => canManage && setCloseOpen(true)}
+        disabled={!canManage}
+        title={vi ? "Ca làm việc" : "Shift"}
+        className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-default disabled:opacity-90 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
+      >
         <span className="h-2 w-2 rounded-full bg-emerald-500" />
-        {vi ? `Ca mở lúc ${openedTime}` : `Shift since ${openedTime}`}
-        <span className="text-emerald-700/70 dark:text-emerald-400/70">
-          · {formatCurrency(shift.summary.totalSales)} · {shift.summary.orderCount} {vi ? "đơn" : "orders"}
-        </span>
-      </span>
+        <span className="tabular-nums">{openedTime}</span>
+        {canManage && <ChevronDown className="h-3 w-3 opacity-60" />}
+      </button>
       {canManage && (
-        <Button
-          size="sm"
-          variant="ghost"
-          className="h-9 px-3 text-sm text-emerald-800 hover:bg-emerald-100 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
-          onClick={() => setCloseOpen(true)}
-        >
-          <Lock className="mr-1 h-3.5 w-3.5" />
-          {vi ? "Đóng ca" : "Close shift"}
-        </Button>
+        <CloseShiftDialog open={closeOpen} onOpenChange={setCloseOpen} shift={shift} />
       )}
-      <CloseShiftDialog open={closeOpen} onOpenChange={setCloseOpen} shift={shift} />
-    </div>
+    </>
   );
 }
 

@@ -1,13 +1,13 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, gte, lte, sql, desc, inArray, count, sum } from "drizzle-orm";
+import { eq, and, gte, lte, lt, sql, desc, inArray, count, sum } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import { reportQuerySchema } from "@restai/validators";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { peruStartOfDay } from "../lib/timezone.js";
+import { peruStartOfDay, peruEndOfDay } from "../lib/timezone.js";
 import { t } from "../lib/i18n.js";
 
 const reports = new Hono<AppEnv>();
@@ -110,6 +110,186 @@ reports.get("/dashboard", requirePermission("reports:read"), async (c) => {
       activeOrders: activeStats.count,
       occupiedTables,
       totalTables,
+    },
+  });
+});
+
+/**
+ * GET /overview - Toàn bộ dữ liệu cho trang Tổng quan (quản lý) trong 1 lần gọi.
+ * Chỉ role có `reports:read` (super_admin/org_admin/branch_manager) truy cập được.
+ * Tất cả mốc thời gian theo NGÀY GIỜ VIỆT NAM (UTC+7) qua peruStartOfDay/peruEndOfDay;
+ * gom nhóm theo giờ/ngày trong SQL bằng cách cộng `interval '7 hours'` trước khi to_char.
+ * Tiền để nguyên đơn vị cents (frontend chia 100 / formatCurrency).
+ */
+reports.get("/overview", requirePermission("reports:read"), async (c) => {
+  const scope = resolveReportScope(c);
+  if (!scope.ok) return scope.response;
+  const { useAll, tenant, ordersCondition } = scope;
+
+  const todayStart = peruStartOfDay();
+  const todayEnd = peruEndOfDay();
+  const yesterdayStart = new Date(todayStart.getTime() - 24 * 60 * 60 * 1000);
+  const weekStart = new Date(todayStart.getTime() - 6 * 24 * 60 * 60 * 1000);
+
+  // Điều kiện đơn hoàn tất trong khoảng [from, to)
+  const completedBetween = (from: Date, to: Date) =>
+    and(
+      ordersCondition,
+      eq(schema.orders.status, "completed"),
+      gte(schema.orders.created_at, from),
+      lt(schema.orders.created_at, to),
+    );
+
+  const hourExpr = sql<string>`to_char(${schema.orders.created_at} + interval '7 hours', 'HH24')`;
+  const dayExpr = sql<string>`to_char(${schema.orders.created_at} + interval '7 hours', 'YYYY-MM-DD')`;
+
+  const tablesScope = useAll
+    ? eq(schema.tables.organization_id, tenant.organizationId)
+    : eq(schema.tables.branch_id, tenant.branchId);
+
+  const [
+    todayTotals,
+    yesterdayTotals,
+    activeStats,
+    cancelledStats,
+    allTables,
+    hourlyRows,
+    dayRows,
+    paymentRows,
+    topItemRows,
+    orderTypeRows,
+  ] = await Promise.all([
+    // 1. Tổng hôm nay (hoàn tất)
+    db
+      .select({ orders: count(), revenue: sum(schema.orders.total) })
+      .from(schema.orders)
+      .where(completedBetween(todayStart, todayEnd)),
+    // 2. Tổng hôm qua (để tính delta)
+    db
+      .select({ orders: count(), revenue: sum(schema.orders.total) })
+      .from(schema.orders)
+      .where(completedBetween(yesterdayStart, todayStart)),
+    // 3. Đơn đang xử lý (không giới hạn theo ngày)
+    db
+      .select({ count: count() })
+      .from(schema.orders)
+      .where(and(ordersCondition, inArray(schema.orders.status, ["pending", "confirmed", "preparing", "ready"]))),
+    // 4. Đơn hủy hôm nay
+    db
+      .select({ count: count() })
+      .from(schema.orders)
+      .where(
+        and(
+          ordersCondition,
+          eq(schema.orders.status, "cancelled"),
+          gte(schema.orders.created_at, todayStart),
+          lt(schema.orders.created_at, todayEnd),
+        ),
+      ),
+    // 5. Bàn
+    db.select({ status: schema.tables.status }).from(schema.tables).where(tablesScope),
+    // 6. Doanh thu theo giờ hôm nay (giờ VN)
+    db
+      .select({ hour: hourExpr, orders: count(), revenue: sum(schema.orders.total) })
+      .from(schema.orders)
+      .where(completedBetween(todayStart, todayEnd))
+      .groupBy(hourExpr)
+      .orderBy(hourExpr),
+    // 7. Doanh thu 7 ngày (ngày VN)
+    db
+      .select({ date: dayExpr, orders: count(), revenue: sum(schema.orders.total) })
+      .from(schema.orders)
+      .where(completedBetween(weekStart, todayEnd))
+      .groupBy(dayExpr)
+      .orderBy(dayExpr),
+    // 8. Tiền theo phương thức thanh toán hôm nay (số tiền, không phải %)
+    db
+      .select({ method: schema.payments.method, amount: sum(schema.payments.amount), count: count() })
+      .from(schema.payments)
+      .innerJoin(schema.orders, eq(schema.payments.order_id, schema.orders.id))
+      .where(and(completedBetween(todayStart, todayEnd), eq(schema.payments.status, "completed")))
+      .groupBy(schema.payments.method),
+    // 9. Món bán chạy hôm nay (top 5, theo tên snapshot vì menu_item_id có thể null)
+    db
+      .select({
+        name: schema.orderItems.name,
+        quantity: sum(schema.orderItems.quantity),
+        revenue: sum(schema.orderItems.total),
+      })
+      .from(schema.orderItems)
+      .innerJoin(schema.orders, eq(schema.orderItems.order_id, schema.orders.id))
+      .where(completedBetween(todayStart, todayEnd))
+      .groupBy(schema.orderItems.name)
+      .orderBy(desc(sum(schema.orderItems.total)))
+      .limit(5),
+    // 10. Cơ cấu loại đơn hôm nay (tại quán / mang đi / giao)
+    db
+      .select({ type: schema.orders.type, orders: count(), revenue: sum(schema.orders.total) })
+      .from(schema.orders)
+      .where(completedBetween(todayStart, todayEnd))
+      .groupBy(schema.orders.type),
+  ]);
+
+  const todayOrders = Number(todayTotals[0]?.orders || 0);
+  const todayRevenue = Number(todayTotals[0]?.revenue || 0);
+  const yOrders = Number(yesterdayTotals[0]?.orders || 0);
+  const yRevenue = Number(yesterdayTotals[0]?.revenue || 0);
+
+  const pct = (curr: number, prev: number): number | null =>
+    prev > 0 ? Math.round(((curr - prev) / prev) * 1000) / 10 : null;
+
+  // Zero-fill 7 ngày VN theo thứ tự tăng dần
+  const dayMap = new Map(dayRows.map((d) => [d.date, d]));
+  const days: { date: string; orders: number; revenue: number }[] = [];
+  for (let i = 0; i < 7; i++) {
+    const inst = new Date(weekStart.getTime() + i * 24 * 60 * 60 * 1000 + 7 * 60 * 60 * 1000);
+    const key = inst.toISOString().slice(0, 10); // YYYY-MM-DD giờ VN
+    const row = dayMap.get(key);
+    days.push({
+      date: key,
+      orders: row ? Number(row.orders || 0) : 0,
+      revenue: row ? Number(row.revenue || 0) : 0,
+    });
+  }
+
+  const totalTables = allTables.length;
+  const occupiedTables = allTables.filter((t) => t.status === "occupied").length;
+
+  return c.json({
+    success: true,
+    data: {
+      today: {
+        orders: todayOrders,
+        revenue: todayRevenue,
+        averageOrderValue: todayOrders > 0 ? Math.round(todayRevenue / todayOrders) : 0,
+        activeOrders: Number(activeStats[0]?.count || 0),
+        cancelledOrders: Number(cancelledStats[0]?.count || 0),
+        occupiedTables,
+        totalTables,
+      },
+      yesterday: { orders: yOrders, revenue: yRevenue },
+      deltas: { revenuePct: pct(todayRevenue, yRevenue), ordersPct: pct(todayOrders, yOrders) },
+      hourly: hourlyRows.map((h) => ({
+        hour: Number(h.hour),
+        orders: Number(h.orders || 0),
+        revenue: Number(h.revenue || 0),
+      })),
+      days,
+      paymentMethods: paymentRows.map((p) => ({
+        method: p.method,
+        amount: Number(p.amount || 0),
+        count: Number(p.count || 0),
+      })),
+      topItems: topItemRows.map((it) => ({
+        name: it.name,
+        quantity: Number(it.quantity || 0),
+        revenue: Number(it.revenue || 0),
+      })),
+      orderTypes: orderTypeRows.map((o) => ({
+        type: o.type,
+        orders: Number(o.orders || 0),
+        revenue: Number(o.revenue || 0),
+      })),
     },
   });
 });

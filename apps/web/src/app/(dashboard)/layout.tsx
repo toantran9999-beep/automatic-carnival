@@ -81,9 +81,10 @@ const allowedPaths = {
     "/reports",
     "/settings",
   ]),
-  cashier: new Set(["/dashboard","/pos", "/orders", "/tables", "/payments", "/connections"]),
-  waiter: new Set(["/dashboard","/pos", "/orders", "/tables", "/connections", "/kitchen"]),
-  kitchen: new Set(["/dashboard","/kitchen"]),
+  // Tổng quan (/dashboard) chỉ dành cho quản lý trở lên — nhân viên vận hành không thấy.
+  cashier: new Set(["/pos", "/orders", "/tables", "/payments", "/connections"]),
+  waiter: new Set(["/pos", "/orders", "/tables", "/connections", "/kitchen"]),
+  kitchen: new Set(["/kitchen"]),
 };
 
 function getTranslatedNavGroups(t: any): NavGroup[] {

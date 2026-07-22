@@ -2,6 +2,7 @@
 
 import { useAuthStore } from "@/stores/auth-store";
 import { useRouter } from "next/navigation";
+import { landingPathForRole } from "@/lib/roles";
 
 export function useAuth() {
   const {
@@ -31,7 +32,7 @@ export function useAuth() {
     if (data.data.user.branches?.length > 0) {
       setSelectedBranch(data.data.user.branches[0]);
     }
-    router.push("/orders");
+    router.push(landingPathForRole(data.data.user.role));
   };
 
   const register = async (input: {
@@ -53,7 +54,7 @@ export function useAuth() {
     if (!data.success)
       throw new Error(data.error?.message || "Error al registrarse");
     setAuth(data.data.user, data.data.accessToken, data.data.refreshToken);
-    router.push("/orders");
+    router.push(landingPathForRole(data.data.user.role));
   };
 
   const logout = () => {

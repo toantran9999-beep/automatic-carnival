@@ -32,6 +32,8 @@ menu.use("*", requireBranch);
 menu.get("/categories", requirePermission("menu:read"), async (c) => {
   const tenant = c.get("tenant") as any;
 
+  // Thứ tự hiển thị do chủ quán tự sắp (sort_order); cùng sort_order thì theo tên
+  // để danh sách ổn định, không nhảy lung tung theo thứ tự vật lý của Postgres.
   const categories = await db
     .select()
     .from(schema.menuCategories)
@@ -40,7 +42,8 @@ menu.get("/categories", requirePermission("menu:read"), async (c) => {
         eq(schema.menuCategories.branch_id, tenant.branchId),
         eq(schema.menuCategories.organization_id, tenant.organizationId),
       ),
-    );
+    )
+    .orderBy(asc(schema.menuCategories.sort_order), asc(schema.menuCategories.name));
 
   return c.json({ success: true, data: categories });
 });
@@ -160,7 +163,8 @@ menu.get("/items", requirePermission("menu:read"), async (c) => {
   const items = await db
     .select()
     .from(schema.menuItems)
-    .where(and(...conditions));
+    .where(and(...conditions))
+    .orderBy(asc(schema.menuItems.sort_order), asc(schema.menuItems.name));
 
   return c.json({ success: true, data: items });
 });

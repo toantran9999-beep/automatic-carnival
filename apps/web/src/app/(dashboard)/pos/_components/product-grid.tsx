@@ -6,6 +6,7 @@ import { Button } from "@restai/ui/components/button";
 import { Badge } from "@restai/ui/components/badge";
 import { Search, Loader2, X, PencilLine } from "lucide-react";
 import { toThumbUrl } from "@/lib/image-thumb";
+import { sortByOrder } from "@/lib/utils";
 import { TodaMark } from "@/components/toda-mark";
 import { useTranslation } from "@/stores/lang-store";
 import type { PosCartItem } from "../page";
@@ -73,10 +74,13 @@ export function ProductGrid({
 }) {
   const { t, lang } = useTranslation();
 
+  // Thứ tự do chủ quán tự sắp ở trang Thực đơn (sort_order) — món hay gọi nằm đầu lưới
   const availableItems = useMemo(
-    () => items.filter((i: any) => i.is_available),
+    () => sortByOrder(items.filter((i: any) => i.is_available)),
     [items]
   );
+
+  const sortedCategories = useMemo(() => sortByOrder(categories ?? []), [categories]);
 
   const countByCategory = useMemo(() => {
     const counts = new Map<string, number>();
@@ -108,7 +112,7 @@ export function ProductGrid({
     <div className="flex min-w-0 flex-1 gap-0">
       {/* Rail danh mục dọc bên trái (tablet/desktop) — kiểu iPOS, không có "Tất cả" cho nhẹ */}
       <div className="hidden w-40 shrink-0 flex-col gap-1 overflow-y-auto border-r pr-2 md:flex xl:w-44">
-        {categories.map((cat: any) => (
+        {sortedCategories.map((cat: any) => (
           <Button
             key={cat.id}
             variant={selectedCategory === cat.id ? "default" : "ghost"}
@@ -163,7 +167,7 @@ export function ProductGrid({
 
         {/* Pill ngang chỉ dùng cho điện thoại (màn hẹp không đủ chỗ cho rail) */}
         <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 md:hidden">
-          {categories.map((cat: any) => (
+          {sortedCategories.map((cat: any) => (
             <Button
               key={cat.id}
               variant={selectedCategory === cat.id ? "default" : "outline"}

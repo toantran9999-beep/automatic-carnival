@@ -59,7 +59,7 @@ customer.get("/:branchSlug/:tableCode/menu", async (c) => {
     );
   }
 
-  // Get active categories and items
+  // Get active categories and items — cùng thứ tự sắp xếp với màn POS/Thực đơn
   const categories = await db
     .select()
     .from(schema.menuCategories)
@@ -68,7 +68,8 @@ customer.get("/:branchSlug/:tableCode/menu", async (c) => {
         eq(schema.menuCategories.branch_id, branch.id),
         eq(schema.menuCategories.is_active, true),
       ),
-    );
+    )
+    .orderBy(asc(schema.menuCategories.sort_order), asc(schema.menuCategories.name));
 
   const items = await db
     .select()
@@ -78,7 +79,8 @@ customer.get("/:branchSlug/:tableCode/menu", async (c) => {
         eq(schema.menuItems.branch_id, branch.id),
         eq(schema.menuItems.is_available, true),
       ),
-    );
+    )
+    .orderBy(asc(schema.menuItems.sort_order), asc(schema.menuItems.name));
 
   return c.json({
     success: true,

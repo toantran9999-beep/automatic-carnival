@@ -6,6 +6,19 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
+/**
+ * Sắp xếp danh mục/món theo thứ tự chủ quán tự đặt (sort_order), cùng thứ tự thì theo tên.
+ * API trả snake_case nhưng vài nơi map sang camelCase nên nhận cả hai.
+ */
+export function sortByOrder<T extends Record<string, any>>(list: T[]): T[] {
+  return [...list].sort((a, b) => {
+    const oa = Number(a.sortOrder ?? a.sort_order ?? 0);
+    const ob = Number(b.sortOrder ?? b.sort_order ?? 0);
+    if (oa !== ob) return oa - ob;
+    return String(a.name ?? "").localeCompare(String(b.name ?? ""), "vi");
+  });
+}
+
 export function formatCurrency(cents: number, currencyCode?: string): string {
   let lang = "vi";
   try {

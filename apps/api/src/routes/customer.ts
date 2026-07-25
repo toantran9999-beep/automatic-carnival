@@ -730,6 +730,20 @@ customer.post("/orders", customerAuth, requireActiveSession, zValidator("json", 
   // Use customer_name from session if not provided in body
   const customerName = body.customerName || session.customer_name;
 
+  // Đường khách tự quét QR gọi món KHÔNG có cổng chặn ca như routes/orders, phải tự tra
+  // để đơn cũng được cấp số theo ca. Không có ca đang mở thì bỏ qua → rơi về mã dài,
+  // đơn vẫn tạo được bình thường.
+  const [openShift] = await db
+    .select({ id: schema.registerShifts.id })
+    .from(schema.registerShifts)
+    .where(
+      and(
+        eq(schema.registerShifts.branch_id, branchId),
+        eq(schema.registerShifts.status, "open"),
+      ),
+    )
+    .limit(1);
+
   let result;
   try {
     result = await createOrder({
@@ -744,6 +758,7 @@ customer.post("/orders", customerAuth, requireActiveSession, zValidator("json", 
       couponCode: body.couponCode || null,
       redemptionId: body.redemptionId || null,
       lang: getLang(c),
+      registerShiftId: openShift?.id ?? null,
     });
   } catch (err) {
     if (err instanceof OrderValidationError) {

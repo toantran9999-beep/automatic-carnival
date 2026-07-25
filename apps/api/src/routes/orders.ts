@@ -199,6 +199,8 @@ orders.post(
         customerName: body.customerName,
         notes: body.notes,
         tableSessionId,
+        // Ca đã tra ở cổng chặn phía trên — đơn được cấp số 01, 02… theo ca
+        registerShiftId: openShift.id,
       });
     } catch (err) {
       if (err instanceof OrderValidationError) {

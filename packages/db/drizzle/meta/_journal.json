@@ -71,6 +71,13 @@
       "when": 1784779200000,
       "tag": "0009_shift_day_summary",
       "breakpoints": true
+    },
+    {
+      "idx": 10,
+      "version": "7",
+      "when": 1784937600000,
+      "tag": "0010_shift_order_seq",
+      "breakpoints": true
     }
   ]
 }

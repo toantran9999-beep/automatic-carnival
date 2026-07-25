@@ -29,6 +29,13 @@ export const registerShifts = pgTable("register_shifts", {
     .references(() => users.id, { onDelete: "restrict" }),
   opened_at: timestamp("opened_at", { withTimezone: true }).notNull().defaultNow(),
   opening_cash: integer("opening_cash").notNull().default(0),
+  /**
+   * Bộ đếm số thứ tự đơn TRONG ca này. Mở ca mới = bản ghi mới = về 0, nên đơn đầu
+   * của mọi ca luôn là 01. Chỉ được tăng bằng `UPDATE … RETURNING` trong transaction
+   * tạo đơn (xem order.service.ts) — đọc rồi mới ghi sẽ cấp trùng số khi 2 máy bán
+   * cùng lúc.
+   */
+  order_seq: integer("order_seq").notNull().default(0),
   closed_by: uuid("closed_by").references(() => users.id, { onDelete: "set null" }),
   closed_at: timestamp("closed_at", { withTimezone: true }),
   closing_cash: integer("closing_cash"),

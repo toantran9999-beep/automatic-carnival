@@ -28,6 +28,8 @@ interface CreateOrderParams {
   couponCode?: string | null;
   redemptionId?: string | null;
   lang?: "vi" | "en";
+  /** Ca đang mở. Có thì đơn được cấp số thứ tự theo ca (01, 02…); không có thì rơi về mã dài. */
+  registerShiftId?: string | null;
 }
 
 interface CreateOrderResult {
@@ -52,6 +54,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     couponCode,
     redemptionId,
     lang,
+    registerShiftId,
   } = params;
 
   // Get menu items for price calculation (bỏ qua món nhập tay không có menuItemId)
@@ -161,11 +164,37 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     .limit(1);
 
   const taxRate = branch?.tax_rate ?? 1000;
-  const orderNumber = generateOrderNumber();
 
   // Create order + items + coupon redemption in a transaction
   // Coupon validation is INSIDE the transaction to prevent race conditions on current_uses
   return await db.transaction(async (tx) => {
+    // Số thứ tự theo ca: 01, 02… Mở ca mới là bản ghi ca mới nên tự về 01.
+    //
+    // ⚠️ PHẢI dùng `UPDATE … RETURNING`, TUYỆT ĐỐI không `SELECT max()+1`: quán bán
+    // bằng nhiều máy cùng lúc (máy POS quầy + điện thoại order), đọc rồi mới ghi thì
+    // hai đơn bấm cùng lúc sẽ nhận CÙNG một số. Lệnh này khoá dòng ca nên mỗi lượt
+    // gọi chắc chắn nhận một số khác nhau.
+    //
+    // Nằm trong transaction nên đơn hỏng giữa chừng (mã giảm giá không hợp lệ…) thì
+    // bộ đếm quay lui theo, không để lại lỗ số.
+    let orderNumber = generateOrderNumber();
+    let shiftSeq: number | null = null;
+    if (registerShiftId) {
+      const [bumped] = await tx
+        .update(schema.registerShifts)
+        .set({
+          order_seq: sql`${schema.registerShifts.order_seq} + 1`,
+          updated_at: new Date(),
+        })
+        .where(eq(schema.registerShifts.id, registerShiftId))
+        .returning({ seq: schema.registerShifts.order_seq });
+
+      if (bumped) {
+        shiftSeq = bumped.seq;
+        orderNumber = String(bumped.seq).padStart(2, "0");
+      }
+    }
+
     // Calculate coupon discount inside tx
     let discount = 0;
     let couponId: string | null = null;
@@ -204,6 +233,8 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
         table_session_id: tableSessionId || null,
         customer_id: customerId || null,
         order_number: orderNumber,
+        register_shift_id: registerShiftId || null,
+        shift_seq: shiftSeq,
         type: type as any,
         status: "pending",
         customer_name: customerName || null,

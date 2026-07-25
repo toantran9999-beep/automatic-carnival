@@ -34,7 +34,12 @@ export const orders = pgTable("orders", {
   customer_id: uuid("customer_id").references(() => customers.id, {
     onDelete: "set null",
   }),
+  /** Số hiện trên phiếu và mọi màn hình: "01", "02"… đếm lại từ 01 mỗi ca. */
   order_number: varchar("order_number", { length: 20 }).notNull(),
+  /** Đơn thuộc ca nào — chỉ nhìn order_number ("01") thì không biết, cần cho đối soát. */
+  register_shift_id: uuid("register_shift_id"),
+  /** Số thứ tự trong ca, dạng số (order_number là bản đã đệm 0 để hiển thị). */
+  shift_seq: integer("shift_seq"),
   type: orderTypeEnum("type").default("dine_in").notNull(),
   status: orderStatusEnum("status").default("pending").notNull(),
   customer_name: varchar("customer_name", { length: 255 }),

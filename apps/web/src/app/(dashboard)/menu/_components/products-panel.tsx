@@ -11,6 +11,8 @@ import {
   ToggleRight,
   UtensilsCrossed,
   ArrowUpDown,
+  ArrowUpToLine,
+  ArrowDownToLine,
   ChevronUp,
   ChevronDown,
   GripVertical,
@@ -143,21 +145,58 @@ export function ProductsPanel({
     setSelectedCategoryId(id);
   };
 
-  /** Lưu thứ tự mới: gán lại số thứ tự cả danh sách, chỉ gọi API cho món bị lệch. */
+  /** Gán lại số thứ tự cho cả danh sách, chỉ gọi API cho món bị lệch. */
+  const saveOrder = (list: any[]) =>
+    Promise.all(
+      list.map((it, order) =>
+        Number(it.sortOrder ?? it.sort_order ?? 0) === order
+          ? Promise.resolve()
+          : updateItem.mutateAsync({ id: it.id, sortOrder: order }),
+      ),
+    );
+
+  /** Lưu thứ tự cho danh mục ĐANG XEM (giữ thứ tự tạm để lưới đổi ngay, không nháy). */
   const persistOrder = async (next: any[]) => {
     const prevOrder = pendingOrder;
     setPendingOrder(next.map((it) => it.id));
     setSavingOrder(true);
     try {
-      await Promise.all(
-        next.map((it, order) =>
-          Number(it.sortOrder ?? it.sort_order ?? 0) === order
-            ? Promise.resolve()
-            : updateItem.mutateAsync({ id: it.id, sortOrder: order }),
-        ),
-      );
+      await saveOrder(next);
     } catch (err: any) {
       setPendingOrder(prevOrder);
+      toast.error(err?.message || t("menu.saveError"));
+    } finally {
+      setSavingOrder(false);
+    }
+  };
+
+  /**
+   * Đưa 1 món lên đầu / xuống cuối danh mục của nó — bấm 1 phát, không cần vào
+   * chế độ sắp xếp. Chạy được cả khi đang xem "Tất cả" (tự tính trong đúng danh mục).
+   */
+  const moveItemToEdge = async (item: any, edge: "top" | "bottom") => {
+    const catId = item.categoryId || item.category_id;
+    const list = sortByOrder(
+      allItems.filter((i: any) => (i.categoryId || i.category_id) === catId),
+    );
+    const idx = list.findIndex((i: any) => i.id === item.id);
+    if (idx < 0) return;
+    const next = [...list];
+    const [moved] = next.splice(idx, 1);
+    if (edge === "top") next.unshift(moved);
+    else next.push(moved);
+
+    // Đang xem đúng danh mục đó → dùng thứ tự tạm cho mượt; ngược lại lưu thẳng.
+    if (selectedCategoryId === catId && !search) {
+      await persistOrder(next);
+      toast.success(t("menu.orderSaved"));
+      return;
+    }
+    setSavingOrder(true);
+    try {
+      await saveOrder(next);
+      toast.success(t("menu.orderSaved"));
+    } catch (err: any) {
       toast.error(err?.message || t("menu.saveError"));
     } finally {
       setSavingOrder(false);
@@ -585,6 +624,20 @@ export function ProductsPanel({
                       />
                     </div>
                   ),
+                },
+                {
+                  key: "toTop",
+                  label: t("menu.moveToTop"),
+                  icon: ArrowUpToLine,
+                  disabled: savingOrder,
+                  onSelect: () => moveItemToEdge(item, "top"),
+                },
+                {
+                  key: "toBottom",
+                  label: t("menu.moveToBottom"),
+                  icon: ArrowDownToLine,
+                  disabled: savingOrder,
+                  onSelect: () => moveItemToEdge(item, "bottom"),
                 },
                 {
                   key: "reorder",

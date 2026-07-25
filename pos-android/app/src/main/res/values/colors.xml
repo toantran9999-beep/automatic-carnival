@@ -1,5 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Nền biểu tượng app — khớp theme_color của web/PWA -->
-    <color name="ic_launcher_background">#1C1917</color>
+    <!-- Nền biểu tượng app: nâu espresso — PHẢI khớp $BG trong scripts/build-brand-assets.ps1
+         và theme_color của web/PWA, nếu không icon Android 8+ sẽ ra nhũ vàng trên nền đen. -->
+    <color name="ic_launcher_background">#2E211A</color>
 </resources>

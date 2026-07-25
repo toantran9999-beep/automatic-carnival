@@ -30,7 +30,8 @@ export const metadata: Metadata = {
 };
 
 export const viewport: Viewport = {
-  themeColor: "#1c1917",
+  // Nâu espresso — màu thanh trạng thái, khớp nền biểu tượng và manifest
+  themeColor: "#2e211a",
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",

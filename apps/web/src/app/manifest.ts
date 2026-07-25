@@ -9,8 +9,10 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: "/",
     display: "standalone",
     orientation: "any",
-    background_color: "#1c1917",
-    theme_color: "#1c1917",
+    // Nâu espresso — khớp nền biểu tượng. Đây cũng là màu MÀN HÌNH CHỜ lúc mở PWA,
+    // lệch màu là hở một vệt quanh biểu tượng.
+    background_color: "#2e211a",
+    theme_color: "#2e211a",
     lang: "vi",
     icons: [
       {

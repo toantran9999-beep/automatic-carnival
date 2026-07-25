@@ -4,7 +4,7 @@
 
 // ⚠️ Đổi biểu tượng/asset tĩnh hoặc chiến lược cache thì PHẢI tăng số bản (v3 → v4),
 // nếu không máy đã cài PWA sẽ giữ mãi bản cũ. Bản 'activate' bên dưới tự xoá cache cũ.
-const CACHE = "toda-pos-shell-v3";
+const CACHE = "toda-pos-shell-v4";
 const SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {

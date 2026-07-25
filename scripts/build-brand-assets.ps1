@@ -15,8 +15,16 @@ $srcPath   = Join-Path $root "logo\logoden.png"
 $webPublic = Join-Path $root "apps\web\public"
 $androidRes = Join-Path $root "pos-android\app\src\main\res"
 
-$BG   = [System.Drawing.ColorTranslator]::FromHtml("#1C1917")  # nền biểu tượng (khớp theme_color trong manifest)
-$MARK = [System.Drawing.ColorTranslator]::FromHtml("#F4F2EC")  # màu logo trên nền tối
+# Nền nâu espresso — PHẢI khớp 3 chỗ khác, đổi ở đây thì đổi luôn:
+#   apps/web/src/app/manifest.ts   (theme_color + background_color)
+#   apps/web/src/app/layout.tsx    (viewport.themeColor)
+#   pos-android/.../values/colors.xml (ic_launcher_background)
+$BG = [System.Drawing.ColorTranslator]::FromHtml("#2E211A")
+
+# Nhũ vàng champagne. PHẢI đủ 5 chặng sáng → sẫm → sáng lại: chuyển 2 màu chỉ ra màu
+# loang, có chỗ sáng chỗ sẫm mới ra cảm giác kim loại.
+$MARK_STOPS = @("#FFF3C4", "#E8C56A", "#B8892F", "#F2DFA0", "#9C7526")
+$MARK_POSITIONS = @(0.0, 0.28, 0.52, 0.76, 1.0)
 
 if (-not (Test-Path $srcPath)) { throw "Khong tim thay logo goc: $srcPath" }
 
@@ -24,31 +32,57 @@ function New-Dir($path) {
   if (-not (Test-Path $path)) { New-Item -ItemType Directory -Force -Path $path | Out-Null }
 }
 
-# Giữ nguyên độ trong suốt (hình dáng logo), thay toàn bộ màu bằng $color.
-function Get-TintedMark {
-  param([System.Drawing.Bitmap]$Source, [System.Drawing.Color]$Color)
+# Tô logo bằng dải chuyển sắc kim loại: vẽ dải gradient chéo rồi MƯỢN kênh trong suốt
+# của logo gốc làm hình dáng (logo gốc là hình đặc một màu nên dùng làm mặt nạ được).
+function Get-MetallicMark {
+  param([System.Drawing.Bitmap]$Source, [string[]]$Stops, [single[]]$Positions)
 
-  $out = New-Object System.Drawing.Bitmap($Source.Width, $Source.Height, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-  $rect = New-Object System.Drawing.Rectangle(0, 0, $Source.Width, $Source.Height)
+  $w = $Source.Width; $h = $Source.Height
 
-  $sd = $Source.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
-  $od = $out.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::WriteOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  # --- Bước 1: vẽ dải chuyển sắc phủ kín khung ---
+  $grad = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $g = [System.Drawing.Graphics]::FromImage($grad)
   try {
-    $len = [Math]::Abs($sd.Stride) * $Source.Height
-    $buf = New-Object byte[] $len
-    [System.Runtime.InteropServices.Marshal]::Copy($sd.Scan0, $buf, 0, $len)
+    $rectF = New-Object System.Drawing.RectangleF(0, 0, $w, $h)
+    $colors = @($Stops | ForEach-Object { [System.Drawing.ColorTranslator]::FromHtml($_) })
+    # 60 độ: ánh sáng chéo từ trên-trái xuống dưới-phải, kiểu kim loại đánh bóng
+    $brush = New-Object System.Drawing.Drawing2D.LinearGradientBrush($rectF, $colors[0], $colors[-1], 60.0)
+    try {
+      $blend = New-Object System.Drawing.Drawing2D.ColorBlend($colors.Count)
+      $blend.Colors = $colors
+      $blend.Positions = $Positions
+      $brush.InterpolationColors = $blend
+      $g.FillRectangle($brush, 0, 0, $w, $h)
+    } finally { $brush.Dispose() }
+  } finally { $g.Dispose() }
+
+  # --- Bước 2: cắt dải gradient theo hình logo (lấy kênh alpha của logo gốc) ---
+  $out = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $rect = New-Object System.Drawing.Rectangle(0, 0, $w, $h)
+  $sd = $Source.LockBits($rect, [System.Drawing.Imaging.ImageLockMode]::ReadOnly,  [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $gd = $grad.LockBits($rect,   [System.Drawing.Imaging.ImageLockMode]::ReadOnly,  [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $od = $out.LockBits($rect,    [System.Drawing.Imaging.ImageLockMode]::WriteOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  try {
+    $len = [Math]::Abs($sd.Stride) * $h
+    $sb = New-Object byte[] $len
+    $gb = New-Object byte[] $len
+    [System.Runtime.InteropServices.Marshal]::Copy($sd.Scan0, $sb, 0, $len)
+    [System.Runtime.InteropServices.Marshal]::Copy($gd.Scan0, $gb, 0, $len)
     # Bo nho anh xep theo thu tu BGRA
     for ($i = 0; $i -lt $len; $i += 4) {
-      if ($buf[$i + 3] -gt 0) {
-        $buf[$i]     = $Color.B
-        $buf[$i + 1] = $Color.G
-        $buf[$i + 2] = $Color.R
+      $a = $sb[$i + 3]
+      if ($a -gt 0) {
+        $gb[$i + 3] = $a
+      } else {
+        $gb[$i] = 0; $gb[$i + 1] = 0; $gb[$i + 2] = 0; $gb[$i + 3] = 0
       }
     }
-    [System.Runtime.InteropServices.Marshal]::Copy($buf, 0, $od.Scan0, $len)
+    [System.Runtime.InteropServices.Marshal]::Copy($gb, 0, $od.Scan0, $len)
   } finally {
     $Source.UnlockBits($sd)
+    $grad.UnlockBits($gd)
     $out.UnlockBits($od)
+    $grad.Dispose()
   }
   return $out
 }
@@ -117,7 +151,7 @@ function New-Icon {
 $src = [System.Drawing.Bitmap]::FromFile($srcPath)
 $markLight = $null
 try {
-  $markLight = Get-TintedMark -Source $src -Color $MARK
+  $markLight = Get-MetallicMark -Source $src -Stops $MARK_STOPS -Positions $MARK_POSITIONS
 
   Write-Host "`n== Web / PWA =="
   # Ban goc, nen trong suot — dung lam mat na (mask) cho giao dien, tu doi mau theo nen

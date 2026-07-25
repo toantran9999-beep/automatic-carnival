@@ -410,9 +410,17 @@ export function PosPaymentDialog({
                   </Button>
                 </div>
                 <div className="flex items-center gap-3">
-                  <div className="rounded-lg bg-white p-2">
-                    <QRCodeSVG value={transferRequest.qr_payload || transferRequest.payment_code} size={96} level="M" />
-                  </div>
+                  {/* Chỉ hiện QR khi có chuỗi VietQR thật — trước đây rơi về payment_code
+                      nên khách quét ra "Mã thanh toán không hợp lệ". */}
+                  {transferRequest.qr_payload ? (
+                    <div className="rounded-lg bg-white p-2">
+                      <QRCodeSVG value={transferRequest.qr_payload} size={96} level="M" />
+                    </div>
+                  ) : (
+                    <div className="w-[112px] shrink-0 rounded-lg border border-dashed p-2 text-center text-[11px] text-muted-foreground">
+                      Chưa cấu hình tài khoản ngân hàng
+                    </div>
+                  )}
                   <div className="min-w-0 text-xs space-y-1">
                     <div>Mã: <span className="font-mono font-bold">{transferRequest.payment_code}</span></div>
                     <div>

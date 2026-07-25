@@ -8,6 +8,7 @@ import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { peruStartOfDay, peruEndOfDay } from "../lib/timezone.js";
+import { buildVietQrPayload, resolveBankBin, bankDisplayName } from "@restai/config";
 import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
 import { handleOrderCompletion } from "../services/order.service.js";
@@ -36,27 +37,43 @@ function paymentSettings(branch: any) {
 
 function buildTransferPayload(branch: any, paymentCode: string, amount: number) {
   const sepay = paymentSettings(branch);
-  const bankCode = normalizeText(sepay.bank_code || sepay.bankCode);
+  const rawBankCode = normalizeText(sepay.bank_code || sepay.bankCode);
   const accountNumber = normalizeText(sepay.account_number || sepay.accountNumber);
   const accountName = normalizeText(sepay.account_name || sepay.accountName || branch?.name);
   const amountVnd = centsToVnd(amount);
   const addInfo = paymentCode;
-  const query = new URLSearchParams({
-    amount: String(amountVnd),
+
+  // Cấu hình có thể đang lưu tên ngân hàng ("Vietcombank") thay vì BIN — tự quy đổi.
+  const bin = resolveBankBin(rawBankCode);
+  const bankCode = bankDisplayName(bin, rawBankCode);
+
+  // Chuỗi VietQR CHUẨN — đây mới là thứ máy in vẽ thành QR cho khách quét.
+  // Tuyệt đối KHÔNG nhét link ảnh hay chuỗi tự chế vào đây: app ngân hàng sẽ
+  // đọc ra và báo "Mã thanh toán không hợp lệ".
+  const qrPayload = buildVietQrPayload({
+    bin: bin || "",
+    accountNumber,
+    amountVnd,
     addInfo,
-    accountName,
   });
-  const qrUrl = bankCode && accountNumber
-    ? `https://img.vietqr.io/image/${encodeURIComponent(bankCode)}-${encodeURIComponent(accountNumber)}-compact2.png?${query.toString()}`
-    : null;
+
+  // Ảnh QR dựng sẵn của vietqr.io — chỉ dùng cho đường in bằng trình duyệt (<img>).
+  const qrUrl =
+    bin && accountNumber
+      ? `https://img.vietqr.io/image/${bin}-${encodeURIComponent(accountNumber)}-compact2.png?${new URLSearchParams(
+          { amount: String(amountVnd), addInfo, accountName },
+        ).toString()}`
+      : null;
 
   return {
     bankCode,
+    bankBin: bin,
     accountNumber,
     accountName,
     addInfo,
     amountVnd,
-    qrPayload: qrUrl || `${accountName}|${accountNumber}|${amountVnd}|${addInfo}`,
+    // Thiếu cấu hình ngân hàng → null, phiếu sẽ không in QR thay vì in mã hỏng.
+    qrPayload,
     qrUrl,
   };
 }
@@ -710,10 +727,20 @@ payments.post(
 
     if (active) {
       const transfer = buildTransferPayload(branch, active.payment_code, active.amount);
+      // Tính lại mã QR thay vì dùng lại chuỗi đã lưu: các yêu cầu tạo trước bản vá
+      // còn giữ payload cũ (link ảnh) trong DB, quét sẽ báo "mã không hợp lệ".
+      if (transfer.qrPayload && transfer.qrPayload !== active.qr_payload) {
+        await db
+          .update(schema.paymentRequests)
+          .set({ qr_payload: transfer.qrPayload, qr_url: transfer.qrUrl })
+          .where(eq(schema.paymentRequests.id, active.id));
+      }
       return c.json({
         success: true,
         data: {
           ...active,
+          qr_payload: transfer.qrPayload,
+          qr_url: transfer.qrUrl,
           reused: true,
           bank: {
             bankCode: transfer.bankCode,

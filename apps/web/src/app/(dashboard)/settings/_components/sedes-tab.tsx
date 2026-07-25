@@ -13,7 +13,15 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@restai/ui/components/dialog";
+import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "@restai/ui/components/select";
 import { Plus, Pencil, Store } from "lucide-react";
+import { VN_BANKS, resolveBankBin } from "@restai/config";
 import { useBranches, useCreateBranch, useUpdateBranchById } from "@/hooks/use-settings";
 import { toast } from "sonner";
 import { useTranslation } from "@/stores/lang-store";
@@ -92,7 +100,10 @@ export function SedesTab() {
       const paymentSettings = {
         ...(currentSettings.payment || {}),
         sepay: {
-          bank_code: branchDialogForm.bankCode.trim(),
+          // Luôn lưu về mã BIN 6 số cho chuẩn VietQR; nếu chưa nhận diện được thì
+          // giữ nguyên chuỗi cũ để không mất dữ liệu người dùng đã nhập.
+          bank_code:
+            resolveBankBin(branchDialogForm.bankCode) || branchDialogForm.bankCode.trim(),
           account_number: branchDialogForm.accountNumber.trim(),
           account_name: branchDialogForm.accountName.trim(),
           webhook_secret: branchDialogForm.webhookSecret.trim(),
@@ -255,13 +266,30 @@ export function SedesTab() {
               </div>
               <div className="grid gap-3 sm:grid-cols-2">
                 <div className="space-y-2">
-                  <Label htmlFor="dialogBankCode">Mã ngân hàng VietQR</Label>
-                  <Input
-                    id="dialogBankCode"
-                    placeholder="VD: MBBank, VCB, ACB"
-                    value={branchDialogForm.bankCode}
-                    onChange={(e) => setBranchDialogForm({ ...branchDialogForm, bankCode: e.target.value })}
-                  />
+                  <Label htmlFor="dialogBankCode">Ngân hàng</Label>
+                  {/* Chọn từ danh sách và lưu MÃ BIN 6 số — chuẩn VietQR bắt buộc dùng BIN,
+                      gõ tay tên ngân hàng sẽ tạo ra mã QR không quét được. */}
+                  <Select
+                    value={resolveBankBin(branchDialogForm.bankCode) || ""}
+                    onValueChange={(v) => setBranchDialogForm({ ...branchDialogForm, bankCode: v })}
+                  >
+                    <SelectTrigger id="dialogBankCode">
+                      <SelectValue placeholder="Chọn ngân hàng" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {VN_BANKS.map((bank) => (
+                        <SelectItem key={bank.bin} value={bank.bin}>
+                          {bank.name} ({bank.bin})
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {branchDialogForm.bankCode && !resolveBankBin(branchDialogForm.bankCode) && (
+                    <p className="text-xs text-destructive">
+                      Chưa nhận diện được &quot;{branchDialogForm.bankCode}&quot; — hãy chọn lại ngân hàng
+                      trong danh sách, nếu không mã QR sẽ không quét được.
+                    </p>
+                  )}
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="dialogAccountNumber">Số tài khoản</Label>

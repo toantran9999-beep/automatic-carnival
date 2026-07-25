@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { useLangStore } from "@/stores/lang-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useBranchSettings } from "@/hooks/use-settings";
+import { buildVietQrPayload, resolveBankBin, bankDisplayName } from "@restai/config";
 
 interface OrderItem {
   name: string;
@@ -231,7 +232,8 @@ interface TemporaryTransferBillData {
   total: number;
   paymentCode: string;
   qrUrl?: string | null;
-  qrPayload: string;
+  /** Chuỗi VietQR chuẩn. Null/rỗng = không đủ cấu hình ngân hàng → KHÔNG in QR. */
+  qrPayload?: string | null;
   bank?: {
     bankCode?: string;
     accountNumber?: string;
@@ -765,8 +767,14 @@ function transferRasterSegments(data: TemporaryTransferBillData, cfg: ReceiptCon
   segs.push({ kind: "twoCol", left: "Thuế VAT", right: moneyVi(data.tax) });
   segs.push({ kind: "twoCol", left: "TỔNG CẦN TRẢ", right: moneyVi(data.total), bold: true, big: true });
   segs.push({ kind: "sep" });
-  segs.push({ kind: "text", text: "QUÉT QR CHUYỂN KHOẢN", align: "center", bold: true });
-  segs.push({ kind: "qr", payload: data.qrPayload || data.paymentCode });
+  // Chỉ vẽ QR khi có payload VietQR thật. Trước đây rơi về data.paymentCode khiến
+  // QR chứa mỗi chuỗi "TODA-..." — app ngân hàng báo "Mã thanh toán không hợp lệ".
+  if (data.qrPayload) {
+    segs.push({ kind: "text", text: "QUÉT QR CHUYỂN KHOẢN", align: "center", bold: true });
+    segs.push({ kind: "qr", payload: data.qrPayload });
+  } else {
+    segs.push({ kind: "text", text: "CHUYỂN KHOẢN THEO THÔNG TIN DƯỚI", align: "center", bold: true });
+  }
   if (cfg.transfer.show.bankInfo) {
     if (data.bank?.accountName) segs.push({ kind: "text", text: `Người nhận: ${data.bank.accountName}` });
     if (data.bank?.bankCode) segs.push({ kind: "text", text: `Ngân hàng: ${data.bank.bankCode}` });
@@ -813,10 +821,10 @@ function buildTemporaryTransferEscPos(data: TemporaryTransferBillData, cfg: Rece
     twoCol("VAT", moneyPlain(data.tax), width),
     twoCol("TONG CAN TRA", moneyPlain(data.total), width),
     SEP,
-    centered("QUET QR CHUYEN KHOAN", width),
-    escposAlign("center"),
-    escposQrBytes(data.qrPayload || data.paymentCode),
-    escposAlign("left"),
+    centered(data.qrPayload ? "QUET QR CHUYEN KHOAN" : "CHUYEN KHOAN THEO THONG TIN DUOI", width),
+    ...(data.qrPayload
+      ? [escposAlign("center"), escposQrBytes(data.qrPayload), escposAlign("left")]
+      : []),
     cfg.transfer.show.bankInfo && data.bank?.accountName ? `Nguoi nhan: ${plainLine(data.bank.accountName, width - 12)}` : "",
     cfg.transfer.show.bankInfo && data.bank?.bankCode ? `Ngan hang: ${plainLine(data.bank.bankCode, width - 11)}` : "",
     cfg.transfer.show.bankInfo && data.bank?.accountNumber ? `STK: ${plainLine(data.bank.accountNumber, width - 5)}` : "",
@@ -1177,8 +1185,8 @@ function buildTemporaryTransferBillHtml(data: TemporaryTransferBillData, cfg: Re
     <tr class="bold"><td style="font-size:14px;">TỔNG CẦN TRẢ:</td><td style="text-align:right;font-size:14px;">${formatCents(data.total)}</td></tr>
   </table>
   <div class="divider"></div>
-  <div class="center bold">QUÉT QR CHUYỂN KHOẢN</div>
-  ${data.qrUrl ? `<img class="qr" src="${escapeHtml(data.qrUrl)}" />` : `<div class="box center">${escapeHtml(data.qrPayload)}</div>`}
+  <div class="center bold">${data.qrUrl || data.qrPayload ? "QUÉT QR CHUYỂN KHOẢN" : "CHUYỂN KHOẢN THEO THÔNG TIN DƯỚI"}</div>
+  ${data.qrUrl ? `<img class="qr" src="${escapeHtml(data.qrUrl)}" />` : ""}
   <div class="box">
     ${cfg.transfer.show.bankInfo && data.bank?.accountName ? `<div><b>Người nhận:</b> ${escapeHtml(data.bank.accountName)}</div>` : ""}
     ${cfg.transfer.show.bankInfo && data.bank?.bankCode ? `<div><b>Ngân hàng:</b> ${escapeHtml(data.bank.bankCode)}</div>` : ""}
@@ -1497,6 +1505,16 @@ export function usePrintSampleTransfer() {
   const { data: branchSettings } = useBranchSettings();
   return useCallback(async (cfg: ReceiptConfig) => {
     const sepay = branchSettings?.settings?.payment?.sepay || branchSettings?.settings?.sepay || {};
+    const rawBankCode = sepay.bank_code || sepay.bankCode || "";
+    const bin = resolveBankBin(rawBankCode);
+    const accountNumber = sepay.account_number || sepay.accountNumber || "";
+    // In thử phải dùng ĐÚNG cấu hình ngân hàng thật, để quét thử biết ngay đúng/sai.
+    const sampleQr = buildVietQrPayload({
+      bin: bin || "",
+      accountNumber,
+      amountVnd: 79000,
+      addInfo: "TODA-INTHU",
+    });
     const data: TemporaryTransferBillData = {
       businessName: branchSettings?.name || "TODA CAFE",
       address: branchSettings?.address || undefined,
@@ -1513,10 +1531,14 @@ export function usePrintSampleTransfer() {
       tax: 0,
       total: 7900000,
       paymentCode: "TODA-INTHU",
-      qrPayload: "TODA-INTHU-QR-MAU",
+      qrPayload: sampleQr,
+      qrUrl:
+        bin && accountNumber
+          ? `https://img.vietqr.io/image/${bin}-${encodeURIComponent(accountNumber)}-compact2.png?amount=79000&addInfo=TODA-INTHU`
+          : null,
       bank: {
-        bankCode: sepay.bank_code || sepay.bankCode || "VCB",
-        accountNumber: sepay.account_number || sepay.accountNumber || "0123456789",
+        bankCode: bankDisplayName(bin, rawBankCode),
+        accountNumber: accountNumber || "(chưa cấu hình)",
         accountName: sepay.account_name || sepay.accountName || "TODA CAFE",
       },
     };

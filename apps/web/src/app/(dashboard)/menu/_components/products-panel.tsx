@@ -115,6 +115,34 @@ export function ProductsPanel({
   // Tự thoát chế độ sắp xếp nếu người dùng chuyển sang "Tất cả" hoặc bắt đầu tìm kiếm
   const isReordering = reorderMode && canReorder;
 
+  /**
+   * Vào chế độ sắp xếp. Thứ tự lưu theo TỪNG danh mục nên nếu đang ở "Tất cả"
+   * (hoặc đang tìm kiếm) thì tự chuyển về đúng danh mục rồi sắp luôn —
+   * không bắt người dùng phải tự mò chọn danh mục trước.
+   */
+  const enterReorder = (categoryId?: string) => {
+    const target =
+      categoryId ||
+      (selectedCategoryId !== "all" ? selectedCategoryId : categoryList[0]?.id);
+    if (!target) return;
+    if (search) setSearch("");
+    if (target !== selectedCategoryId) setSelectedCategoryId(target);
+    setPendingOrder(null);
+    setReorderMode(true);
+  };
+
+  const exitReorder = () => {
+    setReorderMode(false);
+    setPendingOrder(null);
+  };
+
+  /** Đổi danh mục đang xem — phải xóa thứ tự tạm của danh mục cũ kẻo hiển thị sai. */
+  const handleSelectCategory = (id: string) => {
+    if (id === selectedCategoryId) return;
+    setPendingOrder(null);
+    setSelectedCategoryId(id);
+  };
+
   /** Lưu thứ tự mới: gán lại số thứ tự cả danh sách, chỉ gọi API cho món bị lệch. */
   const persistOrder = async (next: any[]) => {
     const prevOrder = pendingOrder;
@@ -310,7 +338,7 @@ export function ProductsPanel({
         <div className="sticky top-4 space-y-1">
           {/* "Todos" option */}
           <button
-            onClick={() => setSelectedCategoryId("all")}
+            onClick={() => handleSelectCategory("all")}
             className={`w-full flex items-center justify-between rounded-md px-3 py-2 text-sm transition-colors text-left ${
               selectedCategoryId === "all"
                 ? "bg-primary text-primary-foreground font-medium"
@@ -343,7 +371,7 @@ export function ProductsPanel({
                   )}
                 >
                   <button
-                    onClick={() => setSelectedCategoryId(cat.id)}
+                    onClick={() => handleSelectCategory(cat.id)}
                     className={cn(
                       "flex min-w-0 flex-1 items-center justify-between px-3 py-2 text-left text-sm",
                       isActive ? "font-medium" : "text-foreground",
@@ -393,7 +421,7 @@ export function ProductsPanel({
         {/* Mobile category chips (horizontal scroll) */}
         <div className="md:hidden -mx-1 px-1 flex gap-2 overflow-x-auto pb-1">
           <button
-            onClick={() => setSelectedCategoryId("all")}
+            onClick={() => handleSelectCategory("all")}
             className={`shrink-0 rounded-full px-3 py-1.5 text-xs font-medium transition-colors ${
               selectedCategoryId === "all"
                 ? "bg-primary text-primary-foreground"
@@ -413,7 +441,7 @@ export function ProductsPanel({
                 )}
               >
                 <button
-                  onClick={() => setSelectedCategoryId(cat.id)}
+                  onClick={() => handleSelectCategory(cat.id)}
                   className="px-3 py-1.5 text-xs font-medium"
                 >
                   {cat.name} · {itemCountByCategory[cat.id] || 0}
@@ -454,12 +482,9 @@ export function ProductsPanel({
             <Button
               size="sm"
               variant={isReordering ? "default" : "outline"}
-              disabled={!canReorder || savingOrder}
-              title={canReorder ? t("menu.reorder") : t("menu.reorderHint")}
-              onClick={() => {
-                setReorderMode((v) => !v);
-                if (isReordering) setPendingOrder(null);
-              }}
+              disabled={savingOrder || categoryList.length === 0}
+              title={t("menu.reorder")}
+              onClick={() => (isReordering ? exitReorder() : enterReorder())}
             >
               {isReordering ? (
                 <Check className="h-4 w-4 mr-1" />
@@ -482,8 +507,10 @@ export function ProductsPanel({
             )}
           </div>
         </div>
-        {selectedCategoryId === "all" && !search && (
-          <p className="text-xs text-muted-foreground">{t("menu.reorderHint")}</p>
+        {isReordering && (
+          <p className="rounded-md bg-primary/10 px-3 py-2 text-xs text-foreground">
+            {t("menu.reorderScope")} <strong>{activeCategoryName}</strong>
+          </p>
         )}
 
         {/* Search */}
@@ -563,8 +590,8 @@ export function ProductsPanel({
                   key: "reorder",
                   label: t("menu.reorder"),
                   icon: ArrowUpDown,
-                  disabled: !canReorder,
-                  onSelect: () => setReorderMode(true),
+                  // Sắp xếp ngay trong danh mục của chính món này
+                  onSelect: () => enterReorder(item.categoryId || item.category_id),
                 },
                 {
                   key: "delete",

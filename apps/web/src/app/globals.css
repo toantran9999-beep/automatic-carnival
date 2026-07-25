@@ -65,6 +65,25 @@
   --sidebar-ring: var(--accent-runtime);
 }
 
+/* Logo quán (component `brand-logo`): dùng file logo gốc làm MẶT NẠ rồi tô bằng
+   `currentColor` — logo tự lấy màu chữ của chỗ đặt nó, nên hợp với cả giao diện
+   sáng/tối và cả 4 màu nhấn. Chỉ cần một file ảnh duy nhất. */
+/* Cố ý KHÔNG khai `display` ở đây — để class Tailwind (inline-block/block) quyết định,
+   vì CSS không nằm trong layer sẽ đè lên utility của Tailwind. */
+.brand-logo {
+  background-color: currentColor;
+  -webkit-mask: url("/brand/mark.png") center / contain no-repeat;
+  mask: url("/brand/mark.png") center / contain no-repeat;
+}
+
+/* Trình duyệt quá cũ không hiểu mask sẽ tô nguyên ô vuông đặc — rơi về ảnh logo
+   gốc cho chắc (máy POS chạy WebView cũ). */
+@supports not ((-webkit-mask-image: url("/brand/mark.png")) or (mask-image: url("/brand/mark.png"))) {
+  .brand-logo {
+    background: url("/brand/mark.png") center / contain no-repeat;
+  }
+}
+
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);

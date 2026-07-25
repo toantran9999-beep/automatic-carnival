@@ -31,7 +31,7 @@
 |---|---|
 | Root redirect | `app/page.tsx` (đã login → `/dashboard`, chưa → `/login`). |
 | Layout gốc | `app/layout.tsx` (font **Be Vietnam Pro**, PWA manifest, script no-flash theme, đăng ký SW). |
-| PWA | `app/manifest.ts`, `public/sw.js`, `public/icon.svg`. |
+| PWA | `app/manifest.ts`, `public/sw.js`, bộ icon `public/icon-*.png` (sinh từ `logo/logoden.png` bằng `scripts/build-brand-assets.ps1` — đổi icon thì PHẢI tăng số bản cache trong `sw.js`). |
 | Theme tokens | `app/globals.css` (biến shadcn + `--accent-runtime` đổi màu nhấn runtime). |
 | Dashboard layout | `app/(dashboard)/layout.tsx` — sidebar nav, **`allowedPaths` theo vai trò**, branch switcher, ThemeSwitcher, ClockNow, nút thu gọn. |
 | Bảng điều khiển | `app/(dashboard)/dashboard/page.tsx` (stats từ `/api/reports/dashboard`). |
@@ -40,7 +40,7 @@
 | Thực đơn | `app/(dashboard)/menu/page.tsx` + `_components/`: `products-panel`, `product-dialog`, `category-dialog`, `modifier-groups-panel`, `modifier-group-dialog`, `image-upload-button`. |
 | Khác | `orders, kitchen, inventory, staff, payments, loyalty, reports, settings, connections`. |
 | Khách QR | `app/(customer)/...` — tồn tại nhưng **đã ẩn** trong luồng bàn (`showCustomerQrFlow=false`). |
-| Components dùng chung | `print-ticket` (phiếu bếp + in Android), `station-provider` (nghe `order:new` → tự in tại quầy), `station-toggle` (bật/tắt Trạm quầy theo thiết bị), `theme-switcher`, `toda-mark` (emblem), `clock-now`, `sw-register`, `page-header`, `confirm-dialog`. |
+| Components dùng chung | `print-ticket` (phiếu bếp + in Android), `station-provider` (nghe `order:new` → tự in tại quầy), `station-toggle` (bật/tắt Trạm quầy theo thiết bị), `theme-switcher`, `brand-logo` (logo quán, dùng ảnh gốc làm mặt nạ + `currentColor`), `clock-now`, `sw-register`, `page-header`, `confirm-dialog`. |
 | Stores (Zustand) | `auth-store`, `cart-store`, `customer-store`, `lang-store`, `theme-store`, `station-store` (cờ Trạm quầy + chuông, lưu theo thiết bị). |
 | Hooks | `use-menu`, `use-tables`, `use-orders`, `use-payments`, `use-reports`, `use-dashboard`, `use-settings`, `use-uploads`, `use-ai-images`, `use-kitchen/inventory/loyalty/staff/coupons`, `use-websocket`, `use-auth`. |
 | Lib | `api-client`, `fetcher` (`apiFetch` tự gắn `x-branch-id`), `translations` (VI/EN), `utils` (`formatCurrency`). |
@@ -82,7 +82,7 @@
 - **PWA** cài được (manifest + SW cache shell, KHÔNG cache `/api/`). **iOS safe-area**: header/nav/drawer chừa `env(safe-area-inset-*)`.
 - **POS mobile** (giỏ dạng sheet) + **tối ưu màn ngang** (bỏ tiêu đề thừa, danh mục cuộn ngang, nhiều cột, ảnh thấp). Lọc danh mục client-side + badge đếm + placeholder thương hiệu.
 - **Báo cáo đa chi nhánh** (`?allBranches=true`, breakdown theo chi nhánh) cho org_admin/super_admin.
-- **Theme** Sáng/Tối + 4 màu nhấn (matcha/vàng Đông Dương/terracotta/xanh ngọc) — `theme-store` + `--accent-runtime`. Emblem `toda-mark`, đồng hồ realtime.
+- **Theme** Sáng/Tối + 4 màu nhấn (matcha/vàng Đông Dương/terracotta/xanh ngọc) — `theme-store` + `--accent-runtime`. Logo quán `brand-logo` (tự đổi màu theo nền nên hợp với mọi màu nhấn), đồng hồ realtime.
 - **Bàn ăn rework**: bàn có đơn → **Thanh toán** (POS `?pay=1`) hoặc **Hủy bàn** (`PATCH /api/tables/sessions/:id/void` — hủy đơn chưa-TT + free bàn + log). Khu **"Mang về"** thẻ động (`GET/PATCH /api/tables/takeaway`). Ẩn QR khách. **Phân quyền cấu trúc bàn** (thêm/sửa/xóa) chỉ admin/quản lý (`canManageTables`).
 - **Codex**: gộp/tách/chuyển bàn (`table_session_events`) + **tạo ảnh AI** cho món (`routes/ai-images.ts`, fal.ai/OpenAI, lưu volume `/uploads`).
 - **Đơn vị tính (ĐVT)** cho từng món (ô ở product-dialog → in trên phiếu).

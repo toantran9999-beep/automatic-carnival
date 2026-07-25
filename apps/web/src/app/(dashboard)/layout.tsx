@@ -33,7 +33,7 @@ import { useTranslation } from "@/stores/lang-store";
 import { LanguageSwitcher } from "@/components/language-switcher";
 import { ThemeSwitcher } from "@/components/theme-switcher";
 import { ClockNow } from "@/components/clock-now";
-import { TodaMark } from "@/components/toda-mark";
+import { BrandLogo } from "@/components/brand-logo";
 import { StationToggle } from "@/components/station-toggle";
 import { StationProvider } from "@/components/station-provider";
 import { PosShiftControl } from "./pos/_components/shift-controls";
@@ -264,9 +264,7 @@ export default function DashboardLayout({
       >
         {/* Brand header */}
         <div className="h-14 flex items-center gap-3 px-4 border-b border-sidebar-border">
-          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-            <TodaMark size={20} />
-          </div>
+          <BrandLogo size={28} className="shrink-0 text-sidebar-foreground" />
           {!collapsed && (
             <div className="flex-1 min-w-0">
               <p className="text-sm font-semibold text-sidebar-foreground truncate leading-tight">
@@ -509,9 +507,7 @@ export default function DashboardLayout({
               {/* Mobile header */}
               <div className="h-14 flex items-center justify-between px-4 border-b border-sidebar-border">
                 <div className="flex items-center gap-3">
-                  <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-sidebar-primary text-sidebar-primary-foreground">
-                    <TodaMark size={20} />
-                  </div>
+                  <BrandLogo size={28} className="shrink-0 text-sidebar-foreground" />
                   <span className="font-semibold text-sm text-sidebar-foreground">
                     {orgName}
                   </span>

@@ -11,6 +11,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
 import { useTranslation } from "@/stores/lang-store";
 import { LanguageSwitcher } from "@/components/language-switcher";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default function LoginPage() {
   const { login } = useAuth();
@@ -44,9 +45,7 @@ export default function LoginPage() {
         <LanguageSwitcher />
       </div>
       <CardHeader className="text-center">
-        <div className="mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-lg bg-primary">
-          <span className="text-2xl font-bold text-primary-foreground">R</span>
-        </div>
+        <BrandLogo size={56} className="mx-auto mb-4 block text-foreground" />
         <CardTitle className="text-2xl">TODA POS</CardTitle>
         <CardDescription>{t("login.subtitle")}</CardDescription>
       </CardHeader>

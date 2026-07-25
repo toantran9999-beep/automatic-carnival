@@ -1,8 +1,10 @@
 // Minimal service worker for TODA POS PWA.
 // Goal: make the app installable and resilient to flaky networks — WITHOUT
 // caching dynamic API responses (those must always hit the network).
-const CACHE = "toda-pos-shell-v1";
-const SHELL = ["/", "/manifest.webmanifest", "/icon.svg"];
+// ⚠️ Đổi biểu tượng/asset tĩnh thì PHẢI tăng số bản (v2 → v3), nếu không máy đã
+// cài PWA sẽ giữ mãi bản cũ trong bộ nhớ đệm. Bản 'activate' bên dưới tự xoá cache cũ.
+const CACHE = "toda-pos-shell-v2";
+const SHELL = ["/", "/manifest.webmanifest", "/icon-192.png", "/icon-512.png"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(

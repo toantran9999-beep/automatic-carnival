@@ -7,7 +7,7 @@ import { Badge } from "@restai/ui/components/badge";
 import { Search, Loader2, X, PencilLine, Flame } from "lucide-react";
 import { toThumbUrl } from "@/lib/image-thumb";
 import { sortByOrder } from "@/lib/utils";
-import { TodaMark } from "@/components/toda-mark";
+import { BrandLogo } from "@/components/brand-logo";
 import { useTranslation } from "@/stores/lang-store";
 import type { PosCartItem } from "../page";
 
@@ -39,7 +39,9 @@ function BrandPlaceholder({ categoryName, seed }: { categoryName?: string; seed:
     >
       <div className="absolute -right-7 -top-7 h-20 w-20 rounded-full bg-white/45" />
       <div className="absolute -bottom-8 -left-8 h-24 w-24 rounded-full bg-black/5" />
-      <TodaMark size={30} className="relative text-foreground/55" />
+      {/* Nền pastel này luôn sáng ở cả 2 giao diện → tô cố định màu logo gốc,
+          không dùng text-foreground (giao diện tối sẽ thành trắng trên trắng). */}
+      <BrandLogo size={30} className="relative text-[#3a3a3c]/45" />
       {categoryName && (
         <span className="absolute bottom-1.5 left-1.5 max-w-[calc(100%-12px)] truncate rounded-md bg-background/85 px-1.5 py-0.5 text-[9px] font-semibold uppercase text-muted-foreground shadow-sm">
           {categoryName}

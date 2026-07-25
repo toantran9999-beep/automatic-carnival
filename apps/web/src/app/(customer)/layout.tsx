@@ -2,6 +2,7 @@
 import { useCustomerStore } from "@/stores/customer-store";
 import { User } from "lucide-react";
 import Link from "next/link";
+import { BrandLogo } from "@/components/brand-logo";
 
 export default function CustomerLayout({
   children,
@@ -17,7 +18,7 @@ export default function CustomerLayout({
     <div className="min-h-screen bg-background text-foreground">
       <header className="sticky top-0 z-50 bg-background/95 backdrop-blur-sm border-b border-border shadow-sm pt-4 pb-2 px-4">
         <div className="flex items-center justify-between max-w-lg mx-auto">
-          <div className="w-8" />
+          <BrandLogo size={28} className="shrink-0 text-foreground" />
           <h1 className="text-lg font-semibold tracking-wide text-foreground truncate">
             {branchName || "TODA POS"}
           </h1>

@@ -39,6 +39,9 @@ export function BranchTab() {
     waiterTableAssignmentEnabled: false,
     hidePosNav: false,
     hideTableQr: false,
+    showBestSellers: true,
+    bestSellersLimit: "10",
+    bestSellersDays: "30",
     printMode: "combined" as "combined" | "per_item",
     printDriver: "browser_print" as "browser_print" | "rawbt_intent" | "android_bridge",
   });
@@ -56,6 +59,10 @@ export function BranchTab() {
         waiterTableAssignmentEnabled: branchData.settings?.waiter_table_assignment_enabled ?? false,
         hidePosNav: branchData.settings?.hide_pos_nav ?? false,
         hideTableQr: branchData.settings?.hide_table_qr ?? false,
+        // Chưa có khóa = BẬT (tính năng mặc định bật sẵn)
+        showBestSellers: branchData.settings?.show_best_sellers ?? true,
+        bestSellersLimit: String(branchData.settings?.best_sellers_limit ?? 10),
+        bestSellersDays: String(branchData.settings?.best_sellers_days ?? 30),
         printMode: branchData.settings?.print_mode === "per_item" ? "per_item" : "combined",
         printDriver: ["rawbt_intent", "android_bridge"].includes(branchData.settings?.print_driver)
           ? branchData.settings.print_driver
@@ -78,6 +85,9 @@ export function BranchTab() {
         waiterTableAssignmentEnabled: branchForm.waiterTableAssignmentEnabled,
         hidePosNav: branchForm.hidePosNav,
         hideTableQr: branchForm.hideTableQr,
+        showBestSellers: branchForm.showBestSellers,
+        bestSellersLimit: Math.min(Math.max(parseInt(branchForm.bestSellersLimit, 10) || 10, 3), 30),
+        bestSellersDays: Math.min(Math.max(parseInt(branchForm.bestSellersDays, 10) || 30, 1), 365),
         printMode: branchForm.printMode,
         printDriver: branchForm.printDriver,
       });
@@ -276,6 +286,75 @@ export function BranchTab() {
                   )}
                 />
               </button>
+            </div>
+            {/* Nhóm "Bán chạy" trên màn Bán hàng */}
+            <div className="space-y-3 rounded-lg border p-4">
+              <div className="flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium">
+                    {t("settings.showBestSellers", "Hiện nhóm \"Bán chạy\" trên màn Bán hàng")}
+                  </p>
+                  <p className="text-xs text-muted-foreground">
+                    {t(
+                      "settings.showBestSellersHelp",
+                      "Gom các món khách hay gọi nhất lên đầu để nhân viên bấm nhanh. Tự ẩn khi quán chưa có dữ liệu bán hàng.",
+                    )}
+                  </p>
+                </div>
+                <button
+                  type="button"
+                  role="switch"
+                  aria-checked={branchForm.showBestSellers}
+                  onClick={() =>
+                    setBranchForm({ ...branchForm, showBestSellers: !branchForm.showBestSellers })
+                  }
+                  className={cn(
+                    "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
+                    branchForm.showBestSellers ? "bg-primary" : "bg-muted"
+                  )}
+                >
+                  <span
+                    className={cn(
+                      "pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform",
+                      branchForm.showBestSellers ? "translate-x-5" : "translate-x-0"
+                    )}
+                  />
+                </button>
+              </div>
+              {branchForm.showBestSellers && (
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="space-y-1.5">
+                    <Label htmlFor="bestSellersLimit">
+                      {t("settings.bestSellersLimit", "Số món hiện")}
+                    </Label>
+                    <Input
+                      id="bestSellersLimit"
+                      type="number"
+                      min={3}
+                      max={30}
+                      value={branchForm.bestSellersLimit}
+                      onChange={(e) =>
+                        setBranchForm({ ...branchForm, bestSellersLimit: e.target.value })
+                      }
+                    />
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label htmlFor="bestSellersDays">
+                      {t("settings.bestSellersDays", "Tính theo số ngày gần đây")}
+                    </Label>
+                    <Input
+                      id="bestSellersDays"
+                      type="number"
+                      min={1}
+                      max={365}
+                      value={branchForm.bestSellersDays}
+                      onChange={(e) =>
+                        setBranchForm({ ...branchForm, bestSellersDays: e.target.value })
+                      }
+                    />
+                  </div>
+                </div>
+              )}
             </div>
             <div className="space-y-2 rounded-lg border p-4">
               <Label>{t("settings.printModeLabel")}</Label>

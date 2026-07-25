@@ -77,7 +77,10 @@ settings.patch("/branch", requirePermission("settings:update"), zValidator("json
     body.printDriver !== undefined ||
     body.hidePosNav !== undefined ||
     body.hideTableQr !== undefined ||
-    body.receipt !== undefined
+    body.receipt !== undefined ||
+    body.showBestSellers !== undefined ||
+    body.bestSellersLimit !== undefined ||
+    body.bestSellersDays !== undefined
   ) {
     // Fetch current settings to merge
     const [existing] = await db.select({ settings: schema.branches.settings })
@@ -93,6 +96,9 @@ settings.patch("/branch", requirePermission("settings:update"), zValidator("json
     if (body.hidePosNav !== undefined) merged.hide_pos_nav = body.hidePosNav;
     if (body.hideTableQr !== undefined) merged.hide_table_qr = body.hideTableQr;
     if (body.receipt !== undefined) merged.receipt = body.receipt;
+    if (body.showBestSellers !== undefined) merged.show_best_sellers = body.showBestSellers;
+    if (body.bestSellersLimit !== undefined) merged.best_sellers_limit = body.bestSellersLimit;
+    if (body.bestSellersDays !== undefined) merged.best_sellers_days = body.bestSellersDays;
     updateData.settings = merged;
   }
 

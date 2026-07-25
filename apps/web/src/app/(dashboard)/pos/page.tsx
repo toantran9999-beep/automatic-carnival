@@ -9,7 +9,7 @@ import {
   SheetTitle,
 } from "@restai/ui/components/sheet";
 import { formatCurrency } from "@/lib/utils";
-import { useCategories, useMenuItems } from "@/hooks/use-menu";
+import { useCategories, useMenuItems, useBestSellers } from "@/hooks/use-menu";
 import { useCreateOrder } from "@/hooks/use-orders";
 import { useCreatePaymentRequest } from "@/hooks/use-payments";
 import { useTables } from "@/hooks/use-tables";
@@ -106,6 +106,8 @@ export default function PosPage() {
   const { data: categories } = useCategories();
   // Lấy toàn bộ món 1 lần, lọc danh mục/tìm kiếm phía client (đổi danh mục tức thì + đếm số món).
   const { data: menuItems, isLoading: itemsLoading } = useMenuItems();
+  // Nhóm ảo "Bán chạy" — server đã trả rỗng nếu chủ quán tắt trong Cài đặt
+  const { data: bestSellers } = useBestSellers();
 
   // Không có "Tất cả" — mặc định vào thẳng danh mục đầu tiên cho lưới nhẹ, đỡ render 50+ ô
   useEffect(() => {
@@ -541,6 +543,8 @@ export default function PosPage() {
           cart={cart}
           onItemClick={handleItemClick}
           onAddCustom={() => setCustomDialogOpen(true)}
+          bestSellerIds={(bestSellers ?? []).map((b) => b.menuItemId)}
+          showBestSellers={branchSettings?.settings?.show_best_sellers ?? true}
         />
 
         {/* Desktop cart (inline sidebar) */}

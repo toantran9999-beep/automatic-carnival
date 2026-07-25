@@ -54,6 +54,26 @@ export function useMenuItems(categoryId?: string) {
   });
 }
 
+export interface BestSellerRow {
+  menuItemId: string;
+  quantity: number;
+}
+
+/**
+ * Top món bán chạy cho nhóm "Bán chạy" trên POS.
+ * Dùng root key riêng (không lồng trong ["menu"]) để mỗi lần sửa món không phải tải lại;
+ * số bán chạy đổi rất chậm nên cache 10 phút, không cần refetch theo chu kỳ.
+ */
+export function useBestSellers() {
+  return useQuery<BestSellerRow[]>({
+    queryKey: ["best-sellers"],
+    queryFn: () => apiFetch<BestSellerRow[]>("/api/menu/best-sellers"),
+    staleTime: 10 * 60 * 1000,
+    gcTime: 30 * 60 * 1000,
+    refetchOnWindowFocus: false,
+  });
+}
+
 export function useCreateMenuItem() {
   const qc = useQueryClient();
   return useMutation({

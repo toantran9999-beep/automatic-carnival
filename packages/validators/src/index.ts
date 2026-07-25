@@ -278,6 +278,10 @@ export const updateBranchSettingsSchema = z.object({
   hideTableQr: z.boolean().optional(),
   // Cấu hình mẫu hóa đơn — merge vào settings.receipt (không ghi đè settings khác như sepay)
   receipt: z.record(z.unknown()).optional(),
+  // Nhóm "Bán chạy" trên màn Bán hàng (mặc định BẬT khi chưa có khóa trong settings)
+  showBestSellers: z.boolean().optional(),
+  bestSellersLimit: z.number().int().min(3).max(30).optional(),
+  bestSellersDays: z.number().int().min(1).max(365).optional(),
 });
 
 // Query validators for GET endpoints

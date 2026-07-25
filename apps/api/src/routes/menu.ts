@@ -2,8 +2,9 @@ import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
-import { eq, and, inArray, asc, desc } from "drizzle-orm";
+import { eq, and, inArray, asc, desc, gte, sum, isNotNull } from "drizzle-orm";
 import { db, schema } from "@restai/db";
+import { peruStartOfDay } from "../lib/timezone.js";
 import {
   createCategorySchema,
   updateCategorySchema,
@@ -167,6 +168,58 @@ menu.get("/items", requirePermission("menu:read"), async (c) => {
     .orderBy(asc(schema.menuItems.sort_order), asc(schema.menuItems.name));
 
   return c.json({ success: true, data: items });
+});
+
+/**
+ * GET /best-sellers - Top món bán chạy của chi nhánh, dùng cho nhóm "Bán chạy" trên POS.
+ *
+ * Gác `menu:read` (thu ngân/phục vụ CÓ quyền này, KHÔNG có `reports:read`) nên không
+ * dùng lại được /api/reports/top-items. Gom theo `menu_item_id` (không phải theo tên
+ * như báo cáo) vì POS cần đúng id để bấm là thêm vào giỏ; bỏ món nhập tay (id null).
+ * Số món & số ngày lấy từ cài đặt chi nhánh; tắt cài đặt thì trả rỗng ngay tại server.
+ */
+menu.get("/best-sellers", requirePermission("menu:read"), async (c) => {
+  const tenant = c.get("tenant") as any;
+
+  const [branch] = await db
+    .select({ settings: schema.branches.settings })
+    .from(schema.branches)
+    .where(eq(schema.branches.id, tenant.branchId))
+    .limit(1);
+  const s = (branch?.settings as Record<string, any>) || {};
+
+  // Chưa có khóa = BẬT (tính năng mặc định bật sẵn)
+  if (s.show_best_sellers === false) {
+    return c.json({ success: true, data: [] });
+  }
+
+  const days = Math.min(Math.max(Number(s.best_sellers_days ?? 30) || 30, 1), 365);
+  const limit = Math.min(Math.max(Number(s.best_sellers_limit ?? 10) || 10, 3), 30);
+  const since = new Date(peruStartOfDay().getTime() - (days - 1) * 24 * 60 * 60 * 1000);
+
+  const rows = await db
+    .select({
+      menuItemId: schema.orderItems.menu_item_id,
+      quantity: sum(schema.orderItems.quantity),
+    })
+    .from(schema.orderItems)
+    .innerJoin(schema.orders, eq(schema.orderItems.order_id, schema.orders.id))
+    .where(
+      and(
+        eq(schema.orders.branch_id, tenant.branchId),
+        eq(schema.orders.status, "completed"),
+        gte(schema.orders.created_at, since),
+        isNotNull(schema.orderItems.menu_item_id),
+      ),
+    )
+    .groupBy(schema.orderItems.menu_item_id)
+    .orderBy(desc(sum(schema.orderItems.quantity)))
+    .limit(limit);
+
+  return c.json({
+    success: true,
+    data: rows.map((r) => ({ menuItemId: r.menuItemId, quantity: Number(r.quantity || 0) })),
+  });
 });
 
 // POST /items

@@ -1,10 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo } from "react";
 import { Input } from "@restai/ui/components/input";
 import { Button } from "@restai/ui/components/button";
 import { Badge } from "@restai/ui/components/badge";
-import { Search, Loader2, X, PencilLine } from "lucide-react";
+import { Search, Loader2, X, PencilLine, Flame } from "lucide-react";
 import { toThumbUrl } from "@/lib/image-thumb";
 import { sortByOrder } from "@/lib/utils";
 import { TodaMark } from "@/components/toda-mark";
@@ -49,6 +49,9 @@ function BrandPlaceholder({ categoryName, seed }: { categoryName?: string; seed:
   );
 }
 
+/** Id giả cho nhóm ảo "Bán chạy" — không phải danh mục thật trong DB. */
+export const BEST_SELLERS_ID = "__best_sellers__";
+
 export function ProductGrid({
   categories,
   items,
@@ -60,6 +63,8 @@ export function ProductGrid({
   cart,
   onItemClick,
   onAddCustom,
+  bestSellerIds = [],
+  showBestSellers = true,
 }: {
   categories: any[];
   items: any[];
@@ -71,6 +76,9 @@ export function ProductGrid({
   cart: PosCartItem[];
   onItemClick: (item: any) => void;
   onAddCustom?: () => void;
+  /** Danh sách id món bán chạy, đã xếp sẵn theo thứ hạng */
+  bestSellerIds?: string[];
+  showBestSellers?: boolean;
 }) {
   const { t, lang } = useTranslation();
 
@@ -97,34 +105,66 @@ export function ProductGrid({
     return names;
   }, [categories]);
 
+  // Món bán chạy: giữ ĐÚNG thứ hạng từ API (không đi qua sortByOrder), bỏ món đã ẩn/xóa
+  const bestSellerItems = useMemo(() => {
+    if (!showBestSellers || bestSellerIds.length === 0) return [];
+    const byId = new Map(availableItems.map((i: any) => [i.id, i]));
+    return bestSellerIds.map((id) => byId.get(id)).filter(Boolean) as any[];
+  }, [availableItems, bestSellerIds, showBestSellers]);
+
+  const hasBestSellers = bestSellerItems.length > 0;
+
+  // Nhóm ảo "Bán chạy" đứng đầu rail, sau đó tới danh mục thật
+  const railCategories = useMemo(
+    () =>
+      hasBestSellers
+        ? [{ id: BEST_SELLERS_ID, name: t("pos.bestSellers") }, ...sortedCategories]
+        : sortedCategories,
+    [hasBestSellers, sortedCategories, t],
+  );
+
+  // Đang đứng ở nhóm Bán chạy mà nhóm biến mất (bị tắt/hết dữ liệu) → về danh mục thật đầu tiên
+  useEffect(() => {
+    if (selectedCategory === BEST_SELLERS_ID && !hasBestSellers && sortedCategories.length > 0) {
+      onCategoryChange(sortedCategories[0].id);
+    }
+  }, [selectedCategory, hasBestSellers, sortedCategories, onCategoryChange]);
+
   const filteredItems = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();
     // Đang tìm kiếm → quét TOÀN BỘ món (bỏ lọc danh mục) vì không còn tab "Tất cả"
     if (normalizedSearch) {
       return availableItems.filter((item: any) => item.name.toLowerCase().includes(normalizedSearch));
     }
+    if (selectedCategory === BEST_SELLERS_ID) return bestSellerItems;
     return availableItems.filter(
       (item: any) => !selectedCategory || item.category_id === selectedCategory
     );
-  }, [availableItems, search, selectedCategory]);
+  }, [availableItems, search, selectedCategory, bestSellerItems]);
 
   return (
     <div className="flex min-w-0 flex-1 gap-0">
       {/* Rail danh mục dọc bên trái (tablet/desktop) — kiểu iPOS, không có "Tất cả" cho nhẹ */}
       <div className="hidden w-40 shrink-0 flex-col gap-1 overflow-y-auto border-r pr-2 md:flex xl:w-44">
-        {sortedCategories.map((cat: any) => (
-          <Button
-            key={cat.id}
-            variant={selectedCategory === cat.id ? "default" : "ghost"}
-            className="h-12 w-full shrink-0 justify-between rounded-lg px-3 text-sm font-semibold"
-            onClick={() => onCategoryChange(cat.id)}
-          >
-            <span className="min-w-0 truncate text-left">{cat.name}</span>
-            <span className="ml-1.5 rounded-full bg-black/15 px-1.5 text-[11px] font-bold tabular-nums dark:bg-white/15">
-              {countByCategory.get(cat.id) ?? 0}
-            </span>
-          </Button>
-        ))}
+        {railCategories.map((cat: any) => {
+          const isBest = cat.id === BEST_SELLERS_ID;
+          return (
+            <Button
+              key={cat.id}
+              variant={selectedCategory === cat.id ? "default" : "ghost"}
+              className="h-12 w-full shrink-0 justify-between rounded-lg px-3 text-sm font-semibold"
+              onClick={() => onCategoryChange(cat.id)}
+            >
+              <span className="flex min-w-0 items-center gap-1.5 text-left">
+                {isBest && <Flame className="h-4 w-4 shrink-0 text-amber-500" />}
+                <span className="min-w-0 truncate">{cat.name}</span>
+              </span>
+              <span className="ml-1.5 rounded-full bg-black/15 px-1.5 text-[11px] font-bold tabular-nums dark:bg-white/15">
+                {isBest ? bestSellerItems.length : countByCategory.get(cat.id) ?? 0}
+              </span>
+            </Button>
+          );
+        })}
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col md:pl-3">
@@ -167,20 +207,24 @@ export function ProductGrid({
 
         {/* Pill ngang chỉ dùng cho điện thoại (màn hẹp không đủ chỗ cho rail) */}
         <div className="mt-2 flex gap-1.5 overflow-x-auto pb-1 md:hidden">
-          {sortedCategories.map((cat: any) => (
-            <Button
-              key={cat.id}
-              variant={selectedCategory === cat.id ? "default" : "outline"}
-              size="sm"
-              className="h-10 shrink-0 gap-1.5 rounded-lg px-4 text-sm font-semibold"
-              onClick={() => onCategoryChange(cat.id)}
-            >
-              <span className="max-w-36 truncate">{cat.name}</span>
-              <span className="rounded-full bg-black/15 px-1.5 text-[11px] font-bold tabular-nums dark:bg-white/15">
-                {countByCategory.get(cat.id) ?? 0}
-              </span>
-            </Button>
-          ))}
+          {railCategories.map((cat: any) => {
+            const isBest = cat.id === BEST_SELLERS_ID;
+            return (
+              <Button
+                key={cat.id}
+                variant={selectedCategory === cat.id ? "default" : "outline"}
+                size="sm"
+                className="h-10 shrink-0 gap-1.5 rounded-lg px-4 text-sm font-semibold"
+                onClick={() => onCategoryChange(cat.id)}
+              >
+                {isBest && <Flame className="h-4 w-4 shrink-0 text-amber-500" />}
+                <span className="max-w-36 truncate">{cat.name}</span>
+                <span className="rounded-full bg-black/15 px-1.5 text-[11px] font-bold tabular-nums dark:bg-white/15">
+                  {isBest ? bestSellerItems.length : countByCategory.get(cat.id) ?? 0}
+                </span>
+              </Button>
+            );
+          })}
         </div>
       </div>
 

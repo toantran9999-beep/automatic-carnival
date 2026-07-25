@@ -20,12 +20,32 @@ import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { t } from "../lib/i18n.js";
+import { wsManager } from "../ws/manager.js";
 
 const menu = new Hono<AppEnv>();
 
 menu.use("*", authMiddleware);
 menu.use("*", tenantMiddleware);
 menu.use("*", requireBranch);
+
+/**
+ * Sửa thực đơn xong thì báo cho mọi máy trong chi nhánh bỏ cache thực đơn ngay.
+ *
+ * Đặt ở MIDDLEWARE chứ không rải vào từng endpoint: route này có gần 20 lệnh
+ * thêm/sửa/xoá (món, danh mục, nhóm tuỳ chọn, sắp thứ tự…) — rải tay thì sớm muộn
+ * cũng sót một chỗ, và chỗ sót đó chính là chỗ máy POS bán nhầm giá cũ.
+ */
+menu.use("*", async (c, next) => {
+  await next();
+  if (c.req.method === "GET" || c.res.status >= 400) return;
+  const tenant = c.get("tenant") as any;
+  if (!tenant?.branchId) return;
+  await wsManager.publish(`branch:${tenant.branchId}`, {
+    type: "menu:updated",
+    payload: { source: "menu" },
+    timestamp: Date.now(),
+  });
+});
 
 // --- Categories ---
 

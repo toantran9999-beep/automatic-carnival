@@ -1,6 +1,7 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/fetcher";
+import { LIVE_QUERY, STATIC_QUERY } from "@/lib/query-config";
 
 // --- Spaces ---
 
@@ -8,6 +9,7 @@ export function useSpaces() {
   return useQuery({
     queryKey: ["spaces"],
     queryFn: () => apiFetch("/api/spaces"),
+    ...STATIC_QUERY,
   });
 }
 
@@ -53,6 +55,8 @@ export function useTables(spaceId?: string) {
       const params = spaceId ? `?spaceId=${spaceId}` : "";
       return apiFetch(`/api/tables${params}`);
     },
+    // Dữ liệu sống: vẽ ngay bản trước cho đỡ chớp, nhưng luôn gọi lại nền
+    ...LIVE_QUERY,
   });
 }
 
@@ -311,6 +315,7 @@ export function useTableActiveSession(tableId: string | null) {
     queryKey: ["tables", tableId, "active-session"],
     queryFn: () => apiFetch<{ session: any; orders: any[] }>(`/api/tables/${tableId}/active-session`),
     enabled: !!tableId,
+    ...LIVE_QUERY,
   });
 }
 

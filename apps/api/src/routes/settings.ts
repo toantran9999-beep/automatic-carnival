@@ -8,6 +8,7 @@ import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { t } from "../lib/i18n.js";
+import { wsManager } from "../ws/manager.js";
 
 const settings = new Hono<AppEnv>();
 settings.use("*", authMiddleware, tenantMiddleware);
@@ -106,6 +107,15 @@ settings.patch("/branch", requirePermission("settings:update"), zValidator("json
     .set(updateData)
     .where(eq(schema.branches.id, tenant.branchId))
     .returning();
+
+  // Báo mọi máy trong chi nhánh bỏ cache cài đặt ngay (VD: bật/tắt nhóm "Bán chạy",
+  // đổi mẫu hóa đơn) thay vì đợi hết hạn cache.
+  await wsManager.publish(`branch:${tenant.branchId}`, {
+    type: "menu:updated",
+    payload: { source: "settings" },
+    timestamp: Date.now(),
+  });
+
   return c.json({ success: true, data: updated });
 });
 

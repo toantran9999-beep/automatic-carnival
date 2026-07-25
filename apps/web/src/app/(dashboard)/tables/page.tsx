@@ -47,6 +47,7 @@ import { formatCurrency } from "@/lib/utils";
 import { PosPaymentDialog } from "../pos/_components/pos-payment-dialog";
 import type { PosCartItem } from "../pos/page";
 import { useBranchSettings } from "@/hooks/use-settings";
+import { usePrefetchPosMenu } from "@/hooks/use-menu";
 import { PageHeader } from "@/components/page-header";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FloorPlannerView } from "./_components/floor-planner-view";
@@ -169,6 +170,15 @@ export default function TablesPage() {
   const approveSession = useApproveSession();
   const rejectSession = useRejectSession();
   const { data: branchSettingsData } = useBranchSettings();
+
+  // Hâm nóng màn Bán hàng ngay khi trang Bàn ăn hiện ra — nhân viên đứng ở đây giữa
+  // hai lượt khách, tận dụng lúc rảnh để tải sẵn cả MÃ TRANG lẫn THỰC ĐƠN. Bấm vô bàn
+  // lúc đó chỉ còn phải chờ đúng phiên của bàn đó thay vì 6 lượt gọi + tải mã trang.
+  const prefetchPosMenu = usePrefetchPosMenu();
+  useEffect(() => {
+    router.prefetch("/pos");
+    prefetchPosMenu();
+  }, [router, prefetchPosMenu]);
 
   const waiterAssignmentEnabled = (branchSettingsData as any)?.settings?.waiter_table_assignment_enabled ?? false;
   // Ẩn chức năng QR bàn (quán chưa dùng luồng khách tự quét) — bật/tắt trong Cài đặt → Chi nhánh

@@ -36,6 +36,8 @@ import { ClockNow } from "@/components/clock-now";
 import { BrandLogo } from "@/components/brand-logo";
 import { StationToggle } from "@/components/station-toggle";
 import { StationProvider } from "@/components/station-provider";
+import { CacheSyncProvider } from "@/components/cache-sync-provider";
+import { CACHE_STORAGE_KEY } from "@/lib/query-config";
 import { PosShiftControl } from "./pos/_components/shift-controls";
 
 interface NavGroup {
@@ -186,7 +188,9 @@ export default function DashboardLayout({
     (branchId: string) => {
       if (branchId === selectedBranchId) return;
       setSelectedBranch(branchId);
-      queryClient.invalidateQueries();
+      // XOÁ hẳn chứ không chỉ invalidate: invalidate vẫn hiện dữ liệu chi nhánh cũ ra
+      // màn hình trong lúc tải lại — với cache giữ 24 giờ thì đó là hiện nhầm số liệu.
+      queryClient.clear();
     },
     [selectedBranchId, setSelectedBranch, queryClient],
   );
@@ -229,6 +233,14 @@ export default function DashboardLayout({
 
   const handleLogout = () => {
     logout();
+    // Cache thực đơn giờ được ghi xuống localStorage và giữ 24 giờ → phải xoá khi đăng
+    // xuất, kẻo người đăng nhập sau (chi nhánh/tổ chức khác) thấy dữ liệu của người trước.
+    queryClient.clear();
+    try {
+      window.localStorage.removeItem(CACHE_STORAGE_KEY);
+    } catch {
+      // Trình duyệt chặn localStorage — bỏ qua, clear() ở trên đã dọn phần trong bộ nhớ.
+    }
     router.push("/login");
   };
 
@@ -254,6 +266,8 @@ export default function DashboardLayout({
     <div className="h-screen flex overflow-hidden">
       {/* Trạm in tại quầy: nghe order:new & tự in (chỉ khi máy này bật trạm) */}
       <StationProvider />
+      {/* Nghe máy chủ báo thực đơn/cài đặt đổi → bỏ cache ngay (xem cache-sync-provider) */}
+      <CacheSyncProvider />
       {/* Desktop Sidebar — chỉ cho admin/quản lý; nhân viên dùng thanh menu dưới */}
       {!staffNav && (
       <aside

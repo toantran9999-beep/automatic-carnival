@@ -18,6 +18,8 @@ export type WsMessageType =
   | "shift:closed"
   | "payment:confirmed"
   | "payment:underpaid"
+  /** Thực đơn/cài đặt chi nhánh vừa đổi → máy khác xoá cache thực đơn ngay. */
+  | "menu:updated"
   | "ping"
   | "pong"
   | "auth:success";

@@ -1,6 +1,7 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/fetcher";
+import { LIVE_QUERY } from "@/lib/query-config";
 
 export interface ShiftSummary {
   cashSales: number;
@@ -50,6 +51,7 @@ export function useCurrentShift() {
     queryKey: ["shifts", "current"],
     queryFn: () => apiFetch("/api/shifts/current"),
     refetchInterval: 30000,
+    ...LIVE_QUERY,
   });
 }
 

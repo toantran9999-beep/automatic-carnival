@@ -1,12 +1,17 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/fetcher";
+import { STATIC_QUERY } from "@/lib/query-config";
+
+// Cài đặt đổi rất thưa → giữ lâu trong bộ nhớ. CỐ Ý chỉ nằm trong RAM, KHÔNG ghi
+// xuống localStorage (chứa số tài khoản ngân hàng + khoá webhook) — xem query-config.ts.
 
 export function useOrgSettings(options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["settings", "org"],
     queryFn: () => apiFetch("/api/settings/org", { includeBranchHeader: false }),
     enabled: options?.enabled ?? true,
+    ...STATIC_QUERY,
   });
 }
 
@@ -14,6 +19,7 @@ export function useBranchSettings() {
   return useQuery({
     queryKey: ["settings", "branch"],
     queryFn: () => apiFetch("/api/settings/branch"),
+    ...STATIC_QUERY,
   });
 }
 
@@ -50,6 +56,7 @@ export function useBranches(options?: { enabled?: boolean }) {
         { includeBranchHeader: false }
       ),
     enabled: options?.enabled ?? true,
+    ...STATIC_QUERY,
   });
 }
 

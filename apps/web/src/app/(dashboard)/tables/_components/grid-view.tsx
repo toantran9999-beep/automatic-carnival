@@ -72,7 +72,10 @@ export function GridView({
   }, []);
 
   return (
-    <div className="grid gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 mt-4">
+    // auto-rows-fr: kéo MỌI hàng bằng hàng cao nhất. Không có nó thì chiều cao mỗi hàng
+    // tự co theo thẻ cao nhất trong hàng đó → hàng có bàn khách cao, hàng toàn bàn trống
+    // thấp, cùng là "bàn trống" mà cao thấp khác nhau tuỳ nằm hàng nào.
+    <div className="grid auto-rows-fr gap-2 sm:gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 mt-4">
       {isLoading
         ? Array.from({ length: 12 }).map((_, i) => (
             <Skeleton key={i} />

@@ -145,7 +145,10 @@ export function TableCard({
     <div
       onClick={() => onCardClick?.(table)}
       className={cn(
-        "rounded-2xl p-3 sm:p-4 flex flex-col gap-2.5 sm:gap-3 transition-shadow duration-200 hover:shadow-lg cursor-pointer select-none",
+        // min-h: sàn tối thiểu đặt xấp xỉ chiều cao thẻ lúc CÓ khách, để khu chưa mở bàn
+        // nào vẫn cao gần bằng lúc có khách — không có nó thì mở bàn đầu tiên là cả lưới
+        // nhảy lên một nhịp. Điện thoại thấp hơn vì dòng chi tiết món bị ẩn (hidden sm:block).
+        "rounded-2xl p-3 sm:p-4 min-h-[15rem] sm:min-h-[18rem] flex flex-col gap-2.5 sm:gap-3 transition-shadow duration-200 hover:shadow-lg cursor-pointer select-none",
         meta.bg,
         hasServiceRequest && requestAccent
       )}

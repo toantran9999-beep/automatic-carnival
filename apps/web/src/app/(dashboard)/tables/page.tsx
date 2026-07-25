@@ -83,6 +83,9 @@ interface PendingSessionRequest {
   table_number: number;
 }
 
+/** Id giả cho tab "Mang về" — không phải khu vực thật trong DB. */
+const TAKEAWAY_TAB = "__takeaway__";
+
 export default function TablesPage() {
   const { t, lang } = useTranslation();
   const router = useRouter();
@@ -196,7 +199,11 @@ export default function TablesPage() {
     setPendingSessions((pendingData ?? []) as PendingSessionRequest[]);
   }, [pendingData]);
 
+  const isTakeawayTab = activeTab === TAKEAWAY_TAB;
+
   const zoneTables = useMemo(() => {
+    // Chặn sớm: id giả sẽ rơi vào nhánh so space_id ở cuối và lọc ra mảng rỗng vô nghĩa
+    if (activeTab === TAKEAWAY_TAB) return [];
     if (activeTab === "all") return allTables;
     if (activeTab === "unassigned") return allTables.filter((t: any) => !t.space_id);
     return allTables.filter((t: any) => t.space_id === activeTab);
@@ -557,9 +564,21 @@ export default function TablesPage() {
               <TabsTrigger value="unassigned" className="h-9 px-4 text-sm font-semibold">
                 {t("tables.unassigned")}
               </TabsTrigger>
+              {/* Khu riêng cho đơn mang về. Số đơn hiện ngay trên nhãn để đứng ở khu
+                  nào cũng biết còn đơn chưa thanh toán. */}
+              <TabsTrigger value={TAKEAWAY_TAB} className="h-9 gap-1.5 px-4 text-sm font-semibold">
+                <ShoppingBag className="h-4 w-4" />
+                {lang === "vi" ? "Mang về" : "Takeaway"}
+                {takeawayList.length > 0 && (
+                  <span className="rounded-full bg-primary/15 px-1.5 text-xs font-bold tabular-nums text-primary">
+                    {takeawayList.length}
+                  </span>
+                )}
+              </TabsTrigger>
             </TabsList>
           </div>
-          {/* Lọc bàn có hóa đơn (kiểu iPOS) */}
+          {/* Lọc bàn có hóa đơn (kiểu iPOS) — không áp dụng cho đơn mang về */}
+          {!isTakeawayTab && (
           <button
             type="button"
             role="switch"
@@ -589,10 +608,11 @@ export default function TablesPage() {
               {lang === "vi" ? "Bàn có hóa đơn" : "With bill"}
             </span>
           </button>
+          )}
         </div>
 
         {/* Space info card */}
-        {activeTab !== "all" && activeTab !== "unassigned" && (() => {
+        {activeTab !== "all" && activeTab !== "unassigned" && !isTakeawayTab && (() => {
           const currentSpace = spaces.find((s: any) => s.id === activeTab);
           if (!currentSpace) return null;
           return (
@@ -612,8 +632,68 @@ export default function TablesPage() {
           );
         })()}
 
-        {/* View: Grid or Floor Planner */}
-        {viewMode === "planner" ? (
+        {/* Mang về — khu riêng, thay chỗ lưới bàn khi đang đứng ở tab này */}
+        {isTakeawayTab ? (
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between">
+              <p className="text-sm text-muted-foreground">
+                {takeawayList.length === 0
+                  ? lang === "vi"
+                    ? "Chưa có đơn mang về đang mở."
+                    : "No open takeaway orders."
+                  : lang === "vi"
+                  ? `${takeawayList.length} đơn đang mở`
+                  : `${takeawayList.length} open`}
+              </p>
+              <Button size="sm" onClick={() => router.push("/pos?takeout=1")}>
+                <Plus className="h-4 w-4 mr-1" />
+                {lang === "vi" ? "Đơn mang về" : "New takeaway"}
+              </Button>
+            </div>
+
+            {takeawayList.length > 0 && (
+              <div className="grid auto-rows-fr gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
+                {takeawayList.map((o) => (
+                  <div key={o.id} className="rounded-2xl p-4 flex flex-col gap-2 bg-card border">
+                    <div className="flex items-center justify-between">
+                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
+                        <ShoppingBag className="h-3.5 w-3.5" />
+                        #{o.order_number}
+                      </span>
+                      <span className="text-sm font-bold text-primary tabular-nums">
+                        {formatCurrency(o.total)}
+                      </span>
+                    </div>
+                    <p className="text-xs font-medium truncate text-muted-foreground">
+                      {o.customer_name || (lang === "vi" ? "Khách lẻ" : "Walk-in")}
+                    </p>
+                    {o.itemSummary && (
+                      <p className="text-[11px] text-muted-foreground line-clamp-2 italic">
+                        {o.itemSummary}
+                      </p>
+                    )}
+                    <div className="flex gap-2 mt-auto pt-1">
+                      <button
+                        type="button"
+                        onClick={() => setTakeawayVoid(o)}
+                        className="text-xs font-semibold px-3 py-2 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                      >
+                        {lang === "vi" ? "Hủy" : "Void"}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => setTakeawayPay(o)}
+                        className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                      >
+                        {lang === "vi" ? "Thanh toán" : "Pay"}
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        ) : viewMode === "planner" ? (
           <div className="mt-4">
             <FloorPlannerView
               tables={filteredTables}
@@ -643,71 +723,6 @@ export default function TablesPage() {
           />
         )}
       </Tabs>
-
-      {/* Mang về (thẻ động) */}
-      <div className="space-y-3 pt-2">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold flex items-center gap-2">
-            <ShoppingBag className="h-5 w-5 text-primary" />
-            {lang === "vi" ? "Mang về" : "Takeaway"}
-            {takeawayList.length > 0 && (
-              <span className="rounded-full bg-primary/15 text-primary px-2 py-0.5 text-xs font-semibold">
-                {takeawayList.length}
-              </span>
-            )}
-          </h2>
-          <Button size="sm" onClick={() => router.push("/pos?takeout=1")}>
-            <Plus className="h-4 w-4 mr-1" />
-            {lang === "vi" ? "Đơn mang về" : "New takeaway"}
-          </Button>
-        </div>
-
-        {takeawayList.length === 0 ? (
-          <p className="text-sm text-muted-foreground">
-            {lang === "vi" ? "Chưa có đơn mang về đang mở." : "No open takeaway orders."}
-          </p>
-        ) : (
-          <div className="grid gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
-            {takeawayList.map((o) => (
-              <div key={o.id} className="rounded-2xl p-4 flex flex-col gap-2 bg-card border">
-                <div className="flex items-center justify-between">
-                  <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
-                    <ShoppingBag className="h-3.5 w-3.5" />
-                    #{o.order_number}
-                  </span>
-                  <span className="text-sm font-bold text-primary tabular-nums">
-                    {formatCurrency(o.total)}
-                  </span>
-                </div>
-                <p className="text-xs font-medium truncate text-muted-foreground">
-                  {o.customer_name || (lang === "vi" ? "Khách lẻ" : "Walk-in")}
-                </p>
-                {o.itemSummary && (
-                  <p className="text-[11px] text-muted-foreground line-clamp-2 italic">
-                    {o.itemSummary}
-                  </p>
-                )}
-                <div className="flex gap-2 mt-auto pt-1">
-                  <button
-                    type="button"
-                    onClick={() => setTakeawayVoid(o)}
-                    className="text-xs font-semibold px-3 py-2 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
-                  >
-                    {lang === "vi" ? "Hủy" : "Void"}
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setTakeawayPay(o)}
-                    className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
-                  >
-                    {lang === "vi" ? "Thanh toán" : "Pay"}
-                  </button>
-                </div>
-              </div>
-            ))}
-          </div>
-        )}
-      </div>
 
       {/* Dialogs */}
       <Dialog open={requestsDialogOpen} onOpenChange={setRequestsDialogOpen}>

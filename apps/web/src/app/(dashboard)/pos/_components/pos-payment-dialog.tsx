@@ -16,7 +16,7 @@ import {
 } from "@restai/ui/components/dialog";
 import { useCreatePayment, useCreatePaymentRequest, usePaymentRequest } from "@/hooks/use-payments";
 import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
-import { usePrintReceipt, usePrintKitchenTicket, usePrintTemporaryTransferBill } from "@/components/print-ticket";
+import { usePrintReceipt, usePrintTemporaryTransferBill } from "@/components/print-ticket";
 import { formatCurrency } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
 import type { PosCartItem } from "../page";
@@ -56,6 +56,8 @@ export function PosPaymentDialog({
   const [amountTendered, setAmountTendered] = useState("");
   const [processing, setProcessing] = useState(false);
   const [paymentSuccess, setPaymentSuccess] = useState(false);
+  /** Lần thanh toán này có in hóa đơn không — để màn báo thành công nói đúng sự thật. */
+  const [printedReceipt, setPrintedReceipt] = useState(true);
   const [paymentRequestId, setPaymentRequestId] = useState<string | undefined>();
 
   const { data: orgSettings } = useOrgSettings();
@@ -64,7 +66,6 @@ export function PosPaymentDialog({
   const createPaymentRequest = useCreatePaymentRequest();
   const { data: paymentRequest } = usePaymentRequest(paymentRequestId);
   const printReceipt = usePrintReceipt();
-  const printKitchenTicket = usePrintKitchenTicket();
   const printTemporaryTransferBill = usePrintTemporaryTransferBill();
 
   const currency = (branchSettings as any)?.currency || "VND";
@@ -74,6 +75,7 @@ export function PosPaymentDialog({
     if (open) {
       setAmountTendered((totalAmount / 100).toString());
       setPaymentSuccess(false);
+      setPrintedReceipt(true);
       setMethod("cash");
       setDocType("boleta_simple");
       setDocNumber("");
@@ -154,13 +156,14 @@ export function PosPaymentDialog({
     }
   };
 
-  const handlePaymentSubmit = async () => {
+  const handlePaymentSubmit = async (shouldPrint: boolean) => {
     if (!orderId || !isFormValid() || processing) return;
     if (method === "transfer") {
       await handleTransferBill();
       return;
     }
     setProcessing(true);
+    setPrintedReceipt(shouldPrint);
 
     try {
       // 1. Process payment via API
@@ -173,36 +176,31 @@ export function PosPaymentDialog({
 
       setPaymentSuccess(true);
 
-      // 3. Print Kitchen Preparation Ticket
-      const printMode = (branchSettings as any)?.settings?.print_mode === "per_item" ? "per_item" : "combined";
-      void printKitchenTicket({
-        orderNumber,
-        tableNumber: tableNumber || undefined,
-        customerName: customerName || undefined,
-        createdAt: new Date().toISOString(),
-        items: mappedItems,
-        notes: notes || undefined,
-      }, printMode);
+      // KHÔNG in phiếu đặt món ở đây: trạm quầy đã in ngay lúc đơn được tạo (nghe
+      // sự kiện order:new). In lại là thừa một tờ, và tờ đó mang tên máy đang bấm
+      // chứ không phải người ở quầy.
 
-      // 4. Print Customer Receipt/Invoice
-      const org = orgSettings as any;
-      const branch = branchSettings as any;
-      printReceipt({
-        businessName: org?.name || "Restaurante",
-        ruc: org?.settings?.ruc || undefined,
-        address: branch?.address || undefined,
-        orderNumber,
-        createdAt: new Date().toISOString(),
-        items: mappedItems,
-        subtotal: totalAmount - taxAmount,
-        tax: taxAmount,
-        total: totalAmount,
-        paymentMethod: method,
-        customerName: customerName || undefined,
-        docType,
-        docNumber: docType !== "boleta_simple" ? docNumber : undefined,
-        docHolderName: docType === "factura" ? docHolderName : undefined,
-      });
+      // In hóa đơn cho khách — chỉ khi bấm nút "Xác nhận & In hóa đơn"
+      if (shouldPrint) {
+        const org = orgSettings as any;
+        const branch = branchSettings as any;
+        printReceipt({
+          businessName: org?.name || "Restaurante",
+          ruc: org?.settings?.ruc || undefined,
+          address: branch?.address || undefined,
+          orderNumber,
+          createdAt: new Date().toISOString(),
+          items: mappedItems,
+          subtotal: totalAmount - taxAmount,
+          tax: taxAmount,
+          total: totalAmount,
+          paymentMethod: method,
+          customerName: customerName || undefined,
+          docType,
+          docNumber: docType !== "boleta_simple" ? docNumber : undefined,
+          docHolderName: docType === "factura" ? docHolderName : undefined,
+        });
+      }
 
       // 5. Trigger success callback to clear cart & close
       setTimeout(() => {
@@ -247,13 +245,21 @@ export function PosPaymentDialog({
             <div className="h-16 w-16 bg-green-100 dark:bg-green-950/20 rounded-full flex items-center justify-center">
               <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
             </div>
+            {/* Báo đúng thứ vừa xảy ra — nói "đã in" mà không in là nhân viên đi tìm
+                tờ hóa đơn không tồn tại. */}
             <h3 className="text-lg font-bold text-foreground">
-              {lang === "vi" ? "Thanh toán & In thành công" : "Payment & Print Success"}
+              {printedReceipt
+                ? lang === "vi" ? "Đã thanh toán & in hóa đơn" : "Paid & receipt printed"
+                : lang === "vi" ? "Đã thanh toán" : "Payment recorded"}
             </h3>
             <p className="text-sm text-muted-foreground text-center max-w-xs">
-              {lang === "vi"
-                ? "Hóa đơn và phiếu chế biến đã được gửi tới máy in thermal."
-                : "Receipt and preparation tickets sent to thermal printer."}
+              {printedReceipt
+                ? lang === "vi"
+                  ? "Hóa đơn đã được gửi tới máy in."
+                  : "Receipt sent to the printer."
+                : lang === "vi"
+                  ? "Đã ghi nhận tiền, không in hóa đơn."
+                  : "Payment recorded, no receipt printed."}
             </p>
           </div>
         ) : (
@@ -443,8 +449,22 @@ export function PosPaymentDialog({
               <Button variant="outline" className="h-11 px-5" onClick={() => onOpenChange(false)} disabled={processing}>
                 {t("common.cancel")}
               </Button>
+
+              {/* Chuyển khoản chỉ có MỘT nút: phiếu đó mang mã QR cho khách quét,
+                  không in thì khách không có gì để quét. */}
+              {method !== "transfer" && (
+                <Button
+                  variant="outline"
+                  onClick={() => handlePaymentSubmit(false)}
+                  disabled={processing || !isFormValid()}
+                  className="h-11 px-5 font-semibold"
+                >
+                  {lang === "vi" ? "Xác nhận, không in" : "Confirm, no receipt"}
+                </Button>
+              )}
+
               <Button
-                onClick={handlePaymentSubmit}
+                onClick={() => handlePaymentSubmit(true)}
                 disabled={processing || !isFormValid()}
                 className="h-11 font-semibold px-6 text-base"
               >
@@ -458,7 +478,7 @@ export function PosPaymentDialog({
                     <Printer className="h-4 w-4 mr-2" />
                     {method === "transfer"
                       ? "In phiếu tạm tính QR"
-                      : (lang === "vi" ? "Xác nhận & In Hóa đơn" : "Confirm & Print Receipt")}
+                      : (lang === "vi" ? "Xác nhận & In hóa đơn" : "Confirm & Print Receipt")}
                   </>
                 )}
               </Button>

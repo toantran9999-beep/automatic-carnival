@@ -4,6 +4,7 @@ import { useCallback } from "react";
 import { useLangStore } from "@/stores/lang-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useBranchSettings } from "@/hooks/use-settings";
+import { useCurrentShift } from "@/hooks/use-shifts";
 import { buildVietQrPayload, resolveBankBin, bankDisplayName } from "@restai/config";
 
 interface OrderItem {
@@ -64,6 +65,12 @@ interface KitchenTicketData {
   notes?: string;
   /** Optional "x/y" label shown when printing one ticket per item */
   ticketLabel?: string;
+  /**
+   * Tên in ở dòng "Nhân viên". `usePrintKitchenTicket` tự điền TÊN NGƯỜI MỞ CA
+   * (thu ngân trực ca) nên phiếu luôn ghi người ở quầy, bất kể máy nào in ra và
+   * ai đang đăng nhập trên máy đó. Không truyền thì lùi về tài khoản của máy in.
+   */
+  staffName?: string;
 }
 
 export type PrintMode = "combined" | "per_item";
@@ -362,7 +369,8 @@ function buildEscPos(lines: Array<string | number[]>, cfg: ReceiptConfig = DEFAU
 function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): number[] {
   const width = widthForPaper(cfg.paper);
   const { time, date } = vnTimeParts(data.createdAt);
-  const staff = currentStaffName();
+  // Ưu tiên tên thu ngân trực ca; chỉ khi thiếu mới lùi về tài khoản của máy in.
+  const staff = data.staffName || currentStaffName();
   const subtitle = data.tableNumber
     ? `BAN ${data.tableNumber}${data.tableZone ? ` - ${data.tableZone}` : ""}`
     : "MANG VE";
@@ -699,7 +707,8 @@ function buildReceiptRasterEscPos(data: ReceiptTicketData, cfg: ReceiptConfig): 
 
 function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): RasterSeg[] {
   const { time, date } = vnTimeParts(data.createdAt);
-  const staff = currentStaffName();
+  // Ưu tiên tên thu ngân trực ca; chỉ khi thiếu mới lùi về tài khoản của máy in.
+  const staff = data.staffName || currentStaffName();
   const segs: RasterSeg[] = [];
   if (cfg.kitchen.show.title) {
     segs.push({ kind: "text", text: cfg.kitchen.title, align: "center", bold: true, big: true });
@@ -938,7 +947,8 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
   const isVi = lang === "vi";
 
   const { time, date } = vnTimeParts(data.createdAt);
-  const staff = currentStaffName();
+  // Ưu tiên tên thu ngân trực ca; chỉ khi thiếu mới lùi về tài khoản của máy in.
+  const staff = data.staffName || currentStaffName();
   const subtitle = data.tableNumber
     ? `${(isVi ? "BÀN" : "TABLE")} ${data.tableNumber}${data.tableZone ? ` - ${data.tableZone}` : ""}`
     : t.takeaway.toUpperCase();
@@ -1364,7 +1374,13 @@ async function printHtmlSequential(htmls: string[]): Promise<void> {
  */
 export function usePrintKitchenTicket() {
   const { data: branchSettings } = useBranchSettings();
-  return useCallback(async (data: KitchenTicketData, mode: PrintMode = "combined") => {
+  // Thu ngân trực ca — điền ở đây một lần để MỌI nơi gọi in (trạm quầy, màn POS,
+  // hộp thoại thanh toán) đều ra đúng tên người ở quầy, không phải tên người order.
+  const { data: currentShift } = useCurrentShift();
+  const cashierName = currentShift?.opened_by_name || undefined;
+
+  return useCallback(async (input: KitchenTicketData, mode: PrintMode = "combined") => {
+    const data: KitchenTicketData = { ...input, staffName: input.staffName || cashierName };
     const driver = currentPrintDriver(branchSettings);
     const cfg = getReceiptConfig(branchSettings);
     const tickets =
@@ -1392,7 +1408,7 @@ export function usePrintKitchenTicket() {
       if (allOk) return;
     }
     await printHtmlSequential(tickets.map((ticket) => buildKitchenTicketHtml(ticket, cfg)));
-  }, [branchSettings]);
+  }, [branchSettings, cashierName]);
 }
 
 export function usePrintReceipt() {

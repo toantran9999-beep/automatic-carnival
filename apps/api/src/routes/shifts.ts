@@ -138,14 +138,22 @@ shifts.get("/current", requirePermission("shifts:read"), async (c) => {
   const shift = await getOpenShift(tenant.branchId);
   if (!shift) return c.json({ success: true, data: null });
 
-  const [summary, daySummary] = await Promise.all([
+  // Tên người mở ca = "thu ngân trực ca", dùng in lên phiếu đặt món (xem print-ticket).
+  const [[opener], summary, daySummary] = await Promise.all([
+    db
+      .select({ name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.id, shift.opened_by))
+      .limit(1),
     computeSummary(tenant.branchId, shift.opened_at),
     computeDaySummary(tenant.branchId, shift.opened_at),
   ]);
+
   return c.json({
     success: true,
     data: {
       ...shift,
+      opened_by_name: opener?.name ?? null,
       summary: { ...summary, expectedCash: shift.opening_cash + summary.cashSales },
       daySummary,
     },

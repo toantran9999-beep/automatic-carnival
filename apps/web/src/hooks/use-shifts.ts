@@ -23,6 +23,8 @@ export interface CurrentShift {
   status: string;
   opened_at: string;
   opening_cash: number;
+  /** Tên người mở ca = thu ngân trực ca; in lên phiếu đặt món. */
+  opened_by_name?: string | null;
   summary: ShiftSummary;
   daySummary: DaySummary;
 }

@@ -46,6 +46,12 @@ export const PERMISSIONS = {
     "orders:create", "orders:read", "orders:update",
     "menu:read",
     "shifts:read",
+    // Phục vụ thu tiền và xác nhận thanh toán ngay trên điện thoại tại bàn.
+    // ⚠️ CỐ Ý KHÔNG có "reports:*" (không cho xem doanh thu) và KHÔNG có
+    // "shifts:manage" (không cho mở/đóng ca — kèm số chốt tiền mặt). Đừng gộp
+    // thành "payments:*" hay thêm quyền cho "gọn": đây là giới hạn chủ quán đặt.
+    "payments:create", "payments:read",
+    "invoices:create", "invoices:read",
   ],
   kitchen: [
     "orders:read",

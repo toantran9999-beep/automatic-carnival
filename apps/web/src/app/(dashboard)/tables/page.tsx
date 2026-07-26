@@ -503,9 +503,13 @@ export default function TablesPage() {
         }
       />
 
-      {/* Dòng tổng gọn kiểu iPOS (thay 4 thẻ thống kê để dành chỗ cho sơ đồ bàn) */}
+      {/* Dòng tổng gọn kiểu iPOS (thay 4 thẻ thống kê để dành chỗ cho sơ đồ bàn).
+          Nút gạt "Bàn có hóa đơn" đặt nhờ ở cuối dòng này — dòng chữ còn chỗ trống
+          bên phải, nên không tốn thêm dòng nào, mà hàng tab bên dưới được trọn bề
+          ngang để trượt. */}
       {!isLoading && (
-        <p className="text-sm text-muted-foreground">
+        <div className="flex items-start justify-between gap-3">
+        <p className="min-w-0 text-sm text-muted-foreground">
           {lang === "vi" ? "Toàn quán" : "All areas"}:{" "}
           <span className="font-bold text-foreground">
             {lang === "vi" ? "Trống" : "Free"} {counts.available}/{counts.total}{" "}
@@ -532,6 +536,42 @@ export default function TablesPage() {
             </>
           )}
         </p>
+
+        {/* Lọc bàn có hóa đơn (kiểu iPOS) — không áp dụng cho đơn mang về.
+            Nhãn hiện ở MỌI cỡ màn: trước đây ẩn trên điện thoại nên chỉ còn cái
+            công tắc trơ trọi, không ai đoán được nó làm gì. */}
+        {!isTakeawayTab && (
+          <button
+            type="button"
+            role="switch"
+            aria-checked={withBillOnly}
+            onClick={() => setWithBillOnly((v) => !v)}
+            className={cn(
+              "flex h-9 shrink-0 items-center gap-2 rounded-lg border px-2.5 text-xs font-medium transition-colors",
+              withBillOnly
+                ? "border-primary bg-primary/10 text-primary"
+                : "bg-background text-muted-foreground hover:bg-muted"
+            )}
+          >
+            <span
+              className={cn(
+                "relative inline-flex h-5 w-9 rounded-full border-2 border-transparent transition-colors",
+                withBillOnly ? "bg-primary" : "bg-muted-foreground/30"
+              )}
+            >
+              <span
+                className={cn(
+                  "pointer-events-none block h-4 w-4 rounded-full bg-white shadow transition-transform",
+                  withBillOnly ? "translate-x-4" : "translate-x-0"
+                )}
+              />
+            </span>
+            <span className="whitespace-nowrap">
+              {lang === "vi" ? "Có hóa đơn" : "With bill"}
+            </span>
+          </button>
+        )}
+        </div>
       )}
 
       {/* Nói thẳng vì sao thiếu nút, thay vì để quản lý đi tìm nút đã bị ẩn. */}
@@ -611,84 +651,50 @@ export default function TablesPage() {
         </Card>
       )}
 
-      {/* Hàng điều khiển: [Mang về] [Tất cả Bàn] | Khu A 4/8 · Khu B 2/6 · …
-          Một hàng trượt ngang. Hai mục dùng nhiều nhất được GHIM bên trái
-          (sticky left-0) nên trượt tới khu xa nhất vẫn bấm về được ngay, không phải
-          vuốt ngược. Mỗi khu kèm số bàn trống để nhìn là biết xếp khách vào đâu. */}
-      <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <div className="flex items-center gap-2">
-          <div className="relative min-w-0 flex-1">
-            <div
-              ref={zoneScrollRef}
-              className="flex items-center gap-2 overflow-x-auto pr-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-            >
-              <TabsList className="sticky left-0 z-10 h-11 shrink-0 shadow-[6px_0_6px_-4px_rgba(0,0,0,0.15)]">
-                <TabsTrigger value={TAKEAWAY_TAB} className="h-9 gap-1.5 px-4 text-sm font-semibold">
-                  <ShoppingBag className="h-4 w-4" />
-                  {lang === "vi" ? "Mang về" : "Takeaway"}
-                  {/* Số đơn hiện ngay trên nhãn để đứng ở khu nào cũng biết còn đơn chưa thu tiền */}
-                  {takeawayList.length > 0 && (
-                    <span className="rounded-full bg-primary/15 px-1.5 text-xs font-bold tabular-nums text-primary">
-                      {takeawayList.length}
-                    </span>
-                  )}
-                </TabsTrigger>
-                <TabsTrigger value="all" className="h-9 px-4 text-sm font-semibold">
-                  {t("tables.all")}
-                </TabsTrigger>
-              </TabsList>
+      {/* Hàng điều khiển: Mang về · Tất cả Bàn · Khu A 4/8 · Khu B 2/6 · …
+          MỘT dải liền mạch, trượt ngang, dùng TRỌN bề ngang.
 
-              <TabsList className="h-11 shrink-0">
-                {zoneOptions.map((zone) => (
-                  <TabsTrigger
-                    key={zone.id}
-                    value={zone.id}
-                    data-zone-tab={zone.id}
-                    className="h-9 gap-1.5 px-4 text-sm font-semibold"
-                  >
-                    {zone.name}
-                    <span className="text-xs font-medium tabular-nums opacity-70">
-                      {zone.free}/{zone.total}
-                    </span>
-                  </TabsTrigger>
-                ))}
-              </TabsList>
-            </div>
-            {/* Vệt mờ mép phải: báo còn khu phía sau mà không tốn thêm chỗ */}
-            <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent" />
-          </div>
-          {/* Lọc bàn có hóa đơn (kiểu iPOS) — không áp dụng cho đơn mang về */}
-          {!isTakeawayTab && (
-          <button
-            type="button"
-            role="switch"
-            aria-checked={withBillOnly}
-            onClick={() => setWithBillOnly((v) => !v)}
-            className={cn(
-              "flex h-11 shrink-0 items-center gap-2 rounded-lg border px-3 text-sm font-medium transition-colors",
-              withBillOnly
-                ? "border-primary bg-primary/10 text-primary"
-                : "bg-background text-muted-foreground hover:bg-muted"
-            )}
+          ⚠️ Đừng ghim (sticky) mấy mục đầu cho "luôn bấm được": phần ghim chiếm chỗ
+          VĨNH VIỄN của vùng trượt. Điện thoại rộng ~340px thì riêng "Mang về" +
+          "Tất cả Bàn" đã ăn ~240px, không còn chỗ nào cho khu vực — đã mắc lỗi này
+          một lần, màn rộng không lộ ra. Cũng đừng nhét nút bấm nào vào hàng này. */}
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <div className="relative">
+          <div
+            ref={zoneScrollRef}
+            className="flex items-center overflow-x-auto pr-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            <span
-              className={cn(
-                "relative inline-flex h-5 w-9 rounded-full border-2 border-transparent transition-colors",
-                withBillOnly ? "bg-primary" : "bg-muted-foreground/30"
-              )}
-            >
-              <span
-                className={cn(
-                  "pointer-events-none block h-4 w-4 rounded-full bg-white shadow transition-transform",
-                  withBillOnly ? "translate-x-4" : "translate-x-0"
+            <TabsList className="h-11 shrink-0">
+              <TabsTrigger value={TAKEAWAY_TAB} className="h-9 gap-1.5 px-4 text-sm font-semibold">
+                <ShoppingBag className="h-4 w-4" />
+                {lang === "vi" ? "Mang về" : "Takeaway"}
+                {/* Số đơn hiện ngay trên nhãn để đứng ở khu nào cũng biết còn đơn chưa thu tiền */}
+                {takeawayList.length > 0 && (
+                  <span className="rounded-full bg-primary/15 px-1.5 text-xs font-bold tabular-nums text-primary">
+                    {takeawayList.length}
+                  </span>
                 )}
-              />
-            </span>
-            <span className="hidden sm:inline whitespace-nowrap">
-              {lang === "vi" ? "Bàn có hóa đơn" : "With bill"}
-            </span>
-          </button>
-          )}
+              </TabsTrigger>
+              <TabsTrigger value="all" className="h-9 px-4 text-sm font-semibold">
+                {t("tables.all")}
+              </TabsTrigger>
+              {zoneOptions.map((zone) => (
+                <TabsTrigger
+                  key={zone.id}
+                  value={zone.id}
+                  data-zone-tab={zone.id}
+                  className="h-9 gap-1.5 px-4 text-sm font-semibold"
+                >
+                  {zone.name}
+                  <span className="text-xs font-medium tabular-nums opacity-70">
+                    {zone.free}/{zone.total}
+                  </span>
+                </TabsTrigger>
+              ))}
+            </TabsList>
+          </div>
+          {/* Vệt mờ mép phải: báo còn khu phía sau mà không tốn thêm chỗ */}
+          <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent" />
         </div>
 
         {/* Space info card */}

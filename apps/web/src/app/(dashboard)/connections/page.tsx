@@ -69,7 +69,8 @@ function StationSection() {
   const { t, lang } = useTranslation();
   const router = useRouter();
   const qc = useQueryClient();
-  const { selectedBranchId, setSelectedBranch } = useAuthStore();
+  // renewSession: kết nối lại với trạm = vào ca mới → đếm lại 8 tiếng từ đầu.
+  const { selectedBranchId, setSelectedBranch, renewSession } = useAuthStore();
   const { isStation, soundEnabled, setStation, setSound } = useStationStore();
   const { data: branches } = useBranches();
   const availableBranches: any[] = branches ?? [];
@@ -99,6 +100,8 @@ function StationSection() {
       router.replace("/connections");
       return;
     }
+    // Quét mã = vào ca → đếm lại 8 tiếng, kể cả khi vẫn đúng chi nhánh cũ.
+    renewSession();
     if (selectedBranchId !== branch.id) {
       setSelectedBranch(branch.id);
       qc.invalidateQueries();
@@ -115,6 +118,7 @@ function StationSection() {
   const connectUrl = selectedBranchId && origin ? `${origin}/connections?connect=${selectedBranchId}` : "";
 
   const handlePickBranch = (branch: any) => {
+    renewSession();
     if (branch.id === selectedBranchId) return;
     setSelectedBranch(branch.id);
     qc.invalidateQueries();

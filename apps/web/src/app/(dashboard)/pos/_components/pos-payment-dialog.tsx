@@ -12,7 +12,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
 } from "@restai/ui/components/dialog";
 import { useCreatePayment, useCreatePaymentRequest, usePaymentRequest } from "@/hooks/use-payments";
 import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
@@ -232,7 +231,11 @@ export function PosPaymentDialog({
 
   return (
     <Dialog open={open} onOpenChange={(val) => !processing && onOpenChange(val)}>
-      <DialogContent className="max-w-md">
+      {/* overflow-x-hidden: khoá hẳn chiều ngang. DialogContent có `overflow-y-auto`,
+          mà theo luật CSS khoá một chiều là chiều kia tự thành cuộn được — nội dung
+          lỡ rộng hơn khung thì nó âm thầm trượt ngang và cắt cụt, nhân viên không
+          hề biết là mình đang thiếu chữ. */}
+      <DialogContent className="max-w-md overflow-x-hidden">
         <DialogHeader>
           <DialogTitle className="text-xl font-bold flex items-center gap-2">
             <Printer className="h-5 w-5 text-primary" />
@@ -265,18 +268,20 @@ export function PosPaymentDialog({
         ) : (
           <div className="space-y-4 py-2 text-sm">
             {/* Totals panel */}
+            {/* min-w-0 + shrink-0: nhãn co lại trước, SỐ TIỀN không bao giờ bị đẩy
+                ra ngoài khung — mất số tiền là mất thứ quan trọng nhất của màn này. */}
             <div className="rounded-xl border bg-muted/30 p-4 space-y-2">
-              <div className="flex justify-between text-muted-foreground">
-                <span>{t("pos.subtotal")}</span>
-                <span>{formatCurrency(totalAmount - taxAmount)}</span>
+              <div className="flex justify-between gap-3 text-muted-foreground">
+                <span className="min-w-0">{t("pos.subtotal")}</span>
+                <span className="shrink-0 tabular-nums">{formatCurrency(totalAmount - taxAmount)}</span>
               </div>
-              <div className="flex justify-between text-muted-foreground">
-                <span>{t("pos.tax")}</span>
-                <span>{formatCurrency(taxAmount)}</span>
+              <div className="flex justify-between gap-3 text-muted-foreground">
+                <span className="min-w-0">{t("pos.tax")}</span>
+                <span className="shrink-0 tabular-nums">{formatCurrency(taxAmount)}</span>
               </div>
-              <div className="flex justify-between font-bold text-lg border-t pt-2 mt-1">
-                <span>{t("pos.total")}</span>
-                <span className="text-primary">{formatCurrency(totalAmount)}</span>
+              <div className="flex justify-between gap-3 font-bold text-lg border-t pt-2 mt-1">
+                <span className="min-w-0">{t("pos.total")}</span>
+                <span className="shrink-0 tabular-nums text-primary">{formatCurrency(totalAmount)}</span>
               </div>
             </div>
 
@@ -443,48 +448,56 @@ export function PosPaymentDialog({
           </div>
         )}
 
-        <DialogFooter className="mt-2">
-          {!paymentSuccess && (
-            <>
-              <Button variant="outline" className="h-11 px-5" onClick={() => onOpenChange(false)} disabled={processing}>
-                {t("common.cancel")}
-              </Button>
-
-              {/* Chuyển khoản chỉ có MỘT nút: phiếu đó mang mã QR cho khách quét,
-                  không in thì khách không có gì để quét. */}
-              {method !== "transfer" && (
-                <Button
-                  variant="outline"
-                  onClick={() => handlePaymentSubmit(false)}
-                  disabled={processing || !isFormValid()}
-                  className="h-11 px-5 font-semibold"
-                >
-                  {lang === "vi" ? "Xác nhận, không in" : "Confirm, no receipt"}
-                </Button>
+        {/* Hàng nút LUÔN xếp dọc — KHÔNG dùng DialogFooter dùng chung.
+            DialogFooter xếp ngang theo `sm:`, mà `sm:` đo theo MÀN HÌNH chứ không
+            đo theo khung: máy POS màn rộng nên nó bật ngang, trong khi khung chỉ
+            rộng 448px → 3 nút đội ra ngoài, kéo cả khung trượt ngang và cắt cụt
+            số tiền bên phải. Xếp dọc vừa hết lỗi vừa dễ bấm trên máy quầy. */}
+        {!paymentSuccess && (
+          <div className="mt-2 flex flex-col gap-2">
+            <Button
+              onClick={() => handlePaymentSubmit(true)}
+              disabled={processing || !isFormValid()}
+              className="h-12 w-full font-semibold text-base"
+            >
+              {processing ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  {lang === "vi" ? "Đang xử lý..." : "Processing..."}
+                </>
+              ) : (
+                <>
+                  <Printer className="h-4 w-4 mr-2" />
+                  {method === "transfer"
+                    ? "In phiếu tạm tính QR"
+                    : (lang === "vi" ? "Xác nhận & In hóa đơn" : "Confirm & Print Receipt")}
+                </>
               )}
+            </Button>
 
+            {/* Chuyển khoản chỉ có MỘT nút: phiếu đó mang mã QR cho khách quét,
+                không in thì khách không có gì để quét. */}
+            {method !== "transfer" && (
               <Button
-                onClick={() => handlePaymentSubmit(true)}
+                variant="outline"
+                onClick={() => handlePaymentSubmit(false)}
                 disabled={processing || !isFormValid()}
-                className="h-11 font-semibold px-6 text-base"
+                className="h-11 w-full font-semibold"
               >
-                {processing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {lang === "vi" ? "Đang xử lý..." : "Processing..."}
-                  </>
-                ) : (
-                  <>
-                    <Printer className="h-4 w-4 mr-2" />
-                    {method === "transfer"
-                      ? "In phiếu tạm tính QR"
-                      : (lang === "vi" ? "Xác nhận & In hóa đơn" : "Confirm & Print Receipt")}
-                  </>
-                )}
+                {lang === "vi" ? "Xác nhận, không in" : "Confirm, no receipt"}
               </Button>
-            </>
-          )}
-        </DialogFooter>
+            )}
+
+            <Button
+              variant="ghost"
+              className="h-10 w-full"
+              onClick={() => onOpenChange(false)}
+              disabled={processing}
+            >
+              {t("common.cancel")}
+            </Button>
+          </div>
+        )}
       </DialogContent>
     </Dialog>
   );

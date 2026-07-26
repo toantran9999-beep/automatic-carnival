@@ -37,6 +37,7 @@ import { BrandLogo } from "@/components/brand-logo";
 import { StationToggle } from "@/components/station-toggle";
 import { StationProvider } from "@/components/station-provider";
 import { CacheSyncProvider } from "@/components/cache-sync-provider";
+import { SessionExpiryProvider } from "@/components/session-expiry-provider";
 import { CACHE_STORAGE_KEY } from "@/lib/query-config";
 import { PosShiftControl } from "./pos/_components/shift-controls";
 
@@ -268,6 +269,8 @@ export default function DashboardLayout({
       <StationProvider />
       {/* Nghe máy chủ báo thực đơn/cài đặt đổi → bỏ cache ngay (xem cache-sync-provider) */}
       <CacheSyncProvider />
+      {/* Điện thoại nhân viên hết 8 tiếng là tự văng ra (trạm quầy & quản lý miễn trừ) */}
+      <SessionExpiryProvider />
       {/* Desktop Sidebar — chỉ cho admin/quản lý; nhân viên dùng thanh menu dưới */}
       {!staffNav && (
       <aside

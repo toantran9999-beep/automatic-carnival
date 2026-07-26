@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, gte, lte, lt, sql, desc, inArray, count, sum } from "drizzle-orm";
+import { eq, ne, and, gte, lte, lt, sql, desc, inArray, count, sum } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import { reportQuerySchema } from "@restai/validators";
 import { authMiddleware } from "../middleware/auth.js";
@@ -158,6 +158,7 @@ reports.get("/overview", requirePermission("reports:read"), async (c) => {
     paymentRows,
     topItemRows,
     orderTypeRows,
+    openTablesTotals,
   ] = await Promise.all([
     // 1. Tổng hôm nay (hoàn tất)
     db
@@ -228,6 +229,27 @@ reports.get("/overview", requirePermission("reports:read"), async (c) => {
       .from(schema.orders)
       .where(completedBetween(todayStart, todayEnd))
       .groupBy(schema.orders.type),
+    // 11. Tiền đang nằm ở các bàn có khách (hóa đơn còn mở, chưa thu)
+    //
+    // ⚠️ Phải khớp đúng cách trang Bàn ăn tính tiền từng bàn (routes/tables.ts):
+    // phiên bàn đang `active` + BỎ đơn đã huỷ. Lệch một trong hai là số ở Bảng
+    // điều khiển không cộng ra được từ các thẻ bàn, xem một đằng một nẻo.
+    //
+    // Không giới hạn theo ngày: bàn mở từ tối qua chưa thanh toán vẫn là tiền đang treo.
+    db
+      .select({ total: sum(schema.orders.total) })
+      .from(schema.orders)
+      .innerJoin(
+        schema.tableSessions,
+        eq(schema.orders.table_session_id, schema.tableSessions.id),
+      )
+      .where(
+        and(
+          ordersCondition,
+          eq(schema.tableSessions.status, "active"),
+          ne(schema.orders.status, "cancelled"),
+        ),
+      ),
   ]);
 
   const todayOrders = Number(todayTotals[0]?.orders || 0);
@@ -266,6 +288,8 @@ reports.get("/overview", requirePermission("reports:read"), async (c) => {
         cancelledOrders: Number(cancelledStats[0]?.count || 0),
         occupiedTables,
         totalTables,
+        /** Tiền đang treo ở các bàn còn khách — chưa thu, nên KHÔNG cộng vào doanh thu. */
+        openTablesRevenue: Number(openTablesTotals[0]?.total || 0),
       },
       yesterday: { orders: yOrders, revenue: yRevenue },
       deltas: { revenuePct: pct(todayRevenue, yRevenue), ordersPct: pct(todayOrders, yOrders) },

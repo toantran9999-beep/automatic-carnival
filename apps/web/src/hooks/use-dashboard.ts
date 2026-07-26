@@ -58,6 +58,8 @@ export interface Overview {
     cancelledOrders: number;
     occupiedTables: number;
     totalTables: number;
+    /** Tiền đang treo ở các bàn còn khách (chưa thu) — không phải doanh thu. */
+    openTablesRevenue: number;
   };
   yesterday: { orders: number; revenue: number };
   deltas: { revenuePct: number | null; ordersPct: number | null };

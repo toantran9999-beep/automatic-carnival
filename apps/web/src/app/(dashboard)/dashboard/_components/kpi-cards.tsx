@@ -84,7 +84,9 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
       value: `${today.occupiedTables}/${today.totalTables}`,
       icon: Grid3X3,
       delta: null as number | null,
-      foot: "",
+      // Tiền đang treo ở các bàn còn khách. KHÔNG phải doanh thu — chưa thu đồng nào,
+      // nên nhãn phải nói rõ "đang chờ thanh toán" kẻo cộng nhầm vào doanh thu ngày.
+      foot: `${t("dashboard.openTablesRevenue")}: ${formatCurrency(today.openTablesRevenue)}`,
     },
   ];
 

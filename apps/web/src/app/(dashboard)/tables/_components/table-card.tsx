@@ -37,6 +37,12 @@ interface TableCardProps {
   /** Mốc thời gian hiện tại từ GridView (1 interval chung) để tính thời gian ngồi */
   now?: number;
   canManage?: boolean;
+  /**
+   * Được đụng dữ liệu đang bán hàng không (mở bàn, thanh toán, huỷ, gộp/tách,
+   * đổi trạng thái). Quản lý/admin = false → thẻ thành CHỈ XEM.
+   * ⚠️ Ngược dấu với `canManage` (quản lý MỚI được xoá bàn) — đừng trộn hai cái.
+   */
+  canOperate?: boolean;
   /** Ẩn nút QR bàn (quán không dùng luồng khách tự quét) */
   hideQr?: boolean;
   waiterAssignmentEnabled: boolean;
@@ -97,6 +103,7 @@ export function TableCard({
   table,
   now,
   canManage,
+  canOperate = true,
   hideQr,
   waiterAssignmentEnabled,
   statusChangePending,
@@ -143,12 +150,13 @@ export function TableCard({
 
   return (
     <div
-      onClick={() => onCardClick?.(table)}
+      onClick={() => canOperate && onCardClick?.(table)}
       className={cn(
         // min-h: sàn tối thiểu đặt xấp xỉ chiều cao thẻ lúc CÓ khách, để khu chưa mở bàn
         // nào vẫn cao gần bằng lúc có khách — không có nó thì mở bàn đầu tiên là cả lưới
         // nhảy lên một nhịp. Điện thoại thấp hơn vì dòng chi tiết món bị ẩn (hidden sm:block).
-        "rounded-2xl p-3 sm:p-4 min-h-[15rem] sm:min-h-[18rem] flex flex-col gap-2.5 sm:gap-3 transition-shadow duration-200 hover:shadow-lg cursor-pointer select-none",
+        "rounded-2xl p-3 sm:p-4 min-h-[15rem] sm:min-h-[18rem] flex flex-col gap-2.5 sm:gap-3 transition-shadow duration-200 hover:shadow-lg select-none",
+        canOperate ? "cursor-pointer" : "cursor-default",
         meta.bg,
         hasServiceRequest && requestAccent
       )}
@@ -218,7 +226,7 @@ export function TableCard({
         {waiterAssignmentEnabled && (
           <IconBtn icon={<UserPlus className="h-3.5 w-3.5" />} title={t("tables.assign")} onClick={() => onAssign(table)} />
         )}
-        {table.activeSession && onOperations && (
+        {table.activeSession && onOperations && canOperate && (
           <IconBtn
             icon={<ArrowRightLeft className="h-3.5 w-3.5" />}
             title="Chuyển / gộp / tách bàn"
@@ -238,8 +246,14 @@ export function TableCard({
         )}
       </div>
 
-      {/* Primary actions: theo trạng thái đơn */}
-      {table.activeSession ? (
+      {/* Primary actions: theo trạng thái đơn.
+          Quản lý/admin (canOperate=false) không thấy hàng này — thông tin bàn và
+          tiền vẫn hiện đầy đủ ở trên, chỉ là không đụng vào được. */}
+      {!canOperate ? (
+        <p className="mt-auto text-[11px] italic text-muted-foreground">
+          {lang === "vi" ? "Chế độ chỉ xem" : "View only"}
+        </p>
+      ) : table.activeSession ? (
         /* Bàn đang có đơn → chỉ đóng bằng Thanh toán hoặc Hủy (có log). KHÔNG đổi status thô để khỏi bỏ rơi đơn. */
         <div className="flex gap-2" onClick={(e) => e.stopPropagation()}>
           <button

@@ -1,13 +1,15 @@
 "use client";
 
 import { useState, useCallback, useEffect } from "react";
-import { ShoppingCart } from "lucide-react";
+import { useRouter } from "next/navigation";
+import { ShoppingCart, Lock } from "lucide-react";
 import {
   Sheet,
   SheetContent,
   SheetHeader,
   SheetTitle,
 } from "@restai/ui/components/sheet";
+import { Button } from "@restai/ui/components/button";
 import { formatCurrency } from "@/lib/utils";
 import { useCategories, useMenuItems, useBestSellers } from "@/hooks/use-menu";
 import { useCreateOrder } from "@/hooks/use-orders";
@@ -27,6 +29,7 @@ import { ShiftClosedBlocker } from "./_components/shift-controls";
 import { useTableActiveSession } from "@/hooks/use-tables";
 import { useCurrentShift } from "@/hooks/use-shifts";
 import { useAuthStore } from "@/stores/auth-store";
+import { canTouchLiveOps } from "@/lib/roles";
 import { useQueryClient } from "@tanstack/react-query";
 
 // ---------------------------------------------------------------------------
@@ -66,10 +69,13 @@ export default function PosPage() {
   const [lastOrderNumber, setLastOrderNumber] = useState("");
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const { t, lang } = useTranslation();
+  const router = useRouter();
   const { user } = useAuthStore();
   const { data: currentShift, isLoading: shiftLoading } = useCurrentShift();
-  const canManageShift =
-    !!user && ["super_admin", "org_admin", "branch_manager", "cashier"].includes(user.role);
+  // Mở/đóng ca là chốt tiền mặt → chỉ người ở quầy. Quản lý đã bị chặn ở máy chủ
+  // (blockLiveOps), bỏ khỏi đây để không hiện nút bấm vào là báo lỗi.
+  const canManageShift = user?.role === "cashier";
+  const canOperate = canTouchLiveOps(user?.role);
 
   // Selected table state
   const [tableId, setTableId] = useState<string | null>(null);
@@ -519,6 +525,33 @@ export default function PosPage() {
   const posHeightClass = staffNav
     ? "h-[calc(100dvh-7.5rem)]"
     : "h-[calc(100dvh-7.5rem)] md:h-[calc(100dvh-5rem)]";
+
+  // Cổng: quản lý/admin không bán hàng — khoá HẲN màn này thay vì mở ra rồi vô hiệu
+  // từng nút. Màn bán hàng có quá nhiều đường dẫn tới thao tác (chọn món, giỏ hàng,
+  // hộp thoại thanh toán, link ?pay=1 cũ); khoá từng chỗ chỉ cần sót một là lọt.
+  // Số liệu quản lý cần đã có ở Bảng điều khiển và trang Bàn ăn.
+  if (!canOperate) {
+    return (
+      <div className={`flex ${posHeightClass}`}>
+        <div className="flex h-full flex-1 flex-col items-center justify-center gap-3 rounded-xl border border-dashed bg-muted/20 p-8 text-center">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-muted">
+            <Lock className="h-7 w-7 text-muted-foreground" />
+          </div>
+          <h2 className="text-xl font-bold">
+            {lang === "vi" ? "Chế độ chỉ xem" : "View only"}
+          </h2>
+          <p className="max-w-sm text-sm text-muted-foreground">
+            {lang === "vi"
+              ? "Tài khoản quản lý không bán hàng. Dùng tài khoản chi nhánh đăng nhập tại quầy để order và thanh toán."
+              : "Manager accounts cannot sell. Use the branch account at the counter to order and take payment."}
+          </p>
+          <Button variant="outline" onClick={() => router.push("/tables")}>
+            {lang === "vi" ? "Xem tình trạng bàn" : "View tables"}
+          </Button>
+        </div>
+      </div>
+    );
+  }
 
   // Cổng: chưa mở ca → khóa toàn bộ màn đặt món (mở ca mới xài được chức năng).
   if (!shiftLoading && !currentShift) {

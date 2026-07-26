@@ -270,8 +270,10 @@ export function PosShiftControl() {
   const [openOpen, setOpenOpen] = useState(false);
   const [warnOpen, setWarnOpen] = useState(false);
 
-  const canManage =
-    !!user && ["super_admin", "org_admin", "branch_manager", "cashier"].includes(user.role);
+  // Mở/đóng ca là chốt tiền mặt — chỉ người đứng quầy đếm được tiền thật, nên chỉ
+  // tài khoản chi nhánh (Thu ngân) làm. Quản lý/admin đã bị chặn ở máy chủ
+  // (blockLiveOps trong routes/shifts.ts); ở đây bỏ nút cho khỏi bấm rồi ăn lỗi.
+  const canManage = user?.role === "cashier";
 
   // Chỉ cần tải dữ liệu bàn/mang về khi ca đang mở (để kiểm tra trước khi cho đóng ca).
   const { data: tablesData } = useTables();

@@ -13,7 +13,7 @@ import { z } from "zod";
 import { TABLE_STATUS_TRANSITIONS } from "@restai/config";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
-import { requirePermission } from "../middleware/rbac.js";
+import { requirePermission, blockLiveOps } from "../middleware/rbac.js";
 import { generateOrderNumber, generateQrCode } from "../lib/id.js";
 import { signCustomerToken } from "../lib/jwt.js";
 import { wsManager } from "../ws/manager.js";
@@ -253,6 +253,7 @@ tables.get("/takeaway", requirePermission("orders:read"), async (c) => {
 tables.patch(
   "/takeaway/:id/void",
   requirePermission("orders:update"),
+  blockLiveOps,
   zValidator("param", idParamSchema),
   async (c) => {
     const { id } = c.req.valid("param");
@@ -434,9 +435,12 @@ tables.delete(
 );
 
 // PATCH /:id/status - Update table status
+// ⚠️ Đây là DỮ LIỆU ĐANG CHẢY nên có `blockLiveOps`, khác hẳn `PATCH /:id` (đổi tên,
+// sức chứa — việc setup, quản lý vẫn làm được) dù cả hai dùng chung `tables:update`.
 tables.patch(
   "/:id/status",
   requirePermission("tables:update"),
+  blockLiveOps,
   zValidator("param", idParamSchema),
   zValidator("json", updateTableStatusSchema),
   async (c) => {
@@ -503,6 +507,7 @@ tables.patch(
 // POST /sessions - Start a table session (customer QR flow)
 tables.post(
   "/sessions",
+  blockLiveOps,
   zValidator(
     "json",
     startSessionSchema.extend({ tableId: z.string().uuid() }),
@@ -668,6 +673,7 @@ tables.get(
 tables.patch(
   "/sessions/:id/approve",
   requirePermission("tables:update"),
+  blockLiveOps,
   zValidator("param", idParamSchema),
   async (c) => {
     const { id } = c.req.valid("param");
@@ -708,6 +714,7 @@ tables.patch(
 tables.patch(
   "/sessions/:id/reject",
   requirePermission("tables:update"),
+  blockLiveOps,
   zValidator("param", idParamSchema),
   async (c) => {
     const { id } = c.req.valid("param");
@@ -748,6 +755,7 @@ tables.patch(
 tables.patch(
   "/sessions/:id/end",
   requirePermission("tables:update"),
+  blockLiveOps,
   zValidator("param", idParamSchema),
   async (c) => {
     const { id } = c.req.valid("param");
@@ -784,6 +792,7 @@ tables.patch(
 tables.patch(
   "/sessions/:id/void",
   requirePermission("tables:update"),
+  blockLiveOps,
   zValidator("param", idParamSchema),
   async (c) => {
     const { id } = c.req.valid("param");
@@ -881,6 +890,7 @@ tables.patch(
 tables.post(
   "/sessions/:id/transfer",
   requirePermission("tables:update"),
+  blockLiveOps,
   zValidator("param", idParamSchema),
   zValidator("json", tableTransferSchema),
   async (c) => {
@@ -1013,6 +1023,7 @@ tables.post(
 tables.post(
   "/sessions/merge",
   requirePermission("tables:update"),
+  blockLiveOps,
   zValidator("json", tableMergeSchema),
   async (c) => {
     const { targetSessionId, sourceSessionIds } = c.req.valid("json");
@@ -1134,6 +1145,7 @@ tables.post(
 tables.post(
   "/sessions/:id/split",
   requirePermission("tables:update"),
+  blockLiveOps,
   zValidator("param", idParamSchema),
   zValidator("json", tableSplitSchema),
   async (c) => {

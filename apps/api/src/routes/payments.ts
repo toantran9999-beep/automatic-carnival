@@ -6,7 +6,7 @@ import { db, schema } from "@restai/db";
 import { createPaymentRequestSchema, createPaymentSchema, idParamSchema } from "@restai/validators";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
-import { requirePermission } from "../middleware/rbac.js";
+import { requirePermission, blockLiveOps } from "../middleware/rbac.js";
 import { peruStartOfDay, peruEndOfDay } from "../lib/timezone.js";
 import { buildVietQrPayload, resolveBankBin, bankDisplayName } from "@restai/config";
 import { t } from "../lib/i18n.js";
@@ -637,6 +637,7 @@ payments.get("/unpaid-orders", requirePermission("payments:read"), async (c) => 
 payments.post(
   "/requests",
   requirePermission("payments:create"),
+  blockLiveOps,
   zValidator("json", createPaymentRequestSchema),
   async (c) => {
     const body = c.req.valid("json");
@@ -870,6 +871,7 @@ payments.get("/", requirePermission("payments:read"), async (c) => {
 payments.post(
   "/",
   requirePermission("payments:create"),
+  blockLiveOps,
   zValidator("json", createPaymentSchema),
   async (c) => {
     const body = c.req.valid("json");

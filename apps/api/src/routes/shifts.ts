@@ -8,7 +8,7 @@ import { db, schema } from "@restai/db";
 import { openShiftSchema, closeShiftSchema } from "@restai/validators";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
-import { requirePermission } from "../middleware/rbac.js";
+import { requirePermission, blockLiveOps } from "../middleware/rbac.js";
 import { wsManager } from "../ws/manager.js";
 import { peruStartOfDay } from "../lib/timezone.js";
 
@@ -161,7 +161,7 @@ shifts.get("/current", requirePermission("shifts:read"), async (c) => {
 });
 
 // POST /open - mở ca mới (chỉ 1 ca mở/chi nhánh)
-shifts.post("/open", requirePermission("shifts:manage"), zValidator("json", openShiftSchema), async (c) => {
+shifts.post("/open", requirePermission("shifts:manage"), blockLiveOps, zValidator("json", openShiftSchema), async (c) => {
   const tenant = c.get("tenant") as any;
   const user = c.get("user") as any;
   const body = c.req.valid("json");
@@ -205,7 +205,7 @@ shifts.post("/open", requirePermission("shifts:manage"), zValidator("json", open
 });
 
 // POST /close - đóng ca đang mở, tính tiền & chênh lệch
-shifts.post("/close", requirePermission("shifts:manage"), zValidator("json", closeShiftSchema), async (c) => {
+shifts.post("/close", requirePermission("shifts:manage"), blockLiveOps, zValidator("json", closeShiftSchema), async (c) => {
   const tenant = c.get("tenant") as any;
   const user = c.get("user") as any;
   const body = c.req.valid("json");

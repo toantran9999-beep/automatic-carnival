@@ -31,6 +31,8 @@ interface GridViewProps {
   tables: any[];
   isLoading: boolean;
   canManage?: boolean;
+  /** false = chỉ xem dữ liệu đang bán hàng (quản lý/admin). Xem `canTouchLiveOps`. */
+  canOperate?: boolean;
   hideQr?: boolean;
   waiterAssignmentEnabled: boolean;
   statusChangePending: boolean;
@@ -50,6 +52,7 @@ export function GridView({
   tables,
   isLoading,
   canManage,
+  canOperate = true,
   hideQr,
   waiterAssignmentEnabled,
   statusChangePending,
@@ -86,6 +89,7 @@ export function GridView({
               table={table}
               now={now}
               canManage={canManage}
+              canOperate={canOperate}
               hideQr={hideQr}
               waiterAssignmentEnabled={waiterAssignmentEnabled}
               statusChangePending={statusChangePending}

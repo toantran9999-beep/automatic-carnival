@@ -13,7 +13,7 @@ import {
 import { ORDER_STATUS_TRANSITIONS, ORDER_ITEM_STATUS_TRANSITIONS } from "@restai/config";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
-import { requirePermission } from "../middleware/rbac.js";
+import { requirePermission, blockLiveOps } from "../middleware/rbac.js";
 import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
 import { z } from "zod";
@@ -88,6 +88,7 @@ orders.get("/", requirePermission("orders:read"), zValidator("query", orderQuery
 orders.post(
   "/",
   requirePermission("orders:create"),
+  blockLiveOps,
   zValidator("json", createOrderSchema),
   async (c) => {
     const body = c.req.valid("json");
@@ -349,6 +350,7 @@ orders.get(
 orders.patch(
   "/:id/status",
   requirePermission("orders:update"),
+  blockLiveOps,
   zValidator("param", idParamSchema),
   zValidator("json", updateOrderStatusSchema),
   async (c) => {
@@ -428,6 +430,7 @@ orders.patch(
 orders.patch(
   "/:id/items/:itemId/status",
   requirePermission("orders:update"),
+  blockLiveOps,
   zValidator("param", z.object({ id: z.string().uuid(), itemId: z.string().uuid() })),
   zValidator("json", updateOrderItemStatusSchema),
   async (c) => {

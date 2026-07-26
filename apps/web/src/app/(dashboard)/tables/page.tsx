@@ -65,6 +65,7 @@ import { CreateSpaceDialog, EditSpaceDialog, SpaceInfoCard } from "./_components
 import { HistoryDialog } from "./_components/history-dialog";
 import { AssignmentDialog } from "./_components/assignment-dialog";
 import { TableOperationsDialog } from "./_components/table-operations-dialog";
+import { canTouchLiveOps } from "@/lib/roles";
 
 interface TableServiceRequest {
   id: string;
@@ -113,6 +114,9 @@ export default function TablesPage() {
   const { accessToken, selectedBranchId, user } = useAuthStore();
   // Chỉ admin/quản lý mới quản lý cấu trúc bàn (thêm/sửa/xóa bàn & khu vực). Thu ngân/phục vụ chỉ vận hành.
   const canManageTables = !!user && ["super_admin", "org_admin", "branch_manager"].includes(user.role);
+  // ⚠️ NGƯỢC DẤU với canManageTables: quản lý/admin CHỈ XEM dữ liệu đang bán hàng
+  // (mở bàn, thanh toán, huỷ, gộp/tách). Thao tác phải làm từ tài khoản chi nhánh.
+  const canOperate = canTouchLiveOps(user?.role);
 
   const [voidConfirm, setVoidConfirm] = useState<any>(null);
   const voidSession = useVoidTableSession();
@@ -516,6 +520,15 @@ export default function TablesPage() {
         </p>
       )}
 
+      {/* Nói thẳng vì sao thiếu nút, thay vì để quản lý đi tìm nút đã bị ẩn. */}
+      {!canOperate && (
+        <p className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2 text-xs text-amber-800 dark:border-amber-700 dark:bg-amber-950/30 dark:text-amber-200">
+          {lang === "vi"
+            ? "Chế độ chỉ xem — thao tác bán hàng (mở bàn, thanh toán, hủy, gộp/tách) phải dùng tài khoản chi nhánh đăng nhập tại quầy."
+            : "View only — sales actions must be done from the branch account at the counter."}
+        </p>
+      )}
+
       {/* Pending Session Requests */}
       {showCustomerQrFlow && pendingSessions.length > 0 && (
         <Card className="border-2 border-amber-300 dark:border-amber-700 bg-amber-50/50 dark:bg-amber-950/20">
@@ -699,10 +712,12 @@ export default function TablesPage() {
                   ? `${takeawayList.length} đơn đang mở`
                   : `${takeawayList.length} open`}
               </p>
-              <Button size="sm" onClick={() => router.push("/pos?takeout=1")}>
-                <Plus className="h-4 w-4 mr-1" />
-                {lang === "vi" ? "Đơn mang về" : "New takeaway"}
-              </Button>
+              {canOperate && (
+                <Button size="sm" onClick={() => router.push("/pos?takeout=1")}>
+                  <Plus className="h-4 w-4 mr-1" />
+                  {lang === "vi" ? "Đơn mang về" : "New takeaway"}
+                </Button>
+              )}
             </div>
 
             {takeawayList.length > 0 && (
@@ -726,22 +741,28 @@ export default function TablesPage() {
                         {o.itemSummary}
                       </p>
                     )}
-                    <div className="flex gap-2 mt-auto pt-1">
-                      <button
-                        type="button"
-                        onClick={() => setTakeawayVoid(o)}
-                        className="text-xs font-semibold px-3 py-2 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
-                      >
-                        {lang === "vi" ? "Hủy" : "Void"}
-                      </button>
-                      <button
-                        type="button"
-                        onClick={() => setTakeawayPay(o)}
-                        className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
-                      >
-                        {lang === "vi" ? "Thanh toán" : "Pay"}
-                      </button>
-                    </div>
+                    {canOperate ? (
+                      <div className="flex gap-2 mt-auto pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setTakeawayVoid(o)}
+                          className="text-xs font-semibold px-3 py-2 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                        >
+                          {lang === "vi" ? "Hủy" : "Void"}
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setTakeawayPay(o)}
+                          className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                        >
+                          {lang === "vi" ? "Thanh toán" : "Pay"}
+                        </button>
+                      </div>
+                    ) : (
+                      <p className="mt-auto pt-1 text-[11px] italic text-muted-foreground">
+                        {lang === "vi" ? "Chế độ chỉ xem" : "View only"}
+                      </p>
+                    )}
                   </div>
                 ))}
               </div>
@@ -759,6 +780,7 @@ export default function TablesPage() {
             tables={filteredTables}
             isLoading={isLoading}
             canManage={canManageTables}
+            canOperate={canOperate}
             hideQr={hideTableQr}
             waiterAssignmentEnabled={waiterAssignmentEnabled}
             statusChangePending={updateTableStatus.isPending}

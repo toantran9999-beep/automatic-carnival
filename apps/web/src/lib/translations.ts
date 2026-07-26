@@ -67,7 +67,7 @@ export const translations = {
       revenueToday: "Doanh thu hôm nay",
       activeOrders: "Đơn hàng đang xử lý",
       occupiedTables: "Bàn đang sử dụng",
-      openTablesRevenue: "Đang chờ thanh toán",
+      openTablesRevenue: "Chờ thanh toán",
       recentOrders: "Đơn hàng gần đây",
       tableActivity: "Trạng thái bàn ăn",
       noRecentOrders: "Không có đơn hàng nào gần đây",

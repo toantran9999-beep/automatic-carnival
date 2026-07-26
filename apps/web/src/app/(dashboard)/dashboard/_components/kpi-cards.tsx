@@ -102,15 +102,19 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
           </CardHeader>
           <CardContent>
             <div className="text-xl font-bold tabular-nums sm:text-2xl">{card.value}</div>
+            {/* ⚠️ KHÔNG dùng `truncate` ở dòng chân: trên điện thoại lưới 2 cột, thẻ
+                chỉ rộng ~150px nên cắt cụt là nuốt luôn CON SỐ ở cuối câu
+                ("Đang chờ thanh to..."). Cho xuống dòng — thà cao thêm một dòng
+                còn hơn mất số tiền. */}
             <div className="mt-1 min-h-[1rem]">
               {card.delta !== null ? (
                 <DeltaBadge pct={card.delta} />
               ) : (
-                <p className="truncate text-xs text-muted-foreground">{card.foot}</p>
+                <p className="text-xs leading-snug text-muted-foreground">{card.foot}</p>
               )}
             </div>
             {card.delta !== null && card.foot && (
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">{card.foot}</p>
+              <p className="mt-0.5 text-xs leading-snug text-muted-foreground">{card.foot}</p>
             )}
           </CardContent>
         </Card>

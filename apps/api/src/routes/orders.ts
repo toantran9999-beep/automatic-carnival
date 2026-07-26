@@ -232,6 +232,29 @@ orders.post(
       ticketTableZone = tbl?.zone ?? null;
     }
 
+    // Tên NGƯỜI BẤM ĐƠN để in lên phiếu đặt món.
+    //
+    // ⚠️ Phiếu KHÔNG do máy bấm đơn in ra: điện thoại chỉ gửi đơn lên đây, rồi
+    // Trạm quầy (máy POS gắn máy in) nghe `order:new` và tự in. Trạm quầy là máy
+    // dùng chung nên tài khoản đăng nhập trên nó KHÔNG phải người order — tên
+    // phải đi kèm trong gói tin này thì phiếu mới ghi đúng.
+    //
+    // Token chỉ có id (`sub`), không có tên → phải tra bảng users. Chạy sau khi
+    // đơn đã tạo xong, ngoài transaction; hỏng thì để trống chứ không chặn bán hàng.
+    let ticketStaffName: string | null = null;
+    if (user?.role !== "customer" && user?.sub) {
+      try {
+        const [staff] = await db
+          .select({ name: schema.users.name })
+          .from(schema.users)
+          .where(eq(schema.users.id, user.sub))
+          .limit(1);
+        ticketStaffName = staff?.name ?? null;
+      } catch {
+        ticketStaffName = null;
+      }
+    }
+
     const createdItemIds = createdItems.map((i) => i.id);
     const itemModifiers = createdItemIds.length
       ? await db
@@ -259,6 +282,8 @@ orders.post(
         tableNumber: ticketTableNumber,
         tableZone: ticketTableZone,
         customerName: order.customer_name,
+        // Người bấm đơn — trạm quầy in đúng tên này lên dòng "Nhân viên".
+        staffName: ticketStaffName,
         createdAt: order.created_at,
         orderType: order.type,
         items: createdItems.map((i) => {

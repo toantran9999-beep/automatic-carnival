@@ -79,8 +79,11 @@ export function StationProvider() {
         {
           orderNumber: p.orderNumber,
           tableNumber: p.tableNumber ?? undefined,
-          tableZone: (p as any).tableZone ?? undefined,
+          tableZone: p.tableZone ?? undefined,
           customerName: p.customerName ?? undefined,
+          // Tên người bấm đơn do máy chủ gửi kèm. Máy này là máy dùng chung nên
+          // KHÔNG được lấy tài khoản đang đăng nhập ở đây làm tên trên phiếu.
+          staffName: p.staffName ?? undefined,
           createdAt: p.createdAt || new Date().toISOString(),
           items: (p.items ?? []).map((i) => ({
             name: i.name,

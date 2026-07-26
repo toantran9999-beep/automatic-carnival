@@ -4,7 +4,6 @@ import { useCallback } from "react";
 import { useLangStore } from "@/stores/lang-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useBranchSettings } from "@/hooks/use-settings";
-import { useCurrentShift } from "@/hooks/use-shifts";
 import { buildVietQrPayload, resolveBankBin, bankDisplayName } from "@restai/config";
 
 interface OrderItem {
@@ -66,9 +65,12 @@ interface KitchenTicketData {
   /** Optional "x/y" label shown when printing one ticket per item */
   ticketLabel?: string;
   /**
-   * Tên in ở dòng "Nhân viên". `usePrintKitchenTicket` tự điền TÊN NGƯỜI MỞ CA
-   * (thu ngân trực ca) nên phiếu luôn ghi người ở quầy, bất kể máy nào in ra và
-   * ai đang đăng nhập trên máy đó. Không truyền thì lùi về tài khoản của máy in.
+   * Tên in ở dòng "Nhân viên" = NGƯỜI BẤM ĐƠN, do máy chủ gửi kèm trong gói tin
+   * `order:new` và trạm quầy truyền vào đây.
+   *
+   * ⚠️ Đừng thay bằng tên lấy từ máy đang in: phiếu do Trạm quầy (máy POS gắn
+   * máy in, dùng chung) in ra, còn người order ngồi ở máy khác. Lấy tên tại máy
+   * in là ra sai tên — đã từng mắc. Không truyền thì mới lùi về tài khoản máy in.
    */
   staffName?: string;
 }
@@ -1374,13 +1376,12 @@ async function printHtmlSequential(htmls: string[]): Promise<void> {
  */
 export function usePrintKitchenTicket() {
   const { data: branchSettings } = useBranchSettings();
-  // Thu ngân trực ca — điền ở đây một lần để MỌI nơi gọi in (trạm quầy, màn POS,
-  // hộp thoại thanh toán) đều ra đúng tên người ở quầy, không phải tên người order.
-  const { data: currentShift } = useCurrentShift();
-  const cashierName = currentShift?.opened_by_name || undefined;
 
   return useCallback(async (input: KitchenTicketData, mode: PrintMode = "combined") => {
-    const data: KitchenTicketData = { ...input, staffName: input.staffName || cashierName };
+    // Tên nhân viên đi thẳng từ `input.staffName` (người bấm đơn, máy chủ gửi kèm).
+    // KHÔNG lấy tên người mở ca hay tài khoản của máy in đè lên — xem ghi chú ở
+    // `KitchenTicketData.staffName`.
+    const data: KitchenTicketData = input;
     const driver = currentPrintDriver(branchSettings);
     const cfg = getReceiptConfig(branchSettings);
     const tickets =
@@ -1408,7 +1409,7 @@ export function usePrintKitchenTicket() {
       if (allOk) return;
     }
     await printHtmlSequential(tickets.map((ticket) => buildKitchenTicketHtml(ticket, cfg)));
-  }, [branchSettings, cashierName]);
+  }, [branchSettings]);
 }
 
 export function usePrintReceipt() {

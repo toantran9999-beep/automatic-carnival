@@ -37,7 +37,16 @@ export interface WsOrderPayload {
   tableName?: string;
   /** Số bàn (cho trạm in tại quầy tự in phiếu). null = mang về/khách lẻ. */
   tableNumber?: number | null;
+  /** Tên khu vực của bàn (Khu A, Khu B...) — in kèm số bàn cho dễ tìm. */
+  tableZone?: string | null;
   customerName?: string | null;
+  /**
+   * Tên NHÂN VIÊN BẤM ĐƠN, in ở dòng "Nhân viên" của phiếu đặt món.
+   * Bắt buộc đi kèm trong gói tin: phiếu do Trạm quầy (máy dùng chung) in ra,
+   * nên không thể suy ra người order từ tài khoản đăng nhập trên máy in.
+   * null = khách tự quét QR gọi món.
+   */
+  staffName?: string | null;
   /** ISO time đơn được tạo. */
   createdAt?: string;
   /** dine_in | takeout */

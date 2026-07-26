@@ -262,17 +262,23 @@ export default function TablesPage() {
   const activeZone = zoneOptions.find((z) => z.id === activeTab);
 
   /**
-   * Kéo tab khu đang chọn vào tầm nhìn. Không có nó thì mở lại trang lúc đang đứng
-   * ở một khu nằm cuối dãy, nhân viên chỉ thấy hàng tab bắt đầu từ đầu và tưởng
+   * Kéo tab khu đang chọn vào giữa tầm nhìn. Không có nó thì mở lại trang lúc đang
+   * đứng ở một khu nằm cuối dãy, nhân viên chỉ thấy hàng tab bắt đầu từ đầu và tưởng
    * mình đang xem "Tất cả Bàn" — nhìn thiếu bàn mà không hiểu vì sao.
+   *
+   * ⚠️ TUYỆT ĐỐI không dùng `scrollIntoView` ở đây: nó cuộn MỌI khung cha, không
+   * riêng khung này. Khung <main> của app có `overflow-y-auto`, mà luật CSS là khoá
+   * một chiều thì chiều kia tự thành cuộn được — nên nó kéo lệch NGANG CẢ TRANG
+   * (tiêu đề bị cắt cụt bên trái). Đã mắc đúng lỗi này rồi. Đặt thẳng `scrollLeft`
+   * thì chỉ động vào đúng khung này, không có đường nào lan ra ngoài.
    */
   const zoneScrollRef = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
     if (!activeZone) return;
-    const el = zoneScrollRef.current?.querySelector(
-      `[data-zone-tab="${activeZone.id}"]`,
-    );
-    el?.scrollIntoView({ block: "nearest", inline: "center" });
+    const box = zoneScrollRef.current;
+    const el = box?.querySelector<HTMLElement>(`[data-zone-tab="${activeZone.id}"]`);
+    if (!box || !el) return;
+    box.scrollLeft = el.offsetLeft - (box.clientWidth - el.offsetWidth) / 2;
   }, [activeZone?.id]);
 
   const requestByTableId = useMemo<Record<string, TableServiceRequestIndicator>>(() => {
@@ -520,18 +526,17 @@ export default function TablesPage() {
               {" "}· {lang === "vi" ? "Đặt trước" : "Reserved"}: {counts.reserved}
             </span>
           )}
-          {activeTab !== "all" && (
+          {/* Chỉ nói về khu vực khi THẬT SỰ đang đứng ở một khu. Trước đây chỉ kiểm
+              `activeTab !== "all"`, nên ở tab Mang về nó vẫn vẽ phần này rồi đi tra
+              tên khu theo id "__takeaway__" → không có → ra "— : Trống 0/0 bàn".
+              `activeZone` đã gom sẵn tên + số bàn trống, khỏi tra lại `spaces`. */}
+          {activeZone && (
             <>
               {" "}—{" "}
-              <span className="font-bold text-foreground">
-                {activeTab === "unassigned"
-                  ? t("tables.unassigned")
-                  : spaces.find((s: any) => s.id === activeTab)?.name}
-              </span>
+              <span className="font-bold text-foreground">{activeZone.name}</span>
               : {lang === "vi" ? "Trống" : "Free"}{" "}
               <span className="font-bold text-foreground">
-                {zoneTables.filter((tb: any) => tb.status === "available").length}/{zoneTables.length}{" "}
-                {lang === "vi" ? "bàn" : "tables"}
+                {activeZone.free}/{activeZone.total} {lang === "vi" ? "bàn" : "tables"}
               </span>
             </>
           )}

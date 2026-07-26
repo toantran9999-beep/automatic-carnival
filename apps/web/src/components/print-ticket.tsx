@@ -1382,10 +1382,36 @@ async function printHtmlSequential(htmls: string[]): Promise<void> {
 }
 
 /**
+ * Tách đơn thành từng LY/PHẦN riêng để in mỗi cái một phiếu.
+ *
+ * ⚠️ Tách theo SỐ LƯỢNG, không phải theo dòng món. Gọi 2 ly cà phê đá là **2
+ * phiếu**, mỗi phiếu ghi "1x Cà phê đá" — không phải một phiếu ghi "2x". Pha chế
+ * làm theo phiếu, mỗi ly một phiếu thì mới kẹp riêng và không bị sót ly nào.
+ *
+ * `total` của mỗi phiếu đặt lại bằng `unit_price` cho khớp với số lượng 1.
+ */
+function splitItemsPerUnit(items: OrderItem[]): OrderItem[] {
+  const out: OrderItem[] = [];
+  for (const item of items) {
+    // Số lượng lẻ/0/thiếu (món cân ký chẳng hạn) thì giữ nguyên một phiếu,
+    // đừng cố tách — tách ra sẽ sai số lượng.
+    const qty = Number(item.quantity);
+    if (!Number.isInteger(qty) || qty < 2) {
+      out.push(item);
+      continue;
+    }
+    for (let i = 0; i < qty; i++) {
+      out.push({ ...item, quantity: 1, total: item.unit_price });
+    }
+  }
+  return out;
+}
+
+/**
  * Kitchen ticket printer.
  * - "combined" (default): one ticket containing every item.
- * - "per_item": one ticket per line item (e.g. 3 món -> 3 phiếu), each
- *   labelled "1/3", "2/3"... and printed sequentially.
+ * - "per_item": mỗi LY/PHẦN một phiếu (2 ly cà phê + 1 bánh -> 3 phiếu), đánh số
+ *   "1/3", "2/3"... và in lần lượt.
  */
 export function usePrintKitchenTicket() {
   const { data: branchSettings } = useBranchSettings();
@@ -1397,12 +1423,13 @@ export function usePrintKitchenTicket() {
     const data: KitchenTicketData = input;
     const driver = currentPrintDriver(branchSettings);
     const cfg = getReceiptConfig(branchSettings);
+    const units = mode === "per_item" ? splitItemsPerUnit(data.items) : data.items;
     const tickets =
-      mode === "per_item" && data.items.length > 1
-        ? data.items.map((item, idx) => ({
+      mode === "per_item" && units.length > 1
+        ? units.map((item, idx) => ({
             ...data,
             items: [item],
-            ticketLabel: `${idx + 1}/${data.items.length}`,
+            ticketLabel: `${idx + 1}/${units.length}`,
           }))
         : [data];
 

@@ -544,7 +544,12 @@ payments.use("*", tenantMiddleware);
 payments.use("*", requireBranch);
 
 // GET /summary - Daily payment summary (must be before /:id)
-payments.get("/summary", requirePermission("payments:read"), async (c) => {
+//
+// ⚠️ Đòi `reports:read` chứ KHÔNG phải `payments:read`: đây là DOANH THU CẢ NGÀY
+// của quán (tổng thu, tiền mặt, thẻ, QR, tip), chỉ quản lý mới được xem. Thu ngân
+// và phục vụ đều có `payments:read` để thu tiền, nên để quyền đó là hở số tổng.
+// Các endpoint thanh toán khác giữ nguyên `payments:*` — thu ngân vẫn phải thu tiền được.
+payments.get("/summary", requirePermission("reports:read"), async (c) => {
   const tenant = c.get("tenant") as any;
 
   const startOfDay = peruStartOfDay();

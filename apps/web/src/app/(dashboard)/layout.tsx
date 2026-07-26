@@ -38,6 +38,7 @@ import { StationToggle } from "@/components/station-toggle";
 import { StationProvider } from "@/components/station-provider";
 import { CacheSyncProvider } from "@/components/cache-sync-provider";
 import { SessionExpiryProvider } from "@/components/session-expiry-provider";
+import { landingPathForRole } from "@/lib/roles";
 import { CACHE_STORAGE_KEY } from "@/lib/query-config";
 import { PosShiftControl } from "./pos/_components/shift-controls";
 
@@ -85,7 +86,10 @@ const allowedPaths = {
     "/settings",
   ]),
   // Tổng quan (/dashboard) chỉ dành cho quản lý trở lên — nhân viên vận hành không thấy.
-  cashier: new Set(["/pos", "/orders", "/tables", "/payments", "/connections"]),
+  // ⚠️ Thu ngân KHÔNG có "/payments": trang đó hiện doanh thu cả ngày của quán
+  // (tổng thu, tiền mặt, thẻ, QR, tip). Thu tiền vẫn làm bình thường ở màn POS và
+  // trang Bàn ăn. Đổi lại, nhân viên không tự in lại hóa đơn cũ được — chủ quán đã chọn vậy.
+  cashier: new Set(["/pos", "/orders", "/tables", "/connections"]),
   waiter: new Set(["/pos", "/orders", "/tables", "/connections", "/kitchen"]),
   kitchen: new Set(["/kitchen"]),
 };
@@ -201,6 +205,24 @@ export default function DashboardLayout({
       router.push("/login");
     }
   }, [isAuthenticated, router]);
+
+  /**
+   * Chặn THẬT đường dẫn theo vai trò. `allowedPaths` trước đây chỉ dùng để lọc menu,
+   * nên ẩn mục đi rồi gõ thẳng `/payments` hay `/reports` vẫn vào được — ra một trang
+   * trống báo lỗi, vừa khó hiểu vừa lộ là có trang đó.
+   */
+  useEffect(() => {
+    if (!user?.role) return;
+    const allowed = allowedPaths[user.role as keyof typeof allowedPaths];
+    if (!allowed) return;
+    // So theo TIỀN TỐ: "/loyalty/abc-123" phải tính là thuộc "/loyalty".
+    const ok = [...allowed].some((p) => pathname === p || pathname.startsWith(`${p}/`));
+    if (ok) return;
+    const home = landingPathForRole(user.role);
+    // Chống lặp vô hạn: đích đến mà cũng không được phép thì thôi, đứng yên.
+    if (home === pathname || !allowed.has(home)) return;
+    router.replace(home);
+  }, [pathname, user?.role, router]);
 
   // Nhân viên vận hành (thu ngân/phục vụ/bếp) dùng 1 thanh menu cố định phía dưới trên MỌI
   // cỡ màn hình — không render sidebar/drawer để nhẹ DOM, hết đổi bố cục theo breakpoint.

@@ -13,6 +13,13 @@ import {
   DialogTitle,
 } from "@restai/ui/components/dialog";
 import {
+  Select,
+  SelectTrigger,
+  SelectContent,
+  SelectItem,
+  SelectValue,
+} from "@restai/ui/components/select";
+import {
   Plus,
   RefreshCw,
   Check,
@@ -220,6 +227,35 @@ export default function TablesPage() {
     occupied: allTables.filter((t: any) => t.status === "occupied").length,
     reserved: allTables.filter((t: any) => t.status === "reserved").length,
   };
+
+  /**
+   * Danh sách cho nút chọn khu vực: mỗi khu kèm "trống/tổng" để phục vụ nhìn một cái
+   * là biết nên xếp khách vào đâu — thứ dãy tab không làm được.
+   *
+   * ⚠️ "Chưa phân khu vực" LUÔN có mặt, kể cả khi đang không có bàn nào: chủ quán coi
+   * đây là một khu thật (khu hỗn hợp — khách muốn ngồi gần quán vẫn xếp vào đây),
+   * không phải chỗ chứa tạm. Đừng ẩn nó đi cho "gọn".
+   */
+  const zoneOptions = useMemo(() => {
+    const stat = (list: any[]) => ({
+      free: list.filter((t: any) => t.status === "available").length,
+      total: list.length,
+    });
+    return [
+      ...spaces.map((space: any) => ({
+        id: space.id,
+        name: space.name,
+        ...stat(allTables.filter((t: any) => t.space_id === space.id)),
+      })),
+      {
+        id: "unassigned",
+        name: t("tables.unassigned"),
+        ...stat(allTables.filter((t: any) => !t.space_id)),
+      },
+    ];
+  }, [spaces, allTables, t]);
+
+  const activeZone = zoneOptions.find((z) => z.id === activeTab);
 
   const requestByTableId = useMemo<Record<string, TableServiceRequestIndicator>>(() => {
     const latestByTable = new Map<string, TableServiceRequest>();
@@ -548,34 +584,52 @@ export default function TablesPage() {
         </Card>
       )}
 
-      {/* Tabs: All / Per Space / Unassigned */}
+      {/* Hàng điều khiển: Mang về | Tất cả Bàn | [Khu vực ▾]
+          Mang về đứng ĐẦU cho vừa tầm ngón cái trên điện thoại (trước đây nằm cuối,
+          phải trượt mới tới). Các khu gộp vào một nút vì quán sắp lên 5–8 khu — để
+          dạng tab thì nhãn tràn khỏi màn hình, trượt tìm còn chậm hơn mở danh sách. */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex items-center gap-2">
-          <div className="min-w-0 flex-1 overflow-x-auto">
-            <TabsList className="h-11">
-              <TabsTrigger value="all" className="h-9 px-4 text-sm font-semibold">
-                {t("tables.all")}
-              </TabsTrigger>
-              {spaces.map((space: any) => (
-                <TabsTrigger key={space.id} value={space.id} className="h-9 px-4 text-sm font-semibold">
-                  {space.name}
-                </TabsTrigger>
-              ))}
-              <TabsTrigger value="unassigned" className="h-9 px-4 text-sm font-semibold">
-                {t("tables.unassigned")}
-              </TabsTrigger>
-              {/* Khu riêng cho đơn mang về. Số đơn hiện ngay trên nhãn để đứng ở khu
-                  nào cũng biết còn đơn chưa thanh toán. */}
+          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
+            <TabsList className="h-11 shrink-0">
               <TabsTrigger value={TAKEAWAY_TAB} className="h-9 gap-1.5 px-4 text-sm font-semibold">
                 <ShoppingBag className="h-4 w-4" />
                 {lang === "vi" ? "Mang về" : "Takeaway"}
+                {/* Số đơn hiện ngay trên nhãn để đứng ở khu nào cũng biết còn đơn chưa thu tiền */}
                 {takeawayList.length > 0 && (
                   <span className="rounded-full bg-primary/15 px-1.5 text-xs font-bold tabular-nums text-primary">
                     {takeawayList.length}
                   </span>
                 )}
               </TabsTrigger>
+              <TabsTrigger value="all" className="h-9 px-4 text-sm font-semibold">
+                {t("tables.all")}
+              </TabsTrigger>
             </TabsList>
+
+            {/* undefined (không phải "") mới hiện chữ gợi ý — Radix giữ "" cho việc xoá chọn */}
+            <Select value={activeZone?.id || undefined} onValueChange={setActiveTab}>
+              <SelectTrigger
+                className={cn(
+                  "h-11 w-auto shrink-0 gap-1.5 rounded-lg text-sm font-semibold",
+                  activeZone && "border-primary bg-primary/10 text-primary"
+                )}
+              >
+                <SelectValue placeholder={lang === "vi" ? "Khu vực" : "Zones"} />
+              </SelectTrigger>
+              <SelectContent>
+                {zoneOptions.map((zone) => (
+                  <SelectItem key={zone.id} value={zone.id}>
+                    <span className="flex items-center gap-2">
+                      {zone.name}
+                      <span className="text-xs font-medium tabular-nums text-muted-foreground">
+                        {zone.free}/{zone.total}
+                      </span>
+                    </span>
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
           {/* Lọc bàn có hóa đơn (kiểu iPOS) — không áp dụng cho đơn mang về */}
           {!isTakeawayTab && (

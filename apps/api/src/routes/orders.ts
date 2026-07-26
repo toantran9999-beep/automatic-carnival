@@ -17,7 +17,7 @@ import { requirePermission, blockLiveOps } from "../middleware/rbac.js";
 import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
 import { z } from "zod";
-import { createOrder, handleOrderCompletion, OrderValidationError } from "../services/order.service.js";
+import { createOrder, addItemsToOrder, handleOrderCompletion, OrderValidationError } from "../services/order.service.js";
 import { signCustomerToken } from "../lib/jwt.js";
 
 const orders = new Hono<AppEnv>();
@@ -307,6 +307,114 @@ orders.post(
     await wsManager.publish(`branch:${tenant.branchId}:kitchen`, orderPayload);
 
     return c.json({ success: true, data: { ...order, items: createdItems } }, 201);
+  },
+);
+
+// POST /:id/items - Thêm món vào đơn đang mở (khách mua thêm)
+orders.post(
+  "/:id/items",
+  requirePermission("orders:create"),
+  blockLiveOps,
+  zValidator("param", idParamSchema),
+  zValidator("json", createOrderSchema.pick({ items: true })),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const { items } = c.req.valid("json");
+    const tenant = c.get("tenant") as any;
+    const user = c.get("user") as any;
+
+    let result;
+    try {
+      result = await addItemsToOrder({ orderId: id, branchId: tenant.branchId, items });
+    } catch (err) {
+      if (err instanceof OrderValidationError) {
+        return c.json(
+          { success: false, error: { code: "BAD_REQUEST", message: err.message } },
+          400,
+        );
+      }
+      throw err;
+    }
+
+    const { order, addedItems } = result;
+
+    let ticketStaffName: string | null = null;
+    if (user?.role !== "customer" && user?.sub) {
+      try {
+        const [staff] = await db
+          .select({ name: schema.users.name })
+          .from(schema.users)
+          .where(eq(schema.users.id, user.sub))
+          .limit(1);
+        ticketStaffName = staff?.name ?? null;
+      } catch {
+        ticketStaffName = null;
+      }
+    }
+
+    const addedIds = addedItems.map((i) => i.id);
+    const itemModifiers = addedIds.length
+      ? await db
+          .select({
+            order_item_id: schema.orderItemModifiers.order_item_id,
+            name: schema.orderItemModifiers.name,
+          })
+          .from(schema.orderItemModifiers)
+          .where(inArray(schema.orderItemModifiers.order_item_id, addedIds))
+      : [];
+    const modsByItem = new Map<string, string[]>();
+    for (const m of itemModifiers) {
+      const arr = modsByItem.get(m.order_item_id) ?? [];
+      arr.push(m.name);
+      modsByItem.set(m.order_item_id, arr);
+    }
+
+    let ticketTableNumber: number | null = null;
+    let ticketTableZone: string | null = null;
+    if (order.table_session_id) {
+      const [tbl] = await db
+        .select({ number: schema.tables.number, zone: schema.spaces.name })
+        .from(schema.tableSessions)
+        .innerJoin(schema.tables, eq(schema.tableSessions.table_id, schema.tables.id))
+        .leftJoin(schema.spaces, eq(schema.tables.space_id, schema.spaces.id))
+        .where(eq(schema.tableSessions.id, order.table_session_id))
+        .limit(1);
+      ticketTableNumber = tbl?.number ?? null;
+      ticketTableZone = tbl?.zone ?? null;
+    }
+
+    // ⚠️ PHẢI có `addOnId`: trạm quầy chống in trùng bằng `orderId`, nên phát tin
+    // với cùng orderId là nó bỏ qua, món thêm ÂM THẦM không tới quầy. `addOnId` là
+    // khóa riêng của lô thêm này. Phiếu chỉ gồm MÓN VỪA THÊM và có chữ "THÊM MÓN".
+    const orderPayload = {
+      type: "order:new",
+      payload: {
+        orderId: order.id,
+        addOnId: `${order.id}:${addedIds[0] ?? Date.now()}`,
+        orderNumber: order.order_number,
+        status: order.status,
+        tableNumber: ticketTableNumber,
+        tableZone: ticketTableZone,
+        customerName: order.customer_name,
+        staffName: ticketStaffName,
+        createdAt: new Date().toISOString(),
+        orderType: order.type,
+        items: addedItems.map((i) => ({
+          id: i.id,
+          name: i.name,
+          modifiers: modsByItem.get(i.id) ?? [],
+          quantity: i.quantity,
+          status: i.status,
+          notes: i.notes,
+          unit: i.unit ?? null,
+        })),
+      },
+      timestamp: Date.now(),
+    };
+    await wsManager.publish(`branch:${tenant.branchId}`, orderPayload);
+    await wsManager.publish(`branch:${tenant.branchId}:kitchen`, orderPayload);
+
+    return c.json({ success: true, data: { ...order, addedItems } }, 201);
   },
 );
 

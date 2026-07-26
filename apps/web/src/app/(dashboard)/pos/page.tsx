@@ -12,7 +12,7 @@ import {
 import { Button } from "@restai/ui/components/button";
 import { formatCurrency } from "@/lib/utils";
 import { useCategories, useMenuItems, useBestSellers } from "@/hooks/use-menu";
-import { useCreateOrder } from "@/hooks/use-orders";
+import { useCreateOrder, useAddOrderItems } from "@/hooks/use-orders";
 import { useCreatePaymentRequest } from "@/hooks/use-payments";
 import { useTables } from "@/hooks/use-tables";
 import { toast } from "sonner";
@@ -81,6 +81,8 @@ export default function PosPage() {
   const [tableId, setTableId] = useState<string | null>(null);
   const [tableNumber, setTableNumber] = useState<string | null>(null);
   const [autoPay, setAutoPay] = useState(false);
+  /** Có = đang thêm món vào đơn mang về này, không phải tạo đơn mới. */
+  const [addToOrderId, setAddToOrderId] = useState<string | null>(null);
 
   // Parse table parameters from URL
   useEffect(() => {
@@ -99,6 +101,12 @@ export default function PosPage() {
         setAutoPay(true);
       }
       if (params.get("takeout") === "1") {
+        setOrderType("takeout");
+      }
+      // Thêm món vào đơn mang về đang mở (khách quay lại mua thêm)
+      const addId = params.get("addToOrderId");
+      if (addId) {
+        setAddToOrderId(addId);
         setOrderType("takeout");
       }
     }
@@ -123,6 +131,7 @@ export default function PosPage() {
   }, [categories, selectedCategory]);
   const { data: tablesData } = useTables();
   const createOrder = useCreateOrder();
+  const addOrderItems = useAddOrderItems();
   const createPaymentRequest = useCreatePaymentRequest();
 
   const { data: branchSettings } = useBranchSettings();
@@ -358,6 +367,22 @@ export default function PosPage() {
 
   const handleCreateOrder = async (payImmediately = false) => {
     if (cart.length === 0) return;
+
+    // Thêm món vào đơn có sẵn: KHÔNG tạo đơn mới, cộng thẳng vào đơn cũ để khách
+    // vẫn cầm một số phiếu và quầy đối soát một dòng.
+    if (addToOrderId) {
+      try {
+        await addOrderItems.mutateAsync({ orderId: addToOrderId, items: toOrderItems(cart) });
+        setCart([]);
+        toast.success(lang === "vi" ? "Đã thêm món vào đơn" : "Items added to order");
+        qc.invalidateQueries({ queryKey: ["tables", "takeaway"] });
+        router.push("/tables");
+      } catch (err: any) {
+        toast.error(err.message || (lang === "vi" ? "Không thêm được món" : "Could not add items"));
+      }
+      return;
+    }
+
     if (orderType === "dine_in" && !tableId) {
       toast.error(lang === "vi" ? "Vui lòng chọn bàn cho đơn ăn tại bàn" : "Please select a table for dine-in");
       return;
@@ -564,6 +589,20 @@ export default function PosPage() {
 
   return (
     <div className={`flex ${posHeightClass} flex-col gap-2`}>
+      {/* Nói rõ đang thêm vào đơn nào — không có dòng này thì màn hình y hệt lúc bán
+          đơn mới, nhân viên dễ tưởng mình đang mở đơn thứ hai cho cùng một khách. */}
+      {addToOrderId && (
+        <div className="flex items-center justify-between gap-2 rounded-lg border border-primary/40 bg-primary/10 px-3 py-2 text-sm font-semibold text-primary">
+          <span>
+            {lang === "vi"
+              ? "Đang thêm món vào đơn mang về đang mở"
+              : "Adding items to an open takeaway order"}
+          </span>
+          <Button size="sm" variant="ghost" onClick={() => router.push("/tables")}>
+            {lang === "vi" ? "Thoát" : "Cancel"}
+          </Button>
+        </div>
+      )}
       <div className="flex min-h-0 flex-1 gap-3">
         <ProductGrid
           categories={categories ?? []}

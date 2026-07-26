@@ -59,6 +59,17 @@ interface TableCardProps {
   onVoid?: (table: any) => void;
 }
 
+/**
+ * Tên khách do hệ thống tự điền khi mở bàn từ máy POS — không phải tên khách thật,
+ * nên không đáng chiếm một dòng trên thẻ bàn.
+ */
+const DEFAULT_CUSTOMER_NAMES = ["khách pos", "pos staff", "khách lẻ", "walk-in"];
+
+function isDefaultCustomerName(name?: string | null): boolean {
+  if (!name) return true;
+  return DEFAULT_CUSTOMER_NAMES.includes(name.trim().toLowerCase());
+}
+
 const STATUS_METADATA: Record<
   string,
   {
@@ -193,23 +204,26 @@ export function TableCard({
         </div>
       </div>
 
-      {/* Capacity */}
-      <p className="text-xs text-muted-foreground -mt-1 font-medium">
-        {table.capacity} {table.capacity === 1 ? t("tables.person") : t("tables.people")}
-      </p>
-
-      {/* Active Session Info — mobile gọn: tên khách + tiền TO rõ, ẩn dòng chi tiết món cho thoáng */}
+      {/* Active Session Info — tiền TO rõ + danh sách món.
+          Sức chứa bàn đã bỏ: thông tin tĩnh, không giúp gì lúc chạy bàn. */}
       {table.activeSession && (
         <div className="mt-1 p-2 rounded-lg bg-background/60 dark:bg-background/25 border space-y-1 animate-in fade-in duration-200">
-          <span className="block min-w-0 truncate text-xs font-semibold text-muted-foreground">
-            {table.activeSession.customerName}
-          </span>
+          {/* Chỉ hiện khi nhân viên GÕ TÊN THẬT. Tên mặc định ("Khách POS") là rác
+              màn hình — nhưng xoá thẳng cả dòng thì mất luôn ghi chú thật kiểu
+              "Anh Hùng hẹn 3h", mà đó đúng là chỗ để nhận ra khách. */}
+          {!isDefaultCustomerName(table.activeSession.customerName) && (
+            <span className="block min-w-0 truncate text-xs font-semibold text-foreground/75">
+              {table.activeSession.customerName}
+            </span>
+          )}
           <span className="block text-lg font-bold text-primary tabular-nums leading-tight">
             {formatCurrency(table.activeSession.total)}
           </span>
           {table.activeSession.itemSummary && (
             <span className="hidden sm:block border-t pt-1 mt-1">
-              <span className="line-clamp-2 text-[11px] text-muted-foreground leading-relaxed italic">
+              {/* ⚠️ KHÔNG dùng text-muted-foreground: đó là màu chữ phụ tính cho nền
+                  trắng, đặt lên thẻ bàn có khách (nền xanh đậm) là chìm hẳn. */}
+              <span className="line-clamp-2 text-xs leading-relaxed text-foreground/75">
                 {table.activeSession.itemSummary}
               </span>
             </span>
@@ -220,15 +234,15 @@ export function TableCard({
       {/* Actions row */}
       <div className="flex items-center gap-1 mt-auto" onClick={(e) => e.stopPropagation()}>
         {!hideQr && (
-          <IconBtn icon={<QrCode className="h-3.5 w-3.5" />} title="QR" onClick={() => onQr(table)} />
+          <IconBtn icon={<QrCode className="h-4 w-4" />} title="QR" onClick={() => onQr(table)} />
         )}
-        <IconBtn icon={<History className="h-3.5 w-3.5" />} title={t("tables.history")} onClick={() => onHistory(table)} />
+        <IconBtn icon={<History className="h-4 w-4" />} title={t("tables.history")} onClick={() => onHistory(table)} />
         {waiterAssignmentEnabled && (
-          <IconBtn icon={<UserPlus className="h-3.5 w-3.5" />} title={t("tables.assign")} onClick={() => onAssign(table)} />
+          <IconBtn icon={<UserPlus className="h-4 w-4" />} title={t("tables.assign")} onClick={() => onAssign(table)} />
         )}
         {table.activeSession && onOperations && canOperate && (
           <IconBtn
-            icon={<ArrowRightLeft className="h-3.5 w-3.5" />}
+            icon={<ArrowRightLeft className="h-4 w-4" />}
             title="Chuyển / gộp / tách bàn"
             onClick={() => onOperations(table)}
           />
@@ -238,7 +252,7 @@ export function TableCard({
 
         {canManage && (
           <IconBtn
-            icon={<Trash2 className="h-3.5 w-3.5" />}
+            icon={<Trash2 className="h-4 w-4" />}
             title={t("common.delete")}
             onClick={() => onDelete(table)}
             destructive
@@ -268,7 +282,9 @@ export function TableCard({
             onClick={() => onPay?.(table)}
             className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
           >
-            {lang === "vi" ? "Thanh toán" : "Pay"} · {formatCurrency(table.activeSession.total)}
+            {/* Không lặp lại số tiền: nó đã nằm to rõ màu vàng ở khối giữa thẻ —
+                chỗ đọc được từ xa khi lướt cả dãy bàn. */}
+            {lang === "vi" ? "Thanh toán" : "Pay"}
           </button>
         </div>
       ) : (
@@ -320,10 +336,12 @@ function IconBtn({
       onClick={onClick}
       title={title}
       className={cn(
+        // ⚠️ KHÔNG dùng text-muted-foreground: màu chữ phụ này tính cho nền trắng,
+        // đặt lên thẻ bàn có khách (nền xanh đậm) là mờ tịt, gần như không thấy.
         "p-1.5 rounded-lg transition-colors",
         destructive
-          ? "text-muted-foreground/60 hover:text-destructive hover:bg-destructive/10"
-          : "text-muted-foreground/80 hover:text-foreground hover:bg-white/60 dark:hover:bg-white/10"
+          ? "text-foreground/60 hover:text-destructive hover:bg-destructive/10"
+          : "text-foreground/70 hover:text-foreground hover:bg-white/60 dark:hover:bg-white/10"
       )}
     >
       {icon}

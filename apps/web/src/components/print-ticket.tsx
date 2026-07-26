@@ -65,6 +65,11 @@ interface KitchenTicketData {
   /** Optional "x/y" label shown when printing one ticket per item */
   ticketLabel?: string;
   /**
+   * Phiếu này là MÓN KHÁCH GỌI THÊM vào đơn đang mở, không phải đơn mới.
+   * Phải in rõ chữ "THÊM MÓN" kẻo pha chế tưởng đơn mới rồi làm lại từ đầu.
+   */
+  isAddOn?: boolean;
+  /**
    * Tên in ở dòng "Nhân viên" = NGƯỜI BẤM ĐƠN, do máy chủ gửi kèm trong gói tin
    * `order:new` và trạm quầy truyền vào đây.
    *
@@ -381,6 +386,8 @@ function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAUL
   const rows: Array<string | number[]> = [
     cfg.kitchen.show.title ? centered(cfg.kitchen.title, width) : "",
     centered(subtitle, width),
+    // Không có dòng này thì pha chế tưởng đơn mới, làm lại từ đầu cả đơn.
+    data.isAddOn ? centered("*** THEM MON ***", width) : "",
     data.ticketLabel ? centered(`Phieu ${data.ticketLabel}`, width) : "",
     SEP,
     cfg.kitchen.show.time ? twoCol(`Gio: ${time}`, `Ngay: ${date}`, width) : "",
@@ -724,6 +731,10 @@ function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): Ras
     bold: true,
     big: !cfg.kitchen.show.title,
   });
+  // Không có dòng này thì pha chế tưởng đơn mới, làm lại từ đầu cả đơn.
+  if (data.isAddOn) {
+    segs.push({ kind: "text", text: "*** THÊM MÓN ***", align: "center", bold: true });
+  }
   if (data.ticketLabel) segs.push({ kind: "text", text: `Phiếu ${data.ticketLabel}`, align: "center" });
   segs.push({ kind: "sep" });
   if (cfg.kitchen.show.time) segs.push({ kind: "twoCol", left: `Giờ: ${time}`, right: `Ngày: ${date}` });
@@ -1002,6 +1013,8 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
 <body>
   ${cfg.kitchen.show.title ? `<div class="ticket-title">${escapeHtml(L.title)}</div>` : ""}
   <div class="ticket-sub">${escapeHtml(subtitle)}</div>
+  ${/* Không có dòng này thì pha chế tưởng đơn mới, làm lại từ đầu cả đơn. */ ""}
+  ${data.isAddOn ? `<div class="ticket-sub">*** ${isVi ? "THÊM MÓN" : "ADDED ITEMS"} ***</div>` : ""}
   ${data.ticketLabel ? `<div class="center bold" style="font-size:12px;margin-top:2px;">${t.ticket} ${data.ticketLabel}</div>` : ""}
   <table class="meta">
     ${cfg.kitchen.show.time ? `<tr>

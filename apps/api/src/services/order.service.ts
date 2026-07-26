@@ -37,26 +37,31 @@ interface CreateOrderResult {
   items: (typeof schema.orderItems.$inferSelect)[];
 }
 
-/**
- * Validates menu items and creates an order with its items.
- * Returns the created order and items, or throws an error if validation fails.
- */
-export async function createOrder(params: CreateOrderParams): Promise<CreateOrderResult> {
-  const {
-    organizationId,
-    branchId,
-    items,
-    type,
-    customerName,
-    notes,
-    tableSessionId,
-    customerId,
-    couponCode,
-    redemptionId,
-    lang,
-    registerShiftId,
-  } = params;
+interface ResolvedOrderItem {
+  menu_item_id: string | null;
+  name: string;
+  unit_price: number;
+  quantity: number;
+  total: number;
+  notes?: string;
+  unit?: string | null;
+  modifiers: Array<{ modifierId: string }>;
+}
 
+interface ResolvedItems {
+  subtotal: number;
+  orderItemsData: ResolvedOrderItem[];
+  modifierMap: Map<string, { id: string; name: string; price: number }>;
+}
+
+/**
+ * Tra thực đơn và tính tiền cho một danh sách món: chặn món ngừng bán, cộng giá
+ * tùy chọn, xử lý món nhập tay ngoài menu.
+ *
+ * ⚠️ Dùng CHUNG cho cả tạo đơn mới lẫn thêm món vào đơn có sẵn. Đừng chép đôi khối
+ * này — giá bán hai đường mà lệch nhau thì rất khó phát hiện, tới lúc đối soát mới lòi.
+ */
+async function resolveOrderItems(items: OrderItemInput[]): Promise<ResolvedItems> {
   // Get menu items for price calculation (bỏ qua món nhập tay không có menuItemId)
   const menuItemIds = items
     .map((i) => i.menuItemId)
@@ -93,16 +98,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
 
   // Validate items and calculate totals
   let subtotal = 0;
-  const orderItemsData: Array<{
-    menu_item_id: string | null;
-    name: string;
-    unit_price: number;
-    quantity: number;
-    total: number;
-    notes?: string;
-    unit?: string | null;
-    modifiers: Array<{ modifierId: string }>;
-  }> = [];
+  const orderItemsData: ResolvedOrderItem[] = [];
 
   for (const item of items) {
     // Món nhập tay: không tra menu, lấy thẳng tên + giá nhân viên nhập.
@@ -156,14 +152,41 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     });
   }
 
-  // Get branch tax rate
+  return { subtotal, orderItemsData, modifierMap };
+}
+
+/** Thuế suất của chi nhánh (điểm cơ bản; 1000 = 10%). VAT tính GỘP trong giá bán. */
+async function getBranchTaxRate(branchId: string): Promise<number> {
   const [branch] = await db
     .select({ tax_rate: schema.branches.tax_rate })
     .from(schema.branches)
     .where(eq(schema.branches.id, branchId))
     .limit(1);
+  return branch?.tax_rate ?? 1000;
+}
 
-  const taxRate = branch?.tax_rate ?? 1000;
+/**
+ * Validates menu items and creates an order with its items.
+ * Returns the created order and items, or throws an error if validation fails.
+ */
+export async function createOrder(params: CreateOrderParams): Promise<CreateOrderResult> {
+  const {
+    organizationId,
+    branchId,
+    items,
+    type,
+    customerName,
+    notes,
+    tableSessionId,
+    customerId,
+    couponCode,
+    redemptionId,
+    lang,
+    registerShiftId,
+  } = params;
+
+  const { subtotal, orderItemsData, modifierMap } = await resolveOrderItems(items);
+  const taxRate = await getBranchTaxRate(branchId);
 
   // Create order + items + coupon redemption in a transaction
   // Coupon validation is INSIDE the transaction to prevent race conditions on current_uses
@@ -311,6 +334,106 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     }
 
     return { order, items: createdItems };
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Thêm món vào đơn đang mở
+// ---------------------------------------------------------------------------
+
+interface AddItemsParams {
+  orderId: string;
+  branchId: string;
+  items: OrderItemInput[];
+}
+
+/**
+ * Thêm món vào một đơn ĐANG MỞ (khách mua thêm).
+ *
+ * Vì sao cần: đơn tại bàn gom nhiều đơn vào một PHIÊN BÀN nên gọi thêm chỉ là tạo
+ * thêm đơn trong phiên. Đơn mang về không có phiên — mỗi đơn đứng một mình, không
+ * có chỗ gắn món mới, nên phải cộng thẳng vào đơn cũ.
+ *
+ * Giữ nguyên `order_number` / `register_shift_id` / `shift_seq`: vẫn là MỘT đơn,
+ * MỘT số phiếu — khách cầm một số, quầy đối soát một dòng.
+ */
+export async function addItemsToOrder(
+  params: AddItemsParams,
+): Promise<{ order: typeof schema.orders.$inferSelect; addedItems: (typeof schema.orderItems.$inferSelect)[] }> {
+  const { orderId, branchId, items } = params;
+
+  const [order] = await db
+    .select()
+    .from(schema.orders)
+    .where(and(eq(schema.orders.id, orderId), eq(schema.orders.branch_id, branchId)))
+    .limit(1);
+
+  if (!order) throw new OrderValidationError("Không tìm thấy đơn hàng ở chi nhánh này");
+  if (order.status === "cancelled") throw new OrderValidationError("Đơn đã hủy, không thêm món được");
+  if (order.status === "completed") throw new OrderValidationError("Đơn đã hoàn tất, vui lòng tạo đơn mới");
+
+  // Đã thu đủ tiền = đơn đã đóng sổ. Cộng thêm món vào đó là tạo ra khoản nợ vô
+  // hình: phiếu đã in, tiền đã ghi nhận, mà tổng đơn lại nhảy lên.
+  const [paid] = await db
+    .select({ total: sql<number>`COALESCE(SUM(${schema.payments.amount}), 0)::int` })
+    .from(schema.payments)
+    .where(
+      and(eq(schema.payments.order_id, orderId), eq(schema.payments.status, "completed")),
+    );
+  if ((paid?.total ?? 0) >= order.total) {
+    throw new OrderValidationError("Đơn đã thanh toán xong, vui lòng tạo đơn mới");
+  }
+
+  const { subtotal: addedSubtotal, orderItemsData, modifierMap } =
+    await resolveOrderItems(items);
+  const taxRate = await getBranchTaxRate(branchId);
+
+  return await db.transaction(async (tx) => {
+    const addedItems = await tx
+      .insert(schema.orderItems)
+      .values(
+        orderItemsData.map(({ modifiers: _mods, ...item }) => ({
+          order_id: orderId,
+          ...item,
+        })),
+      )
+      .returning();
+
+    for (let i = 0; i < addedItems.length; i++) {
+      const itemData = orderItemsData[i];
+      if (itemData.modifiers.length > 0) {
+        await tx.insert(schema.orderItemModifiers).values(
+          itemData.modifiers.map((mod) => {
+            const modifier = modifierMap.get(mod.modifierId);
+            return {
+              order_item_id: addedItems[i].id,
+              modifier_id: mod.modifierId,
+              name: modifier?.name || "Tùy chọn",
+              price: modifier?.price || 0,
+            };
+          }),
+        );
+      }
+    }
+
+    // VAT tính GỘP: tính lại từ tổng mới chứ không cộng dồn phần thuế của lô thêm,
+    // để tránh lệch một vài đồng do làm tròn nhiều lần.
+    const newSubtotal = order.subtotal + addedSubtotal;
+    const newTotal = newSubtotal - order.discount;
+    const newTax = Math.round(newTotal - newTotal / (1 + taxRate / 10000));
+
+    const [updated] = await tx
+      .update(schema.orders)
+      .set({
+        subtotal: newSubtotal,
+        total: newTotal,
+        tax: newTax,
+        updated_at: new Date(),
+      })
+      .where(eq(schema.orders.id, orderId))
+      .returning();
+
+    return { order: updated, addedItems };
   });
 }
 

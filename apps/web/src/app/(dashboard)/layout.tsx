@@ -264,7 +264,11 @@ export default function DashboardLayout({
   };
 
   return (
-    <div className="h-screen flex overflow-hidden">
+    // ⚠️ h-dvh chứ KHÔNG phải h-screen (100vh): trên Android/WebView, 100vh cao hơn
+    // vùng thật sự nhìn thấy vì tính cả phần bị thanh hệ thống che → khung cuộn cao
+    // hơn màn hình, vuốt tới đáy rồi mà hàng cuối vẫn khuất bên dưới (mất luôn nút
+    // Mở bàn / Thanh toán ở trang Bàn ăn). dvh tự co theo thanh hệ thống.
+    <div className="h-dvh flex overflow-hidden">
       {/* Trạm in tại quầy: nghe order:new & tự in (chỉ khi máy này bật trạm) */}
       <StationProvider />
       {/* Nghe máy chủ báo thực đơn/cài đặt đổi → bỏ cache ngay (xem cache-sync-provider) */}
@@ -631,10 +635,16 @@ export default function DashboardLayout({
         )}
 
         {/* Page content */}
+        {/* Đệm đáy phải TÍNH ĐỘNG: thanh menu dưới là h-16 (64px) CỘNG thêm
+            env(safe-area-inset-bottom). Đệm cứng pb-24 (96px) là thiếu chỗ trên máy
+            có vạch gạt dưới (~34px) → hàng cuối bị che. Máy tính (md) của admin thì
+            thanh menu ẩn nên không cần đệm. */}
         <main
           className={cn(
             "flex-1 overflow-y-auto p-4 md:px-4 md:py-3",
-            staffNav ? "pb-24" : "pb-28 md:pb-3"
+            staffNav
+              ? "pb-[calc(5rem+env(safe-area-inset-bottom))]"
+              : "pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-3"
           )}
         >
           {children}

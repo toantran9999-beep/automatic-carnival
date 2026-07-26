@@ -77,6 +77,25 @@ export function useCreateOrder() {
   });
 }
 
+/**
+ * Thêm món vào đơn ĐANG MỞ (khách mang về quay lại mua thêm). Đơn giữ nguyên số,
+ * tiền cộng dồn; quầy in một phiếu riêng chỉ gồm món vừa thêm.
+ */
+export function useAddOrderItems() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ orderId, items }: { orderId: string; items: any[] }) =>
+      apiFetch(`/api/orders/${orderId}/items`, {
+        method: "POST",
+        body: JSON.stringify({ items }),
+      }),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["tables"] });
+    },
+  });
+}
+
 export function useUpdateOrderStatus() {
   const qc = useQueryClient();
   return useMutation({

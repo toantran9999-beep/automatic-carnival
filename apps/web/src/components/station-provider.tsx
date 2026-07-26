@@ -67,8 +67,11 @@ export function StationProvider() {
       if (!station.isStation) return;
 
       const p = msg.payload as WsOrderPayload;
-      if (!p?.orderId || printedRef.current.has(p.orderId)) return;
-      printedRef.current.add(p.orderId);
+      // Lô món thêm có khóa riêng: nếu chống trùng theo orderId thì đơn đã in rồi
+      // sẽ bị bỏ qua, món khách gọi thêm âm thầm không tới quầy.
+      const printKey = p?.addOnId || p?.orderId;
+      if (!p?.orderId || !printKey || printedRef.current.has(printKey)) return;
+      printedRef.current.add(printKey);
 
       const mode =
         (branchSettings as any)?.settings?.print_mode === "per_item"
@@ -84,6 +87,7 @@ export function StationProvider() {
           // Tên người bấm đơn do máy chủ gửi kèm. Máy này là máy dùng chung nên
           // KHÔNG được lấy tài khoản đang đăng nhập ở đây làm tên trên phiếu.
           staffName: p.staffName ?? undefined,
+          isAddOn: !!p.addOnId,
           createdAt: p.createdAt || new Date().toISOString(),
           items: (p.items ?? []).map((i) => ({
             name: i.name,
@@ -110,9 +114,10 @@ export function StationProvider() {
           : lang === "vi"
             ? "Mang về"
             : "Takeaway";
-      toast.info(
-        `${lang === "vi" ? "Đơn mới" : "New order"} #${p.orderNumber} · ${where}`
-      );
+      const kind = p.addOnId
+        ? lang === "vi" ? "Thêm món" : "Added items"
+        : lang === "vi" ? "Đơn mới" : "New order";
+      toast.info(`${kind} #${p.orderNumber} · ${where}`);
     },
     [branchSettings, printKitchenTicket, lang]
   );

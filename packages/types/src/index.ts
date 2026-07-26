@@ -47,6 +47,13 @@ export interface WsOrderPayload {
    * null = khách tự quét QR gọi món.
    */
   staffName?: string | null;
+  /**
+   * Có = đây là lô MÓN THÊM vào đơn đang mở, `items` chỉ gồm món vừa thêm.
+   *
+   * ⚠️ Trạm quầy chống in trùng bằng `orderId`; đơn đó đã in rồi nên nếu không có
+   * khóa riêng này thì món thêm bị bỏ qua, ÂM THẦM không ra phiếu.
+   */
+  addOnId?: string;
   /** ISO time đơn được tạo. */
   createdAt?: string;
   /** dine_in | takeout */

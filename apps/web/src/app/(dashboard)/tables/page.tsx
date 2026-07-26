@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo, useCallback, useEffect } from "react";
+import { useState, useMemo, useCallback, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@restai/ui/components/button";
 import { Card, CardContent, CardHeader, CardTitle } from "@restai/ui/components/card";
@@ -260,6 +260,20 @@ export default function TablesPage() {
   }, [spaces, allTables, t]);
 
   const activeZone = zoneOptions.find((z) => z.id === activeTab);
+
+  /**
+   * Kéo tab khu đang chọn vào tầm nhìn. Không có nó thì mở lại trang lúc đang đứng
+   * ở một khu nằm cuối dãy, nhân viên chỉ thấy hàng tab bắt đầu từ đầu và tưởng
+   * mình đang xem "Tất cả Bàn" — nhìn thiếu bàn mà không hiểu vì sao.
+   */
+  const zoneScrollRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!activeZone) return;
+    const el = zoneScrollRef.current?.querySelector(
+      `[data-zone-tab="${activeZone.id}"]`,
+    );
+    el?.scrollIntoView({ block: "nearest", inline: "center" });
+  }, [activeZone?.id]);
 
   const requestByTableId = useMemo<Record<string, TableServiceRequestIndicator>>(() => {
     const latestByTable = new Map<string, TableServiceRequest>();
@@ -597,52 +611,51 @@ export default function TablesPage() {
         </Card>
       )}
 
-      {/* Hàng điều khiển: Mang về | Tất cả Bàn | [Khu vực ▾]
-          Mang về đứng ĐẦU cho vừa tầm ngón cái trên điện thoại (trước đây nằm cuối,
-          phải trượt mới tới). Các khu gộp vào một nút vì quán sắp lên 5–8 khu — để
-          dạng tab thì nhãn tràn khỏi màn hình, trượt tìm còn chậm hơn mở danh sách. */}
+      {/* Hàng điều khiển: [Mang về] [Tất cả Bàn] | Khu A 4/8 · Khu B 2/6 · …
+          Một hàng trượt ngang. Hai mục dùng nhiều nhất được GHIM bên trái
+          (sticky left-0) nên trượt tới khu xa nhất vẫn bấm về được ngay, không phải
+          vuốt ngược. Mỗi khu kèm số bàn trống để nhìn là biết xếp khách vào đâu. */}
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <div className="flex items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-center gap-2 overflow-x-auto">
-            <TabsList className="h-11 shrink-0">
-              <TabsTrigger value={TAKEAWAY_TAB} className="h-9 gap-1.5 px-4 text-sm font-semibold">
-                <ShoppingBag className="h-4 w-4" />
-                {lang === "vi" ? "Mang về" : "Takeaway"}
-                {/* Số đơn hiện ngay trên nhãn để đứng ở khu nào cũng biết còn đơn chưa thu tiền */}
-                {takeawayList.length > 0 && (
-                  <span className="rounded-full bg-primary/15 px-1.5 text-xs font-bold tabular-nums text-primary">
-                    {takeawayList.length}
-                  </span>
-                )}
-              </TabsTrigger>
-              <TabsTrigger value="all" className="h-9 px-4 text-sm font-semibold">
-                {t("tables.all")}
-              </TabsTrigger>
-            </TabsList>
-
-            {/* undefined (không phải "") mới hiện chữ gợi ý — Radix giữ "" cho việc xoá chọn */}
-            <Select value={activeZone?.id || undefined} onValueChange={setActiveTab}>
-              <SelectTrigger
-                className={cn(
-                  "h-11 w-auto shrink-0 gap-1.5 rounded-lg text-sm font-semibold",
-                  activeZone && "border-primary bg-primary/10 text-primary"
-                )}
-              >
-                <SelectValue placeholder={lang === "vi" ? "Khu vực" : "Zones"} />
-              </SelectTrigger>
-              <SelectContent>
-                {zoneOptions.map((zone) => (
-                  <SelectItem key={zone.id} value={zone.id}>
-                    <span className="flex items-center gap-2">
-                      {zone.name}
-                      <span className="text-xs font-medium tabular-nums text-muted-foreground">
-                        {zone.free}/{zone.total}
-                      </span>
+          <div className="relative min-w-0 flex-1">
+            <div
+              ref={zoneScrollRef}
+              className="flex items-center gap-2 overflow-x-auto pr-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+            >
+              <TabsList className="sticky left-0 z-10 h-11 shrink-0 shadow-[6px_0_6px_-4px_rgba(0,0,0,0.15)]">
+                <TabsTrigger value={TAKEAWAY_TAB} className="h-9 gap-1.5 px-4 text-sm font-semibold">
+                  <ShoppingBag className="h-4 w-4" />
+                  {lang === "vi" ? "Mang về" : "Takeaway"}
+                  {/* Số đơn hiện ngay trên nhãn để đứng ở khu nào cũng biết còn đơn chưa thu tiền */}
+                  {takeawayList.length > 0 && (
+                    <span className="rounded-full bg-primary/15 px-1.5 text-xs font-bold tabular-nums text-primary">
+                      {takeawayList.length}
                     </span>
-                  </SelectItem>
+                  )}
+                </TabsTrigger>
+                <TabsTrigger value="all" className="h-9 px-4 text-sm font-semibold">
+                  {t("tables.all")}
+                </TabsTrigger>
+              </TabsList>
+
+              <TabsList className="h-11 shrink-0">
+                {zoneOptions.map((zone) => (
+                  <TabsTrigger
+                    key={zone.id}
+                    value={zone.id}
+                    data-zone-tab={zone.id}
+                    className="h-9 gap-1.5 px-4 text-sm font-semibold"
+                  >
+                    {zone.name}
+                    <span className="text-xs font-medium tabular-nums opacity-70">
+                      {zone.free}/{zone.total}
+                    </span>
+                  </TabsTrigger>
                 ))}
-              </SelectContent>
-            </Select>
+              </TabsList>
+            </div>
+            {/* Vệt mờ mép phải: báo còn khu phía sau mà không tốn thêm chỗ */}
+            <div className="pointer-events-none absolute inset-y-0 right-0 w-6 bg-gradient-to-l from-background to-transparent" />
           </div>
           {/* Lọc bàn có hóa đơn (kiểu iPOS) — không áp dụng cho đơn mang về */}
           {!isTakeawayTab && (
@@ -742,21 +755,32 @@ export default function TablesPage() {
                       </p>
                     )}
                     {canOperate ? (
-                      <div className="flex gap-2 mt-auto pt-1">
+                      <div className="mt-auto space-y-2 pt-1">
+                        {/* Khách quay lại mua thêm: cộng vào ĐÚNG đơn này, giữ nguyên
+                            số phiếu, thay vì phải mở một đơn mang về thứ hai. */}
                         <button
                           type="button"
-                          onClick={() => setTakeawayVoid(o)}
-                          className="text-xs font-semibold px-3 py-2 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                          onClick={() => router.push(`/pos?takeout=1&addToOrderId=${o.id}`)}
+                          className="w-full rounded-lg border border-primary/40 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
                         >
-                          {lang === "vi" ? "Hủy" : "Void"}
+                          + {lang === "vi" ? "Thêm món" : "Add items"}
                         </button>
-                        <button
-                          type="button"
-                          onClick={() => setTakeawayPay(o)}
-                          className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
-                        >
-                          {lang === "vi" ? "Thanh toán" : "Pay"}
-                        </button>
+                        <div className="flex gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setTakeawayVoid(o)}
+                            className="text-xs font-semibold px-3 py-2 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                          >
+                            {lang === "vi" ? "Hủy" : "Void"}
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => setTakeawayPay(o)}
+                            className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                          >
+                            {lang === "vi" ? "Thanh toán" : "Pay"}
+                          </button>
+                        </div>
                       </div>
                     ) : (
                       <p className="mt-auto pt-1 text-[11px] italic text-muted-foreground">

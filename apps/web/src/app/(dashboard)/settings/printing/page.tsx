@@ -9,6 +9,7 @@ import {
   SelectValue,
 } from "@restai/ui/components/select";
 import { Skeleton } from "@restai/ui/components/skeleton";
+import { Switch } from "@restai/ui/components/switch";
 import { toast } from "sonner";
 import { useBranchSettings, useUpdateBranch } from "@/hooks/use-settings";
 import { useTranslation } from "@/stores/lang-store";
@@ -40,6 +41,7 @@ export default function PrintingSettingsPage() {
   const [form, setForm] = useState({
     printMode: "combined" as "combined" | "per_item",
     printDriver: "browser_print" as "browser_print" | "rawbt_intent" | "android_bridge",
+    autoPrintReceiptOnPaid: true,
   });
 
   useEffect(() => {
@@ -50,6 +52,8 @@ export default function PrintingSettingsPage() {
       printDriver: ["rawbt_intent", "android_bridge"].includes(s.print_driver)
         ? s.print_driver
         : "browser_print",
+      // Chưa có khóa trong settings = quán chưa từng đụng tới → mặc định BẬT.
+      autoPrintReceiptOnPaid: s.auto_print_receipt_on_paid !== false,
     });
   }, [branchData]);
 
@@ -58,6 +62,7 @@ export default function PrintingSettingsPage() {
       await updateBranch.mutateAsync({
         printMode: form.printMode,
         printDriver: form.printDriver,
+        autoPrintReceiptOnPaid: form.autoPrintReceiptOnPaid,
       });
       toast.success(t("settings.branchSuccess"));
     } catch (err: any) {
@@ -121,6 +126,15 @@ export default function PrintingSettingsPage() {
                   <SelectItem value="android_bridge">{t("settings.printDriverBridge")}</SelectItem>
                 </SelectContent>
               </Select>
+            </SettingRow>
+            <SettingRow
+              label="Tự in hóa đơn khi tiền về"
+              help="Khách quét QR trả xong, Trạm quầy tự in hóa đơn — thu ngân không phải bấm. Tắt nếu quán chỉ in khi khách hỏi."
+            >
+              <Switch
+                checked={form.autoPrintReceiptOnPaid}
+                onCheckedChange={(v) => setForm({ ...form, autoPrintReceiptOnPaid: v })}
+              />
             </SettingRow>
           </SettingSection>
 

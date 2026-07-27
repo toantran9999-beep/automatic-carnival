@@ -64,6 +64,13 @@ coverage/
 *.pfx
 secrets/
 credentials.json
+# ⚠️ Khóa cổng thanh toán để tạm ngoài repo. Chỗ ở chính thức của chúng là
+# branches.settings.payment.* dưới DB (nhập qua Cài đặt → Chi nhánh), KHÔNG phải file.
+# Các mẫu *.key/*.pem ở trên KHÔNG bắt được file .txt nên phải liệt kê tường minh.
+momo key/
+momo-key/
+*momokey*
+*momo-key*
 
 # Docker
 docker-compose.override.yml

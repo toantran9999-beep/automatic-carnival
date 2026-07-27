@@ -8,6 +8,7 @@ import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { t } from "../lib/i18n.js";
+import { maskBranchSecrets, maskBranchList, mergeBranchSecrets } from "../lib/branch-secrets.js";
 
 const branches = new Hono<AppEnv>();
 
@@ -23,7 +24,7 @@ branches.get("/", requirePermission("branch:read"), async (c) => {
     .from(schema.branches)
     .where(eq(schema.branches.organization_id, tenant.organizationId));
 
-  return c.json({ success: true, data: result });
+  return c.json({ success: true, data: maskBranchList(result) });
 });
 
 // POST / - Create branch
@@ -69,7 +70,7 @@ branches.post(
       })
       .returning();
 
-    return c.json({ success: true, data: branch }, 201);
+    return c.json({ success: true, data: maskBranchSecrets(branch) }, 201);
   },
 );
 
@@ -100,7 +101,7 @@ branches.get(
       );
     }
 
-    return c.json({ success: true, data: branch });
+    return c.json({ success: true, data: maskBranchSecrets(branch) });
   },
 );
 
@@ -123,7 +124,22 @@ branches.patch(
     if (body.timezone !== undefined) updateData.timezone = body.timezone;
     if (body.currency !== undefined) updateData.currency = body.currency;
     if (body.taxRate !== undefined) updateData.tax_rate = body.taxRate;
-    if (body.settings !== undefined) updateData.settings = body.settings;
+    if (body.settings !== undefined) {
+      // Client không bao giờ nhận được khóa bí mật (đã che ở GET), nên nó gửi lên
+      // chuỗi rỗng. Ghi thẳng là xoá sổ khóa MoMo/SePay chỉ vì ai đó sửa số điện
+      // thoại chi nhánh — phải ghép lại với giá trị đang lưu.
+      const [existing] = await db
+        .select({ settings: schema.branches.settings })
+        .from(schema.branches)
+        .where(
+          and(
+            eq(schema.branches.id, id),
+            eq(schema.branches.organization_id, tenant.organizationId),
+          ),
+        )
+        .limit(1);
+      updateData.settings = mergeBranchSecrets(body.settings, existing?.settings);
+    }
 
     const [updated] = await db
       .update(schema.branches)
@@ -143,7 +159,7 @@ branches.patch(
       );
     }
 
-    return c.json({ success: true, data: updated });
+    return c.json({ success: true, data: maskBranchSecrets(updated) });
   },
 );
 

@@ -20,6 +20,7 @@ import {
   SelectItem,
   SelectValue,
 } from "@restai/ui/components/select";
+import { Switch } from "@restai/ui/components/switch";
 import { Plus, Pencil, Store } from "lucide-react";
 import { VN_BANKS, resolveBankBin } from "@restai/config";
 import { useBranches, useCreateBranch, useUpdateBranchById } from "@/hooks/use-settings";
@@ -58,6 +59,14 @@ export function SedesTab() {
     accountNumber: "",
     accountName: "",
     webhookSecret: "",
+    momoEnabled: false,
+    momoEnv: "production" as "test" | "production",
+    momoPartnerCode: "",
+    momoAccessKey: "",
+    momoSecretKey: "",
+    /** Máy chủ đã có khóa rồi → ô để trống nghĩa là "giữ nguyên", không phải "xoá". */
+    momoSecretKeySet: false,
+    sepaySecretSet: false,
   });
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
 
@@ -72,6 +81,13 @@ export function SedesTab() {
       accountNumber: "",
       accountName: "",
       webhookSecret: "",
+      momoEnabled: false,
+      momoEnv: "production",
+      momoPartnerCode: "",
+      momoAccessKey: "",
+      momoSecretKey: "",
+      momoSecretKeySet: false,
+      sepaySecretSet: false,
     });
     setSlugManuallyEdited(false);
     setBranchDialogOpen(true);
@@ -79,6 +95,7 @@ export function SedesTab() {
 
   const openEditBranchDialog = (branch: any) => {
     const sepay = branch.settings?.payment?.sepay || branch.settings?.sepay || {};
+    const momo = branch.settings?.payment?.momo || {};
     setEditingBranch(branch);
     setBranchDialogForm({
       name: branch.name || "",
@@ -88,7 +105,15 @@ export function SedesTab() {
       bankCode: sepay.bank_code || sepay.bankCode || "",
       accountNumber: sepay.account_number || sepay.accountNumber || "",
       accountName: sepay.account_name || sepay.accountName || "",
-      webhookSecret: sepay.webhook_secret || sepay.webhookSecret || sepay.api_key || sepay.apiKey || "",
+      // Khóa bí mật KHÔNG còn được máy chủ trả về — chỉ có cờ cho biết đã đặt hay chưa.
+      webhookSecret: "",
+      momoEnabled: Boolean(momo.enabled),
+      momoEnv: momo.env === "test" ? "test" : "production",
+      momoPartnerCode: momo.partner_code || "",
+      momoAccessKey: momo.access_key || "",
+      momoSecretKey: "",
+      momoSecretKeySet: Boolean(momo.secret_key_set),
+      sepaySecretSet: Boolean(sepay.webhook_secret_set),
     });
     setSlugManuallyEdited(true);
     setBranchDialogOpen(true);
@@ -106,7 +131,15 @@ export function SedesTab() {
             resolveBankBin(branchDialogForm.bankCode) || branchDialogForm.bankCode.trim(),
           account_number: branchDialogForm.accountNumber.trim(),
           account_name: branchDialogForm.accountName.trim(),
+          // Để trống = giữ khóa cũ. Máy chủ (mergeBranchSecrets) lo phần ghép lại.
           webhook_secret: branchDialogForm.webhookSecret.trim(),
+        },
+        momo: {
+          enabled: branchDialogForm.momoEnabled,
+          env: branchDialogForm.momoEnv,
+          partner_code: branchDialogForm.momoPartnerCode.trim(),
+          access_key: branchDialogForm.momoAccessKey.trim(),
+          secret_key: branchDialogForm.momoSecretKey.trim(),
         },
       };
       const settings = {
@@ -315,11 +348,93 @@ export function SedesTab() {
                 <Input
                   id="dialogWebhookSecret"
                   type="password"
-                  placeholder="Dán secret dùng ở header webhook"
+                  placeholder={branchDialogForm.sepaySecretSet ? "Đã có khóa — để trống nếu giữ nguyên" : "Dán secret dùng ở header webhook"}
                   value={branchDialogForm.webhookSecret}
                   onChange={(e) => setBranchDialogForm({ ...branchDialogForm, webhookSecret: e.target.value })}
                 />
               </div>
+            </div>
+
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Thanh toán MoMo (tự động)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Khách quét QR MoMo trên phiếu → MoMo báo về, đơn tự chốt và bàn tự dọn.
+                  </p>
+                </div>
+                <Switch
+                  checked={branchDialogForm.momoEnabled}
+                  onCheckedChange={(v) => setBranchDialogForm({ ...branchDialogForm, momoEnabled: v })}
+                />
+              </div>
+
+              {branchDialogForm.momoEnabled && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="dialogMomoEnv">Môi trường</Label>
+                    <Select
+                      value={branchDialogForm.momoEnv}
+                      onValueChange={(v) =>
+                        setBranchDialogForm({ ...branchDialogForm, momoEnv: v as "test" | "production" })
+                      }
+                    >
+                      <SelectTrigger id="dialogMomoEnv">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="test">Thử nghiệm (sandbox — không mất tiền thật)</SelectItem>
+                        <SelectItem value="production">Thật (tiền thật)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <div className="grid gap-3 sm:grid-cols-2">
+                    <div className="space-y-2">
+                      <Label htmlFor="dialogMomoPartner">Partner Code</Label>
+                      <Input
+                        id="dialogMomoPartner"
+                        placeholder="MOMO..."
+                        value={branchDialogForm.momoPartnerCode}
+                        onChange={(e) => setBranchDialogForm({ ...branchDialogForm, momoPartnerCode: e.target.value })}
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <Label htmlFor="dialogMomoAccess">Access Key</Label>
+                      <Input
+                        id="dialogMomoAccess"
+                        placeholder="Lấy ở business.momo.vn"
+                        value={branchDialogForm.momoAccessKey}
+                        onChange={(e) => setBranchDialogForm({ ...branchDialogForm, momoAccessKey: e.target.value })}
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="dialogMomoSecret">Secret Key</Label>
+                    <Input
+                      id="dialogMomoSecret"
+                      type="password"
+                      placeholder={
+                        branchDialogForm.momoSecretKeySet
+                          ? "Đã có khóa — để trống nếu giữ nguyên"
+                          : "Dán Secret Key của MoMo"
+                      }
+                      value={branchDialogForm.momoSecretKey}
+                      onChange={(e) => setBranchDialogForm({ ...branchDialogForm, momoSecretKey: e.target.value })}
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Vì bảo mật, khóa đã lưu không hiện lại ở đây. Để trống là giữ nguyên khóa cũ.
+                    </p>
+                  </div>
+                  <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
+                    Nhớ khai <b>ipnUrl</b> bên MoMo trỏ về{" "}
+                    <code className="break-all">
+                      {(process.env.NEXT_PUBLIC_API_URL || "https://<tên-miền-API>").replace(/\/+$/, "")}
+                      /api/payments/webhooks/momo
+                    </code>
+                    . Không khai thì MoMo không báo về và sẽ không có gì tự động.
+                  </p>
+                </>
+              )}
             </div>
           </div>
           <DialogFooter>

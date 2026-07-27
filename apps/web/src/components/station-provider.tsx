@@ -2,37 +2,14 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import type { WsMessage, WsOrderPayload } from "@restai/types";
+import type { WsMessage, WsOrderPayload, WsPaymentConfirmedPayload } from "@restai/types";
 import { useAuthStore } from "@/stores/auth-store";
 import { useStationStore } from "@/stores/station-store";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { usePrintKitchenTicket } from "@/components/print-ticket";
-import { useBranchSettings } from "@/hooks/use-settings";
+import { usePrintKitchenTicket, usePrintReceipt } from "@/components/print-ticket";
+import { useBranchSettings, useOrgSettings } from "@/hooks/use-settings";
 import { useTranslation } from "@/stores/lang-store";
-
-/** Tiếng "ting" ngắn báo có đơn mới (Web Audio, không cần file asset). */
-function beep() {
-  try {
-    const Ctx =
-      (window as any).AudioContext || (window as any).webkitAudioContext;
-    if (!Ctx) return;
-    const ctx = new Ctx();
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
-    osc.connect(gain);
-    gain.connect(ctx.destination);
-    osc.type = "sine";
-    osc.frequency.value = 880;
-    gain.gain.setValueAtTime(0.0001, ctx.currentTime);
-    gain.gain.exponentialRampToValueAtTime(0.3, ctx.currentTime + 0.02);
-    gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.45);
-    osc.start();
-    osc.stop(ctx.currentTime + 0.45);
-    osc.onended = () => ctx.close();
-  } catch {
-    // Âm thanh là phụ trợ — bỏ qua nếu trình duyệt chặn.
-  }
-}
+import { beep } from "@/lib/beep";
 
 /**
  * Chạy nền trong layout dashboard. Chỉ thiết bị được đặt làm "Trạm quầy"
@@ -43,9 +20,14 @@ export function StationProvider() {
   const { accessToken, selectedBranchId } = useAuthStore();
   const isStation = useStationStore((s) => s.isStation);
   const { data: branchSettings } = useBranchSettings();
+  const { data: orgSettings } = useOrgSettings();
   const printKitchenTicket = usePrintKitchenTicket();
+  const printReceipt = usePrintReceipt();
   const { lang } = useTranslation();
   const printedRef = useRef<Set<string>>(new Set());
+  /** Khóa riêng cho hóa đơn thanh toán — không dùng chung với printedRef của
+   *  phiếu đặt món, kẻo cùng một đơn thì hóa đơn bị coi là đã in. */
+  const printedReceiptRef = useRef<Set<string>>(new Set());
 
   // Chẩn đoán: báo cầu in USB (window.TodaPrintBridge) có được app nạp không.
   useEffect(() => {
@@ -59,8 +41,70 @@ export function StationProvider() {
     );
   }, [isStation]);
 
+  /**
+   * Tiền vừa về qua cổng thanh toán (MoMo / SePay) → tự in hóa đơn cho khách.
+   *
+   * Đường thanh toán tự động trước đây KHÔNG in gì cả: chỉ khi thu ngân bấm
+   * "Xác nhận & In hóa đơn" mới có phiếu. Khách tự quét QR rồi đi về thì không ai
+   * in, mà cũng chẳng ai biết là đã trả tiền.
+   */
+  const handlePaymentConfirmed = useCallback(
+    (p: WsPaymentConfirmedPayload) => {
+      const station = useStationStore.getState();
+      if (!station.isStation) return;
+
+      // KHÔNG kêu ở đây: NotificationBell nằm cùng layout và đã kêu cho mọi máy
+      // rồi. Kêu thêm ở trạm là máy quầy "ting" hai lần chồng lên nhau.
+
+      const branch = branchSettings as any;
+      // Mặc định BẬT: chưa có khóa trong settings nghĩa là quán chưa từng đụng tới.
+      const autoPrint = branch?.settings?.auto_print_receipt_on_paid !== false;
+      if (!autoPrint) return;
+
+      // Thiếu chi tiết món thì không dựng nổi hóa đơn — thà không in còn hơn in tờ trống.
+      if (!p.orderNumber || !p.items?.length) return;
+
+      const key = p.paymentRequestId || p.orderId;
+      if (!key || printedReceiptRef.current.has(key)) return;
+      printedReceiptRef.current.add(key);
+
+      const org = orgSettings as any;
+      printReceipt({
+        businessName: org?.name || "TODA POS",
+        ruc: org?.settings?.ruc || undefined,
+        address: branch?.address || undefined,
+        orderNumber: p.orderNumber,
+        createdAt: new Date().toISOString(),
+        items: (p.items ?? []).map((i) => ({
+          name: i.name,
+          quantity: i.quantity,
+          unit_price: i.unit_price,
+          total: i.total,
+          notes: i.notes ?? undefined,
+          unit: i.unit ?? undefined,
+        })),
+        subtotal: (p.subtotal ?? 0),
+        tax: p.tax ?? 0,
+        total: p.total ?? p.amount,
+        paymentMethod: "transfer",
+        customerName: p.customerName || undefined,
+        docType: "boleta_simple",
+      }).catch((e: any) => {
+        // In hỏng thì phải kêu lên: tiền đã vào rồi, im lặng là khách đứng chờ hóa đơn.
+        toast.error(
+          (lang === "vi" ? "Lỗi in hóa đơn: " : "Receipt print error: ") + (e?.message || "")
+        );
+      });
+    },
+    [branchSettings, orgSettings, printReceipt, lang]
+  );
+
   const handleWsMessage = useCallback(
     (msg: WsMessage) => {
+      if (msg.type === "payment:confirmed") {
+        handlePaymentConfirmed(msg.payload as WsPaymentConfirmedPayload);
+        return;
+      }
       if (msg.type !== "order:new") return;
       // Đọc state mới nhất phòng khi vừa tắt trạm.
       const station = useStationStore.getState();

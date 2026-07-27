@@ -1,7 +1,9 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { Printer, CheckCircle2, Loader2, Banknote, CreditCard, Landmark, Clock3 } from "lucide-react";
+import { useState, useEffect, useCallback } from "react";
+import { useQueryClient } from "@tanstack/react-query";
+import type { WsMessage } from "@restai/types";
+import { Printer, CheckCircle2, Loader2, Banknote, CreditCard, Landmark, Clock3, Wallet } from "lucide-react";
 import { QRCodeSVG } from "qrcode.react";
 import { Input } from "@restai/ui/components/input";
 import { Label } from "@restai/ui/components/label";
@@ -18,6 +20,8 @@ import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
 import { usePrintReceipt, usePrintTemporaryTransferBill } from "@/components/print-ticket";
 import { formatCurrency } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
+import { useWebSocket } from "@/hooks/use-websocket";
+import { useAuthStore } from "@/stores/auth-store";
 import type { PosCartItem } from "../page";
 
 interface PosPaymentDialogProps {
@@ -48,6 +52,8 @@ export function PosPaymentDialog({
   onSuccess,
 }: PosPaymentDialogProps) {
   const { t, lang } = useTranslation();
+  const qc = useQueryClient();
+  const { accessToken, selectedBranchId } = useAuthStore();
   const [docType, setDocType] = useState<"boleta_simple" | "boleta_electronica" | "factura">("boleta_simple");
   const [docNumber, setDocNumber] = useState("");
   const [docHolderName, setDocHolderName] = useState("");
@@ -68,6 +74,15 @@ export function PosPaymentDialog({
   const printTemporaryTransferBill = usePrintTemporaryTransferBill();
 
   const currency = (branchSettings as any)?.currency || "VND";
+
+  // Khóa bí mật đã bị máy chủ che (chỉ còn cờ *_set), nên chỉ kiểm phần công khai.
+  const momoCfg = (branchSettings as any)?.settings?.payment?.momo;
+  const momoEnabled = Boolean(
+    momoCfg?.enabled && momoCfg?.partner_code && momoCfg?.access_key && momoCfg?.secret_key_set,
+  );
+
+  /** cash/card đi đường thu tay; transfer/momo đều là "in phiếu QR rồi chờ tiền về". */
+  const isQrMethod = method === "transfer" || method === "momo";
 
   // Pre-fill amount tendered with exact total
   useEffect(() => {
@@ -92,6 +107,24 @@ export function PosPaymentDialog({
       onOpenChange(false);
     }, 1500);
   }, [paymentRequest, paymentSuccess, onSuccess, onOpenChange]);
+
+  // Nghe máy chủ báo tiền về để hiện NGAY, thay vì đợi tới 5 giây của vòng poll.
+  // Vẫn GIỮ poll làm lưới an toàn: WS rớt thì poll cứu, mất tối đa 5 giây còn hơn treo.
+  const handlePaymentWs = useCallback(
+    (msg: WsMessage) => {
+      if (msg.type !== "payment:confirmed" && msg.type !== "payment:underpaid") return;
+      const p = msg.payload as { paymentRequestId?: string };
+      if (!paymentRequestId || p?.paymentRequestId !== paymentRequestId) return;
+      qc.invalidateQueries({ queryKey: ["payments", "requests", paymentRequestId] });
+    },
+    [paymentRequestId, qc],
+  );
+
+  useWebSocket(
+    paymentRequestId && selectedBranchId ? [`branch:${selectedBranchId}`] : [],
+    handlePaymentWs,
+    accessToken || undefined,
+  );
 
   const isFormValid = () => {
     if (docType === "boleta_simple") return true;
@@ -121,13 +154,20 @@ export function PosPaymentDialog({
     };
   });
 
-  const handleTransferBill = async () => {
+  /**
+   * Dựng yêu cầu thanh toán QR rồi in phiếu tạm tính cho khách quét.
+   *
+   * Dùng chung cho cả chuyển khoản ngân hàng lẫn MoMo — chỉ khác `provider`, còn
+   * việc chờ tiền về và tự đóng đơn thì máy chủ lo giống hệt nhau.
+   */
+  const handleQrBill = async (provider: "sepay" | "momo") => {
     if (!orderId || !isFormValid() || processing) return;
     setProcessing(true);
     try {
       const request = await createPaymentRequest.mutateAsync({
         orderId,
         amount: totalAmount,
+        provider,
       }) as any;
       setPaymentRequestId(request.id);
 
@@ -147,9 +187,14 @@ export function PosPaymentDialog({
         total: totalAmount,
         paymentCode: request.payment_code,
         qrUrl: request.qr_url,
-        qrPayload: request.qr_payload || request.payment_code,
+        // KHÔNG rơi về payment_code: QR chứa "TODA-..." thì app quét ra chuỗi vô
+        // nghĩa và báo mã không hợp lệ. Thiếu payload thì thà đừng in QR.
+        qrPayload: request.qr_payload,
+        provider,
         bank: request.bank,
       });
+    } catch {
+      // Lỗi đã có toast từ mutateAsync (VD: chưa cấu hình MoMo, MoMo không phản hồi).
     } finally {
       setProcessing(false);
     }
@@ -157,8 +202,8 @@ export function PosPaymentDialog({
 
   const handlePaymentSubmit = async (shouldPrint: boolean) => {
     if (!orderId || !isFormValid() || processing) return;
-    if (method === "transfer") {
-      await handleTransferBill();
+    if (isQrMethod) {
+      await handleQrBill(method === "momo" ? "momo" : "sepay");
       return;
     }
     setProcessing(true);
@@ -353,11 +398,14 @@ export function PosPaymentDialog({
             {/* Payment Method */}
             <div className="space-y-1.5">
               <Label className="font-semibold">{t("payments.method")}</Label>
-              <div className="grid grid-cols-3 gap-2">
+              {/* MoMo chỉ hiện khi chi nhánh đã bật + nhập khóa, kẻo thu ngân bấm
+                  vào rồi nhận lỗi cấu hình ngay trước mặt khách. */}
+              <div className={`grid gap-2 ${momoEnabled ? "grid-cols-4" : "grid-cols-3"}`}>
                 {[
                   { id: "cash", label: t("payments.cash"), icon: Banknote },
                   { id: "card", label: t("payments.card"), icon: CreditCard },
                   { id: "transfer", label: t("payments.transfer"), icon: Landmark },
+                  ...(momoEnabled ? [{ id: "momo", label: "MoMo", icon: Wallet }] : []),
                 ].map((item) => {
                   const Icon = item.icon;
                   const active = method === item.id;
@@ -403,7 +451,7 @@ export function PosPaymentDialog({
               </div>
             )}
 
-            {method === "transfer" && transferRequest && (
+            {isQrMethod && transferRequest && (
               <div className="space-y-3 rounded-xl border bg-muted/20 p-4 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between gap-3">
                   <div className="font-semibold flex items-center gap-2">
@@ -414,7 +462,7 @@ export function PosPaymentDialog({
                     type="button"
                     size="sm"
                     variant="outline"
-                    onClick={handleTransferBill}
+                    onClick={() => handleQrBill(method === "momo" ? "momo" : "sepay")}
                     disabled={processing}
                   >
                     {transferRequest.status === "expired" || isExpired ? "In phiếu mới" : "In lại phiếu"}
@@ -433,7 +481,14 @@ export function PosPaymentDialog({
                     </div>
                   )}
                   <div className="min-w-0 text-xs space-y-1">
-                    <div>Mã: <span className="font-mono font-bold">{transferRequest.payment_code}</span></div>
+                    {/* Nói rõ mở app nào — QR MoMo và QR ngân hàng khác nhau, quét
+                        nhầm app là máy báo lỗi rồi nhân viên phải giải thích. */}
+                    <div className="font-semibold text-foreground">
+                      {method === "momo" ? "Khách quét bằng app MoMo" : "Khách quét bằng app ngân hàng"}
+                    </div>
+                    {method !== "momo" && (
+                      <div>Mã: <span className="font-mono font-bold">{transferRequest.payment_code}</span></div>
+                    )}
                     <div>
                       Hết hạn: {expiresAt ? expiresAt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "-"}
                     </div>
@@ -468,7 +523,7 @@ export function PosPaymentDialog({
               ) : (
                 <>
                   <Printer className="h-4 w-4 mr-2" />
-                  {method === "transfer"
+                  {isQrMethod
                     ? "In phiếu tạm tính QR"
                     : (lang === "vi" ? "Xác nhận & In hóa đơn" : "Confirm & Print Receipt")}
                 </>
@@ -477,7 +532,7 @@ export function PosPaymentDialog({
 
             {/* Chuyển khoản chỉ có MỘT nút: phiếu đó mang mã QR cho khách quét,
                 không in thì khách không có gì để quét. */}
-            {method !== "transfer" && (
+            {!isQrMethod && (
               <Button
                 variant="outline"
                 onClick={() => handlePaymentSubmit(false)}

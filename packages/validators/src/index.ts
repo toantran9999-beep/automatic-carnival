@@ -180,6 +180,12 @@ export const createPaymentSchema = z.object({
 export const createPaymentRequestSchema = z.object({
   orderId: z.string().uuid(),
   amount: z.number().int().min(1).optional(),
+  /**
+   * Nguồn tiền: "sepay" = QR chuyển khoản VietQR (khách quét bằng app ngân hàng),
+   * "momo" = QR động MoMo (khách quét bằng app MoMo). Mặc định sepay để mọi
+   * máy khách cũ chưa gửi trường này vẫn chạy y như trước.
+   */
+  provider: z.enum(["sepay", "momo"]).optional(),
 });
 
 // Cash register shift validators (tiền lưu dạng cents)
@@ -282,6 +288,8 @@ export const updateBranchSettingsSchema = z.object({
   showBestSellers: z.boolean().optional(),
   bestSellersLimit: z.number().int().min(3).max(30).optional(),
   bestSellersDays: z.number().int().min(1).max(365).optional(),
+  // Trạm quầy tự in hóa đơn khi cổng thanh toán báo tiền đã về (mặc định BẬT).
+  autoPrintReceiptOnPaid: z.boolean().optional(),
 });
 
 // Query validators for GET endpoints

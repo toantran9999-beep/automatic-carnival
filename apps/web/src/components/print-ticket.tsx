@@ -1,10 +1,30 @@
 "use client";
 
 import { useCallback } from "react";
+import { renderToStaticMarkup } from "react-dom/server";
+import { QRCodeSVG } from "qrcode.react";
 import { useLangStore } from "@/stores/lang-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useBranchSettings } from "@/hooks/use-settings";
 import { buildVietQrPayload, resolveBankBin, bankDisplayName } from "@restai/config";
+
+/**
+ * Vẽ QR thành SVG nhúng thẳng vào HTML in.
+ *
+ * Đường in trình duyệt trước đây chỉ biết chèn `<img src={qrUrl}>` — tức là ảnh
+ * vietqr.io dựng hộ. MoMo KHÔNG có ảnh dựng sẵn, chỉ trả chuỗi payload, nên nếu
+ * cứ dựa vào qrUrl thì phiếu MoMo in ra ÂM THẦM không có mã QR. Tự vẽ ở đây để
+ * cả ba đường in (HTML / ESC-POS raster / ESC-POS text) đều ra mã.
+ */
+function qrSvgMarkup(payload: string, sizePx = 160): string {
+  try {
+    return renderToStaticMarkup(
+      <QRCodeSVG value={payload} size={sizePx} level="M" marginSize={2} />,
+    );
+  } catch {
+    return "";
+  }
+}
 
 interface OrderItem {
   name: string;
@@ -246,8 +266,16 @@ interface TemporaryTransferBillData {
   total: number;
   paymentCode: string;
   qrUrl?: string | null;
-  /** Chuỗi VietQR chuẩn. Null/rỗng = không đủ cấu hình ngân hàng → KHÔNG in QR. */
+  /**
+   * Chuỗi để vẽ QR. Với sepay là mã VietQR chuẩn, với momo là chuỗi MoMo trả về.
+   * Null/rỗng = thiếu cấu hình → KHÔNG in QR (thà không in còn hơn in mã hỏng).
+   */
   qrPayload?: string | null;
+  /**
+   * Quét bằng app nào. QR MoMo và QR ngân hàng KHÁC nhau — không ghi rõ thì khách
+   * mở nhầm app, máy báo lỗi, rồi nhân viên loay hoay giải thích.
+   */
+  provider?: "sepay" | "momo";
   bank?: {
     bankCode?: string;
     accountNumber?: string;
@@ -791,18 +819,25 @@ function transferRasterSegments(data: TemporaryTransferBillData, cfg: ReceiptCon
   segs.push({ kind: "sep" });
   // Chỉ vẽ QR khi có payload VietQR thật. Trước đây rơi về data.paymentCode khiến
   // QR chứa mỗi chuỗi "TODA-..." — app ngân hàng báo "Mã thanh toán không hợp lệ".
+  const isMomo = data.provider === "momo";
   if (data.qrPayload) {
-    segs.push({ kind: "text", text: "QUÉT QR CHUYỂN KHOẢN", align: "center", bold: true });
+    segs.push({
+      kind: "text",
+      text: isMomo ? "QUÉT BẰNG APP MOMO" : "QUÉT QR BẰNG APP NGÂN HÀNG",
+      align: "center",
+      bold: true,
+    });
     segs.push({ kind: "qr", payload: data.qrPayload });
   } else {
     segs.push({ kind: "text", text: "CHUYỂN KHOẢN THEO THÔNG TIN DƯỚI", align: "center", bold: true });
   }
-  if (cfg.transfer.show.bankInfo) {
+  // Thông tin tài khoản ngân hàng vô nghĩa với QR MoMo — tiền về ví MoMo, không về STK.
+  if (cfg.transfer.show.bankInfo && !isMomo) {
     if (data.bank?.accountName) segs.push({ kind: "text", text: `Người nhận: ${data.bank.accountName}` });
     if (data.bank?.bankCode) segs.push({ kind: "text", text: `Ngân hàng: ${data.bank.bankCode}` });
     if (data.bank?.accountNumber) segs.push({ kind: "text", text: `STK: ${data.bank.accountNumber}` });
   }
-  segs.push({ kind: "text", text: `Nội dung: ${data.paymentCode}` });
+  if (!isMomo) segs.push({ kind: "text", text: `Nội dung: ${data.paymentCode}` });
   if (cfg.transfer.show.expiry) segs.push({ kind: "text", text: `Hiệu lực đến: ${expires}` });
   if (cfg.transfer.note.trim()) segs.push({ kind: "text", text: cfg.transfer.note.trim() });
   return segs;
@@ -843,14 +878,22 @@ function buildTemporaryTransferEscPos(data: TemporaryTransferBillData, cfg: Rece
     twoCol("VAT", moneyPlain(data.tax), width),
     twoCol("TONG CAN TRA", moneyPlain(data.total), width),
     SEP,
-    centered(data.qrPayload ? "QUET QR CHUYEN KHOAN" : "CHUYEN KHOAN THEO THONG TIN DUOI", width),
+    centered(
+      data.qrPayload
+        ? data.provider === "momo"
+          ? "QUET BANG APP MOMO"
+          : "QUET QR BANG APP NGAN HANG"
+        : "CHUYEN KHOAN THEO THONG TIN DUOI",
+      width,
+    ),
     ...(data.qrPayload
       ? [escposAlign("center"), escposQrBytes(data.qrPayload), escposAlign("left")]
       : []),
-    cfg.transfer.show.bankInfo && data.bank?.accountName ? `Nguoi nhan: ${plainLine(data.bank.accountName, width - 12)}` : "",
-    cfg.transfer.show.bankInfo && data.bank?.bankCode ? `Ngan hang: ${plainLine(data.bank.bankCode, width - 11)}` : "",
-    cfg.transfer.show.bankInfo && data.bank?.accountNumber ? `STK: ${plainLine(data.bank.accountNumber, width - 5)}` : "",
-    `Noi dung: ${data.paymentCode}`,
+    // Với MoMo thì tiền về ví MoMo, in số tài khoản ngân hàng ra là gây hiểu nhầm.
+    cfg.transfer.show.bankInfo && data.provider !== "momo" && data.bank?.accountName ? `Nguoi nhan: ${plainLine(data.bank.accountName, width - 12)}` : "",
+    cfg.transfer.show.bankInfo && data.provider !== "momo" && data.bank?.bankCode ? `Ngan hang: ${plainLine(data.bank.bankCode, width - 11)}` : "",
+    cfg.transfer.show.bankInfo && data.provider !== "momo" && data.bank?.accountNumber ? `STK: ${plainLine(data.bank.accountNumber, width - 5)}` : "",
+    data.provider === "momo" ? "" : `Noi dung: ${data.paymentCode}`,
     cfg.transfer.show.expiry ? `Hieu luc den: ${expires}` : "",
     cfg.transfer.note.trim() ? plainLine(cfg.transfer.note, width) : "",
   );
@@ -1189,6 +1232,7 @@ function buildTemporaryTransferBillHtml(data: TemporaryTransferBillData, cfg: Re
     ${thermalStyles(cfg.paper === "58" ? 58 : 80, cfg.fontSize)}
     .totals td { padding: 1px 0; }
     .qr { width: 42mm; height: 42mm; object-fit: contain; margin: 4px auto; display: block; }
+    .qrbox svg { width: 42mm; height: 42mm; margin: 4px auto; display: block; }
     .box { border: 1px solid #000; padding: 4px; margin-top: 4px; }
   </style>
 </head>
@@ -1210,13 +1254,26 @@ function buildTemporaryTransferBillHtml(data: TemporaryTransferBillData, cfg: Re
     <tr class="bold"><td style="font-size:14px;">TỔNG CẦN TRẢ:</td><td style="text-align:right;font-size:14px;">${formatCents(data.total)}</td></tr>
   </table>
   <div class="divider"></div>
-  <div class="center bold">${data.qrUrl || data.qrPayload ? "QUÉT QR CHUYỂN KHOẢN" : "CHUYỂN KHOẢN THEO THÔNG TIN DƯỚI"}</div>
-  ${data.qrUrl ? `<img class="qr" src="${escapeHtml(data.qrUrl)}" />` : ""}
+  <div class="center bold">${
+    data.qrUrl || data.qrPayload
+      ? data.provider === "momo"
+        ? "QUÉT BẰNG APP MOMO"
+        : "QUÉT QR BẰNG APP NGÂN HÀNG"
+      : "CHUYỂN KHOẢN THEO THÔNG TIN DƯỚI"
+  }</div>
+  ${
+    // Ưu tiên ảnh dựng sẵn của vietqr.io (nét hơn khi in), không có thì tự vẽ SVG.
+    data.qrUrl && data.provider !== "momo"
+      ? `<img class="qr" src="${escapeHtml(data.qrUrl)}" />`
+      : data.qrPayload
+        ? `<div class="center qrbox">${qrSvgMarkup(data.qrPayload)}</div>`
+        : ""
+  }
   <div class="box">
-    ${cfg.transfer.show.bankInfo && data.bank?.accountName ? `<div><b>Người nhận:</b> ${escapeHtml(data.bank.accountName)}</div>` : ""}
-    ${cfg.transfer.show.bankInfo && data.bank?.bankCode ? `<div><b>Ngân hàng:</b> ${escapeHtml(data.bank.bankCode)}</div>` : ""}
-    ${cfg.transfer.show.bankInfo && data.bank?.accountNumber ? `<div><b>STK:</b> ${escapeHtml(data.bank.accountNumber)}</div>` : ""}
-    <div><b>Nội dung:</b> ${escapeHtml(data.paymentCode)}</div>
+    ${cfg.transfer.show.bankInfo && data.provider !== "momo" && data.bank?.accountName ? `<div><b>Người nhận:</b> ${escapeHtml(data.bank.accountName)}</div>` : ""}
+    ${cfg.transfer.show.bankInfo && data.provider !== "momo" && data.bank?.bankCode ? `<div><b>Ngân hàng:</b> ${escapeHtml(data.bank.bankCode)}</div>` : ""}
+    ${cfg.transfer.show.bankInfo && data.provider !== "momo" && data.bank?.accountNumber ? `<div><b>STK:</b> ${escapeHtml(data.bank.accountNumber)}</div>` : ""}
+    ${data.provider === "momo" ? "" : `<div><b>Nội dung:</b> ${escapeHtml(data.paymentCode)}</div>`}
     ${cfg.transfer.show.expiry ? `<div><b>Hiệu lực đến:</b> ${expires}</div>` : ""}
   </div>
   ${cfg.transfer.note.trim() ? `<div class="center" style="font-size:10px;margin-top:4px;">${escapeHtml(cfg.transfer.note.trim())}</div>` : ""}

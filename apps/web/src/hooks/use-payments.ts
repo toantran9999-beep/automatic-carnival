@@ -27,7 +27,7 @@ export function useCreatePayment() {
 export function useCreatePaymentRequest() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (data: { orderId: string; amount?: number }) =>
+    mutationFn: (data: { orderId: string; amount?: number; provider?: "sepay" | "momo" }) =>
       apiFetch("/api/payments/requests", {
         method: "POST",
         body: JSON.stringify(data),

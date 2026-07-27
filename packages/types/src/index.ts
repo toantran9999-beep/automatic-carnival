@@ -71,6 +71,48 @@ export interface WsOrderItemPayload {
   unit?: string | null;
 }
 
+/**
+ * Cổng thanh toán báo tiền đã về (`payment:confirmed`).
+ *
+ * Mang sẵn đủ dữ liệu để Trạm quầy IN NGAY hóa đơn — cùng lý do `order:new`
+ * nhúng sẵn danh sách món: máy in không nên phải gọi API vòng hai rồi mới in.
+ */
+export interface WsPaymentConfirmedPayload {
+  paymentRequestId: string;
+  orderId: string;
+  /** "sepay" (chuyển khoản ngân hàng) | "momo" (ví MoMo). */
+  provider?: string;
+  /** Số tiền thực nhận, đơn vị cents. */
+  amount: number;
+  expectedAmount: number;
+  /** Đã trả đủ toàn bộ phiên bàn → bàn vừa được nhả. */
+  fullyPaid?: boolean;
+  orderNumber?: string;
+  customerName?: string | null;
+  tableNumber?: number | null;
+  subtotal?: number;
+  tax?: number;
+  total?: number;
+  items?: WsPaymentItemPayload[];
+}
+
+export interface WsPaymentItemPayload {
+  name: string;
+  quantity: number;
+  unit_price: number;
+  total: number;
+  notes?: string | null;
+  unit?: string | null;
+}
+
+/** Khách chuyển thiếu so với số tiền trên QR — thu ngân phải xử tay. */
+export interface WsPaymentUnderpaidPayload {
+  paymentRequestId: string;
+  orderId: string;
+  amount: number;
+  expectedAmount: number;
+}
+
 export interface WsTablePayload {
   tableId: string;
   number: number;

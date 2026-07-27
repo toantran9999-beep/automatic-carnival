@@ -9,6 +9,7 @@ import { tenantMiddleware } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
 import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
+import { maskBranchSecrets, mergeBranchSecrets } from "../lib/branch-secrets.js";
 
 const settings = new Hono<AppEnv>();
 settings.use("*", authMiddleware, tenantMiddleware);
@@ -52,7 +53,7 @@ settings.get("/branch", async (c) => {
   if (!branch) {
     return c.json({ success: false, error: { code: "NOT_FOUND", message: t(c, "branch_not_found") } }, 404);
   }
-  return c.json({ success: true, data: branch });
+  return c.json({ success: true, data: maskBranchSecrets(branch) });
 });
 
 // PATCH /branch — settings:update để branch_manager (Quản lý) cũng chỉnh được cài đặt chi nhánh
@@ -69,7 +70,14 @@ settings.patch("/branch", requirePermission("settings:update"), zValidator("json
   if (body.taxRate !== undefined) updateData.tax_rate = body.taxRate;
   if (body.timezone !== undefined) updateData.timezone = body.timezone;
   if (body.currency !== undefined) updateData.currency = body.currency;
-  if (body.settings !== undefined) updateData.settings = body.settings;
+  if (body.settings !== undefined) {
+    // Ô khóa để trống = giữ nguyên khóa đang lưu (xem branch-secrets.ts).
+    const [existing] = await db.select({ settings: schema.branches.settings })
+      .from(schema.branches)
+      .where(eq(schema.branches.id, tenant.branchId))
+      .limit(1);
+    updateData.settings = mergeBranchSecrets(body.settings, existing?.settings);
+  }
 
   if (
     body.inventoryEnabled !== undefined ||
@@ -81,14 +89,19 @@ settings.patch("/branch", requirePermission("settings:update"), zValidator("json
     body.receipt !== undefined ||
     body.showBestSellers !== undefined ||
     body.bestSellersLimit !== undefined ||
-    body.bestSellersDays !== undefined
+    body.bestSellersDays !== undefined ||
+    body.autoPrintReceiptOnPaid !== undefined
   ) {
     // Fetch current settings to merge
     const [existing] = await db.select({ settings: schema.branches.settings })
       .from(schema.branches)
       .where(eq(schema.branches.id, tenant.branchId))
       .limit(1);
-    const currentSettings = (existing?.settings as Record<string, unknown>) || {};
+    // Nếu nhánh trên đã ghép settings thì lấy bản đó làm gốc, kẻo ghi đè mất.
+    const currentSettings =
+      (updateData.settings as Record<string, unknown>) ||
+      (existing?.settings as Record<string, unknown>) ||
+      {};
     const merged = { ...currentSettings };
     if (body.inventoryEnabled !== undefined) merged.inventory_enabled = body.inventoryEnabled;
     if (body.waiterTableAssignmentEnabled !== undefined) merged.waiter_table_assignment_enabled = body.waiterTableAssignmentEnabled;
@@ -100,6 +113,7 @@ settings.patch("/branch", requirePermission("settings:update"), zValidator("json
     if (body.showBestSellers !== undefined) merged.show_best_sellers = body.showBestSellers;
     if (body.bestSellersLimit !== undefined) merged.best_sellers_limit = body.bestSellersLimit;
     if (body.bestSellersDays !== undefined) merged.best_sellers_days = body.bestSellersDays;
+    if (body.autoPrintReceiptOnPaid !== undefined) merged.auto_print_receipt_on_paid = body.autoPrintReceiptOnPaid;
     updateData.settings = merged;
   }
 
@@ -116,7 +130,7 @@ settings.patch("/branch", requirePermission("settings:update"), zValidator("json
     timestamp: Date.now(),
   });
 
-  return c.json({ success: true, data: updated });
+  return c.json({ success: true, data: maskBranchSecrets(updated) });
 });
 
 export { settings };

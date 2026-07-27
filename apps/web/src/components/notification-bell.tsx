@@ -1,18 +1,20 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { Bell, X, HandHelping, Receipt, UserPlus } from "lucide-react";
+import { Bell, X, HandHelping, Receipt, UserPlus, BadgeCheck, TriangleAlert } from "lucide-react";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useAuthStore } from "@/stores/auth-store";
 import { useBranchSettings } from "@/hooks/use-settings";
 import { useMyAssignedTables } from "@/hooks/use-tables";
-import { cn } from "@/lib/utils";
+import { cn, formatCurrency } from "@/lib/utils";
 import type { WsMessage } from "@restai/types";
 import { useTranslation } from "@/stores/lang-store";
+import { beepPaid } from "@/lib/beep";
+import { useQueryClient } from "@tanstack/react-query";
 
 interface Notification {
   id: string;
-  type: "call_waiter" | "request_bill" | "session_pending";
+  type: "call_waiter" | "request_bill" | "session_pending" | "payment_paid" | "payment_underpaid";
   message: string;
   tableNumber: number;
   tableId?: string;
@@ -39,17 +41,22 @@ const notificationIcon: Record<Notification["type"], typeof Bell> = {
   call_waiter: HandHelping,
   request_bill: Receipt,
   session_pending: UserPlus,
+  payment_paid: BadgeCheck,
+  payment_underpaid: TriangleAlert,
 };
 
 const notificationColor: Record<Notification["type"], string> = {
   call_waiter: "text-orange-500",
   request_bill: "text-blue-500",
   session_pending: "text-green-500",
+  payment_paid: "text-emerald-600",
+  payment_underpaid: "text-destructive",
 };
 
 export function NotificationBell() {
   const { accessToken, selectedBranchId, user } = useAuthStore();
   const { t } = useTranslation();
+  const qc = useQueryClient();
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [open, setOpen] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -89,6 +96,44 @@ export function NotificationBell() {
     (msg: WsMessage) => {
       const payload = msg.payload as any;
 
+      /**
+       * Tiền vừa về qua cổng thanh toán.
+       *
+       * Đây là mắt xích từng thiếu hẳn: máy chủ vẫn bắn `payment:confirmed` nhưng
+       * KHÔNG màn hình nào nghe. Khách cầm phiếu tự quét QR rồi đi về thì cả quán
+       * không ai biết là đã trả tiền — trừ khi đúng lúc đó thu ngân đang mở hộp
+       * thoại thanh toán của chính đơn đó.
+       *
+       * Cố tình đặt TRƯỚC bộ lọc bàn theo phục vụ: tiền bạc thì ai ở quầy cũng cần biết.
+       */
+      if (msg.type === "payment:confirmed") {
+        const where = payload.tableNumber != null ? `Bàn ${payload.tableNumber}` : "Mang về";
+        const who = payload.provider === "momo" ? "MoMo" : "chuyển khoản";
+        addNotification({
+          type: "payment_paid",
+          message: `${where}${payload.orderNumber ? ` · #${payload.orderNumber}` : ""} đã thanh toán ${formatCurrency(payload.amount)} (${who})`,
+          tableNumber: payload.tableNumber ?? 0,
+          timestamp: msg.timestamp,
+        });
+        beepPaid();
+        qc.invalidateQueries({ queryKey: ["orders"] });
+        qc.invalidateQueries({ queryKey: ["tables"] });
+        qc.invalidateQueries({ queryKey: ["payments"] });
+        return;
+      }
+
+      if (msg.type === "payment:underpaid") {
+        const missing = Math.max(0, (payload.expectedAmount || 0) - (payload.amount || 0));
+        addNotification({
+          type: "payment_underpaid",
+          message: `Khách trả THIẾU ${formatCurrency(missing)} — đã nhận ${formatCurrency(payload.amount)}/${formatCurrency(payload.expectedAmount)}. Kiểm tra lại trước khi dọn bàn.`,
+          tableNumber: 0,
+          timestamp: msg.timestamp,
+        });
+        beepPaid();
+        return;
+      }
+
       // If waiter assignment filtering is active, check if this table is assigned to us
       if (shouldFilter && payload.tableId && !assignedTableIds.current.has(payload.tableId)) {
         return;
@@ -126,7 +171,7 @@ export function NotificationBell() {
         });
       }
     },
-    [addNotification, shouldFilter, t],
+    [addNotification, shouldFilter, t, qc],
   );
 
   useWebSocket(

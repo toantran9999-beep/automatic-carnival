@@ -12,6 +12,15 @@ import { buildVietQrPayload, resolveBankBin, bankDisplayName } from "@restai/con
 import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
 import { handleOrderCompletion } from "../services/order.service.js";
+import {
+  createMomoPayment,
+  verifyMomoIpnSignature,
+  queryMomoTransaction,
+  MOMO_MIN_VND,
+  MOMO_MAX_VND,
+  type MomoCredentials,
+} from "../lib/momo.js";
+import { logger } from "../lib/logger.js";
 
 const payments = new Hono<AppEnv>();
 const PAYMENT_REQUEST_TTL_MS = 60 * 60 * 1000;
@@ -33,6 +42,25 @@ function randomPaymentCode(orderNumber: string) {
 function paymentSettings(branch: any) {
   const settings = (branch?.settings || {}) as Record<string, any>;
   return settings.payment?.sepay || settings.sepay || {};
+}
+
+/**
+ * Khóa MoMo của MỘT chi nhánh. Mỗi chi nhánh một bộ khóa riêng — đừng gom về
+ * biến môi trường, quán nhiều chi nhánh thì mỗi nơi một hợp đồng MoMo khác nhau.
+ */
+function momoSettings(branch: any): MomoCredentials & { enabled: boolean } {
+  const cfg = ((branch?.settings || {}) as Record<string, any>).payment?.momo || {};
+  return {
+    enabled: Boolean(cfg.enabled),
+    env: cfg.env === "production" ? "production" : "test",
+    partnerCode: normalizeText(cfg.partner_code || cfg.partnerCode),
+    accessKey: normalizeText(cfg.access_key || cfg.accessKey),
+    secretKey: normalizeText(cfg.secret_key || cfg.secretKey),
+  };
+}
+
+function hasMomoCredentials(m: { partnerCode: string; accessKey: string; secretKey: string }) {
+  return Boolean(m.partnerCode && m.accessKey && m.secretKey);
 }
 
 function buildTransferPayload(branch: any, paymentCode: string, amount: number) {
@@ -111,7 +139,16 @@ function webhookContent(body: any) {
   );
 }
 
+/**
+ * Ghi nhật ký đối soát cho MỘT nguồn tiền cụ thể.
+ *
+ * ⚠️ `provider` phải truyền vào, tuyệt đối không hardcode: bảng có unique
+ * (provider, provider_transaction_id). Nếu ghi mọi nguồn thành "sepay" thì mã
+ * giao dịch MoMo trùng mã SePay sẽ bị coi là đã xử lý và ÂM THẦM bỏ qua —
+ * khách trả tiền mà đơn không bao giờ chốt.
+ */
 async function logWebhookEvent(data: {
+  provider: string;
   providerTransactionId: string;
   paymentRequestId?: string | null;
   branchId?: string | null;
@@ -127,7 +164,7 @@ async function logWebhookEvent(data: {
       .from(schema.paymentWebhookEvents)
       .where(
         and(
-          eq(schema.paymentWebhookEvents.provider, "sepay"),
+          eq(schema.paymentWebhookEvents.provider, data.provider),
           eq(schema.paymentWebhookEvents.provider_transaction_id, data.providerTransactionId),
         ),
       )
@@ -136,7 +173,7 @@ async function logWebhookEvent(data: {
   }
 
   await db.insert(schema.paymentWebhookEvents).values({
-    provider: "sepay",
+    provider: data.provider,
     provider_transaction_id: data.providerTransactionId || null,
     payment_request_id: data.paymentRequestId || null,
     branch_id: data.branchId || null,
@@ -283,6 +320,189 @@ async function runCompletionSideEffects(orders: any[], organizationId: string, b
   }
 }
 
+/**
+ * Số tiền đơn (hoặc cả phiên bàn) CÒN PHẢI TRẢ, tính bằng cents.
+ *
+ * Trả `null` khi đơn không còn hợp lệ để thu (không tìm thấy / đã huỷ).
+ *
+ * Dùng để chặn cảnh gói tin về muộn: khách gọi thêm món hoặc thu ngân đã thu tiền
+ * mặt sau lúc dựng QR → số tiền trên QR không còn khớp, chốt tiếp là ghi sai sổ.
+ */
+async function currentDueForRequest(request: any): Promise<number | null> {
+  const [order] = await db
+    .select({
+      total: schema.orders.total,
+      status: schema.orders.status,
+      table_session_id: schema.orders.table_session_id,
+    })
+    .from(schema.orders)
+    .where(eq(schema.orders.id, request.order_id))
+    .limit(1);
+
+  if (!order || order.status === "cancelled") return null;
+
+  if (order.table_session_id) {
+    const sessionDueRows = await db
+      .select({
+        total: schema.orders.total,
+        total_paid: sql<number>`COALESCE((SELECT SUM(amount)::int FROM payments WHERE payments.order_id = ${schema.orders.id} AND payments.status = 'completed'), 0)`,
+      })
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.table_session_id, order.table_session_id),
+          sql`orders.status != 'cancelled'`,
+        ),
+      );
+    return sessionDueRows.reduce(
+      (sum, row) => sum + Math.max(0, row.total - Number(row.total_paid || 0)),
+      0,
+    );
+  }
+
+  const [paid] = await db
+    .select({ total_paid: sum(schema.payments.amount) })
+    .from(schema.payments)
+    .where(and(eq(schema.payments.order_id, request.order_id), eq(schema.payments.status, "completed")));
+  return Math.max(0, order.total - Number(paid?.total_paid || 0));
+}
+
+/**
+ * Gói dữ liệu đủ để Trạm quầy IN NGAY hóa đơn mà không phải gọi API vòng hai —
+ * cùng cách `order:new` nhúng sẵn danh sách món.
+ *
+ * Nuốt lỗi và trả null: đây chỉ là phần trang trí cho gói tin. Tiền đã vào và đơn
+ * đã chốt xong trước khi hàm này chạy — hỏng chỗ này không được phép làm hỏng đó.
+ */
+async function buildPaidOrderPayload(orderId: string) {
+  try {
+    const [order] = await db
+      .select({
+        order_number: schema.orders.order_number,
+        customer_name: schema.orders.customer_name,
+        subtotal: schema.orders.subtotal,
+        tax: schema.orders.tax,
+        total: schema.orders.total,
+        table_session_id: schema.orders.table_session_id,
+      })
+      .from(schema.orders)
+      .where(eq(schema.orders.id, orderId))
+      .limit(1);
+    if (!order) return null;
+
+    const items = await db
+      .select({
+        name: schema.orderItems.name,
+        quantity: schema.orderItems.quantity,
+        unit_price: schema.orderItems.unit_price,
+        total: schema.orderItems.total,
+        notes: schema.orderItems.notes,
+        unit: schema.orderItems.unit,
+      })
+      .from(schema.orderItems)
+      .where(eq(schema.orderItems.order_id, orderId));
+
+    let tableNumber: number | null = null;
+    if (order.table_session_id) {
+      const [row] = await db
+        .select({ number: schema.tables.number })
+        .from(schema.tableSessions)
+        .innerJoin(schema.tables, eq(schema.tables.id, schema.tableSessions.table_id))
+        .where(eq(schema.tableSessions.id, order.table_session_id))
+        .limit(1);
+      tableNumber = row?.number ?? null;
+    }
+
+    return {
+      orderNumber: order.order_number,
+      customerName: order.customer_name,
+      tableNumber,
+      subtotal: order.subtotal,
+      tax: order.tax,
+      total: order.total,
+      items,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Chốt đơn khi tiền đã thực sự vào: ghi payment, đóng đơn, đóng phiên bàn, nhả
+ * bàn, trừ kho, tích điểm, rồi báo mọi máy.
+ *
+ * Dùng chung cho CẢ BA đường tiền vào (SePay webhook / MoMo IPN / đối soát định
+ * kỳ). Đừng chép lại logic này ở đường thứ tư — ba đường lệch nhau là nguồn gốc
+ * của cảnh "đơn chốt nhưng bàn không dọn".
+ */
+async function finalizePaidRequest(request: any, args: {
+  provider: string;
+  providerTransactionId: string;
+  paidAmountCents: number;
+  providerPayload: unknown;
+  reference: string;
+}) {
+  const now = new Date();
+
+  const result = await db.transaction(async (tx) => {
+    const completed = await completePaymentForOrder(tx, {
+      orderId: request.order_id,
+      organizationId: request.organization_id,
+      branchId: request.branch_id,
+      amount: request.amount,
+      reference: args.reference,
+    });
+
+    await tx
+      .update(schema.paymentRequests)
+      .set({
+        status: "paid",
+        paid_amount: args.paidAmountCents,
+        provider_transaction_id: args.providerTransactionId || null,
+        provider_payload: args.providerPayload as any,
+        paid_at: now,
+        updated_at: now,
+      })
+      .where(eq(schema.paymentRequests.id, request.id));
+
+    return completed;
+  });
+
+  // Sau khi tx commit: trừ kho + tích điểm (idempotent, tự nuốt lỗi).
+  await runCompletionSideEffects(result.completedOrders || [], request.organization_id, request.branch_id);
+
+  const orderPayload = await buildPaidOrderPayload(request.order_id);
+
+  await wsManager.publish(`branch:${request.branch_id}`, {
+    type: "payment:confirmed",
+    payload: {
+      paymentRequestId: request.id,
+      orderId: request.order_id,
+      provider: args.provider,
+      amount: args.paidAmountCents,
+      expectedAmount: request.amount,
+      fullyPaid: result.fullyPaid,
+      ...(orderPayload || {}),
+    },
+    timestamp: Date.now(),
+  });
+
+  if (result.tableSessionId && result.tableId) {
+    await wsManager.publish(`branch:${request.branch_id}`, {
+      type: "session:ended",
+      payload: { sessionId: result.tableSessionId, tableId: result.tableId },
+      timestamp: Date.now(),
+    });
+    await wsManager.publish(`branch:${request.branch_id}`, {
+      type: "table:status",
+      payload: { tableId: result.tableId, status: "available" },
+      timestamp: Date.now(),
+    });
+  }
+
+  return result;
+}
+
 // Public SePay webhook. This must stay before auth middleware.
 payments.post("/webhooks/sepay", async (c) => {
   const body = await c.req.json().catch(() => ({}));
@@ -293,12 +513,12 @@ payments.post("/webhooks/sepay", async (c) => {
   const transferType = normalizeText(body.transferType || body.transfer_type).toLowerCase();
 
   if (transferType && transferType !== "in") {
-    await logWebhookEvent({ providerTransactionId, amount, content, matched: false, reason: "ignored_transfer_type", payload: body });
+    await logWebhookEvent({ provider: "sepay", providerTransactionId, amount, content, matched: false, reason: "ignored_transfer_type", payload: body });
     return c.json({ success: true });
   }
 
   if (!paymentCode) {
-    await logWebhookEvent({ providerTransactionId, amount, content, matched: false, reason: "missing_payment_code", payload: body });
+    await logWebhookEvent({ provider: "sepay", providerTransactionId, amount, content, matched: false, reason: "missing_payment_code", payload: body });
     return c.json({ success: true });
   }
 
@@ -309,7 +529,7 @@ payments.post("/webhooks/sepay", async (c) => {
     .limit(1);
 
   if (!request) {
-    await logWebhookEvent({ providerTransactionId, amount, content, matched: false, reason: "payment_request_not_found", payload: body });
+    await logWebhookEvent({ provider: "sepay", providerTransactionId, amount, content, matched: false, reason: "payment_request_not_found", payload: body });
     return c.json({ success: true });
   }
 
@@ -330,6 +550,7 @@ payments.post("/webhooks/sepay", async (c) => {
   // giả mạo báo "đã thanh toán" khi chi nhánh chưa đặt secret.
   if (!expectedSecret) {
     await logWebhookEvent({
+      provider: "sepay",
       providerTransactionId,
       paymentRequestId: request.id,
       branchId: request.branch_id,
@@ -344,6 +565,7 @@ payments.post("/webhooks/sepay", async (c) => {
 
   if (providedSecret !== expectedSecret) {
     await logWebhookEvent({
+      provider: "sepay",
       providerTransactionId,
       paymentRequestId: request.id,
       branchId: request.branch_id,
@@ -358,6 +580,7 @@ payments.post("/webhooks/sepay", async (c) => {
 
   if (request.status === "paid") {
     await logWebhookEvent({
+      provider: "sepay",
       providerTransactionId,
       paymentRequestId: request.id,
       branchId: request.branch_id,
@@ -379,6 +602,7 @@ payments.post("/webhooks/sepay", async (c) => {
         .where(eq(schema.paymentRequests.id, request.id));
     }
     await logWebhookEvent({
+      provider: "sepay",
       providerTransactionId,
       paymentRequestId: request.id,
       branchId: request.branch_id,
@@ -391,48 +615,15 @@ payments.post("/webhooks/sepay", async (c) => {
     return c.json({ success: true });
   }
 
-  const [order] = await db
-    .select({
-      total: schema.orders.total,
-      status: schema.orders.status,
-      table_session_id: schema.orders.table_session_id,
-    })
-    .from(schema.orders)
-    .where(eq(schema.orders.id, request.order_id))
-    .limit(1);
+  const currentDue = await currentDueForRequest(request);
 
-  let currentDue = 0;
-  if (order?.table_session_id) {
-    const sessionDueRows = await db
-      .select({
-        total: schema.orders.total,
-        total_paid: sql<number>`COALESCE((SELECT SUM(amount)::int FROM payments WHERE payments.order_id = ${schema.orders.id} AND payments.status = 'completed'), 0)`,
-      })
-      .from(schema.orders)
-      .where(
-        and(
-          eq(schema.orders.table_session_id, order.table_session_id),
-          sql`orders.status != 'cancelled'`,
-        ),
-      );
-    currentDue = sessionDueRows.reduce(
-      (sum, row) => sum + Math.max(0, row.total - Number(row.total_paid || 0)),
-      0,
-    );
-  } else if (order) {
-    const [paid] = await db
-      .select({ total_paid: sum(schema.payments.amount) })
-      .from(schema.payments)
-      .where(and(eq(schema.payments.order_id, request.order_id), eq(schema.payments.status, "completed")));
-    currentDue = Math.max(0, order.total - Number(paid?.total_paid || 0));
-  }
-
-  if (!order || order.status === "cancelled" || currentDue !== request.amount) {
+  if (currentDue === null || currentDue !== request.amount) {
     await db
       .update(schema.paymentRequests)
       .set({ status: "cancelled", cancelled_at: now, updated_at: now })
       .where(eq(schema.paymentRequests.id, request.id));
     await logWebhookEvent({
+      provider: "sepay",
       providerTransactionId,
       paymentRequestId: request.id,
       branchId: request.branch_id,
@@ -456,6 +647,7 @@ payments.post("/webhooks/sepay", async (c) => {
       })
       .where(eq(schema.paymentRequests.id, request.id));
     await logWebhookEvent({
+      provider: "sepay",
       providerTransactionId,
       paymentRequestId: request.id,
       branchId: request.branch_id,
@@ -473,34 +665,16 @@ payments.post("/webhooks/sepay", async (c) => {
     return c.json({ success: true });
   }
 
-  const result = await db.transaction(async (tx) => {
-    const completed = await completePaymentForOrder(tx, {
-      orderId: request.order_id,
-      organizationId: request.organization_id,
-      branchId: request.branch_id,
-      amount: request.amount,
-      reference: paymentCode,
-    });
-
-    await tx
-      .update(schema.paymentRequests)
-      .set({
-        status: "paid",
-        paid_amount: amount,
-        provider_transaction_id: providerTransactionId || null,
-        provider_payload: body,
-        paid_at: now,
-        updated_at: now,
-      })
-      .where(eq(schema.paymentRequests.id, request.id));
-
-    return completed;
+  await finalizePaidRequest(request, {
+    provider: "sepay",
+    providerTransactionId,
+    paidAmountCents: amount,
+    providerPayload: body,
+    reference: paymentCode,
   });
 
-  // Sau khi tx commit: trừ kho + tích điểm cho các đơn vừa hoàn tất (idempotent, tự nuốt lỗi).
-  await runCompletionSideEffects(result.completedOrders || [], request.organization_id, request.branch_id);
-
   await logWebhookEvent({
+    provider: "sepay",
     providerTransactionId,
     paymentRequestId: request.id,
     branchId: request.branch_id,
@@ -511,33 +685,240 @@ payments.post("/webhooks/sepay", async (c) => {
     payload: body,
   });
 
-  await wsManager.publish(`branch:${request.branch_id}`, {
-    type: "payment:confirmed",
-    payload: {
-      paymentRequestId: request.id,
-      orderId: request.order_id,
-      amount,
-      expectedAmount: request.amount,
-      fullyPaid: result.fullyPaid,
-    },
-    timestamp: Date.now(),
-  });
-
-  if (result.tableSessionId && result.tableId) {
-    await wsManager.publish(`branch:${request.branch_id}`, {
-      type: "session:ended",
-      payload: { sessionId: result.tableSessionId, tableId: result.tableId },
-      timestamp: Date.now(),
-    });
-    await wsManager.publish(`branch:${request.branch_id}`, {
-      type: "table:status",
-      payload: { tableId: result.tableId, status: "available" },
-      timestamp: Date.now(),
-    });
-  }
-
   return c.json({ success: true });
 });
+
+/**
+ * IPN của MoMo — MoMo gọi vào đây khi khách trả xong. Phải nằm TRƯỚC
+ * authMiddleware (MoMo không có token của mình).
+ *
+ * ⚠️ Khác webhook SePay ở hai chỗ dễ sai:
+ *  1. Trả **HTTP 204 rỗng**, không phải JSON 200. Trả sai kiểu là MoMo coi như
+ *     thất bại và gửi lại nhiều lần.
+ *  2. Hạn trả lời **15 giây** — nên mọi việc nặng phải xong trước đó, đừng thêm
+ *     lệnh gọi mạng nào vào đường này.
+ */
+payments.post("/webhooks/momo", async (c) => {
+  const body = await c.req.json().catch(() => ({} as any));
+  const orderId = normalizeText(body.orderId);
+  const providerTransactionId = normalizeText(body.transId);
+  // MoMo gửi VND nguyên; toàn bộ hệ thống tính bằng cents.
+  const amountCents = Math.round(Number(body.amount || 0) * 100);
+  const content = normalizeText(body.orderInfo);
+  const resultCode = Number(body.resultCode);
+
+  const log = (matched: boolean, reason: string, branchId?: string | null, requestId?: string | null) =>
+    logWebhookEvent({
+      provider: "momo",
+      providerTransactionId,
+      paymentRequestId: requestId || null,
+      branchId: branchId || null,
+      amount: amountCents,
+      content,
+      matched,
+      reason,
+      payload: body,
+    });
+
+  if (!orderId) {
+    await log(false, "missing_order_id");
+    return c.body(null, 204);
+  }
+
+  const [request] = await db
+    .select()
+    .from(schema.paymentRequests)
+    .where(
+      and(
+        eq(schema.paymentRequests.payment_code, orderId),
+        eq(schema.paymentRequests.provider, "momo"),
+      ),
+    )
+    .limit(1);
+
+  if (!request) {
+    await log(false, "payment_request_not_found");
+    return c.body(null, 204);
+  }
+
+  const [branch] = await db
+    .select()
+    .from(schema.branches)
+    .where(eq(schema.branches.id, request.branch_id))
+    .limit(1);
+  const momo = momoSettings(branch);
+
+  // Chưa cấu hình khóa → từ chối. Cùng nguyên tắc với bản vá SePay: không có
+  // khóa nghĩa là ai cũng bắn được gói tin "đã thanh toán" giả.
+  if (!hasMomoCredentials(momo)) {
+    await log(false, "momo_credentials_not_configured", request.branch_id, request.id);
+    return c.json({ success: false, error: "momo credentials not configured" }, 401);
+  }
+
+  if (!verifyMomoIpnSignature(body, momo)) {
+    await log(false, "invalid_signature", request.branch_id, request.id);
+    return c.json({ success: false, error: "invalid signature" }, 401);
+  }
+
+  // MoMo yêu cầu đối chiếu tường minh partnerCode/orderId/amount với dữ liệu của mình.
+  if (normalizeText(body.partnerCode) !== momo.partnerCode) {
+    await log(false, "partner_code_mismatch", request.branch_id, request.id);
+    return c.json({ success: false, error: "partner code mismatch" }, 401);
+  }
+
+  if (resultCode !== 0) {
+    // Khách huỷ giữa chừng / thẻ bị từ chối: ghi lại rồi thôi, KHÔNG chốt đơn.
+    await log(false, `momo_result_${resultCode}`, request.branch_id, request.id);
+    return c.body(null, 204);
+  }
+
+  if (request.status === "paid") {
+    await log(true, "already_paid", request.branch_id, request.id);
+    return c.body(null, 204);
+  }
+
+  const now = new Date();
+  if (request.status !== "pending" || now > request.expires_at) {
+    if (request.status === "pending") {
+      await db
+        .update(schema.paymentRequests)
+        .set({ status: "expired", updated_at: now })
+        .where(eq(schema.paymentRequests.id, request.id));
+    }
+    await log(false, "expired_or_cancelled", request.branch_id, request.id);
+    return c.body(null, 204);
+  }
+
+  if (amountCents !== request.amount) {
+    await log(false, "amount_mismatch", request.branch_id, request.id);
+    return c.body(null, 204);
+  }
+
+  // Đơn có thể đã được thu tiền mặt / gọi thêm món sau khi dựng QR. Chốt tiếp là
+  // ghi thừa một khoản thu không có thật vào sổ.
+  const due = await currentDueForRequest(request);
+  if (due === null || due !== request.amount) {
+    await db
+      .update(schema.paymentRequests)
+      .set({ status: "cancelled", cancelled_at: new Date(), updated_at: new Date() })
+      .where(eq(schema.paymentRequests.id, request.id));
+    await log(false, "stale_order_amount", request.branch_id, request.id);
+    return c.body(null, 204);
+  }
+
+  await finalizePaidRequest(request, {
+    provider: "momo",
+    providerTransactionId,
+    paidAmountCents: amountCents,
+    providerPayload: body,
+    reference: orderId,
+  });
+
+  await log(true, "paid", request.branch_id, request.id);
+
+  return c.body(null, 204);
+});
+
+/**
+ * Đối soát MoMo: hỏi lại MoMo trạng thái các yêu cầu còn treo.
+ *
+ * MoMo nói rõ IPN có thể không tới (mạng quán rớt, API đang deploy…). Không có
+ * lưới này thì khách trả tiền xong mà đơn treo mãi, thu ngân phải bấm tay và dễ
+ * thu nhầm lần hai.
+ *
+ * Đặt trong file này thay vì tách service riêng để tránh vòng import: nó cần
+ * `finalizePaidRequest` + `currentDueForRequest` ở ngay đây.
+ */
+const MOMO_RECONCILE_INTERVAL_MS = 60_000;
+/** Chờ chút cho IPN tới trước, khỏi hỏi thừa với đơn khách còn đang bấm. */
+const MOMO_RECONCILE_MIN_AGE_MS = 2 * 60_000;
+
+async function reconcileMomoOnce() {
+  const now = new Date();
+  const pending = await db
+    .select()
+    .from(schema.paymentRequests)
+    .where(
+      and(
+        eq(schema.paymentRequests.provider, "momo"),
+        eq(schema.paymentRequests.status, "pending"),
+        gt(schema.paymentRequests.expires_at, now),
+        lte(schema.paymentRequests.created_at, new Date(now.getTime() - MOMO_RECONCILE_MIN_AGE_MS)),
+      ),
+    )
+    .limit(50);
+
+  for (const request of pending) {
+    try {
+      const [branch] = await db
+        .select()
+        .from(schema.branches)
+        .where(eq(schema.branches.id, request.branch_id))
+        .limit(1);
+      const momo = momoSettings(branch);
+      if (!hasMomoCredentials(momo)) continue;
+
+      const result = await queryMomoTransaction({
+        ...momo,
+        orderId: request.payment_code,
+        requestId: crypto.randomUUID(),
+      });
+      if (result.resultCode !== 0) continue;
+
+      const amountCents = Math.round(result.amount * 100);
+      if (amountCents !== request.amount) continue;
+
+      const due = await currentDueForRequest(request);
+      if (due === null || due !== request.amount) continue;
+
+      // Chống đua với IPN vừa về: chỉ chốt nếu ngay lúc này vẫn còn pending.
+      const [fresh] = await db
+        .select({ status: schema.paymentRequests.status })
+        .from(schema.paymentRequests)
+        .where(eq(schema.paymentRequests.id, request.id))
+        .limit(1);
+      if (fresh?.status !== "pending") continue;
+
+      await finalizePaidRequest(request, {
+        provider: "momo",
+        providerTransactionId: result.transId,
+        paidAmountCents: amountCents,
+        providerPayload: result.raw,
+        reference: request.payment_code,
+      });
+
+      await logWebhookEvent({
+        provider: "momo",
+        providerTransactionId: result.transId,
+        paymentRequestId: request.id,
+        branchId: request.branch_id,
+        amount: amountCents,
+        content: request.payment_code,
+        matched: true,
+        reason: "paid_via_reconcile",
+        payload: result.raw,
+      });
+
+      logger.info("Đối soát MoMo bắt được giao dịch IPN chưa báo", {
+        paymentRequestId: request.id,
+        transId: result.transId,
+      });
+    } catch (err: any) {
+      logger.warn("Đối soát MoMo lỗi cho một yêu cầu", {
+        paymentRequestId: request.id,
+        err: err?.message,
+      });
+    }
+  }
+}
+
+export function startMomoReconciler() {
+  setInterval(() => {
+    reconcileMomoOnce().catch((err) =>
+      logger.error("Vòng đối soát MoMo hỏng", { err: err?.message }),
+    );
+  }, MOMO_RECONCILE_INTERVAL_MS);
+}
 
 payments.use("*", authMiddleware);
 payments.use("*", tenantMiddleware);
@@ -648,6 +1029,8 @@ payments.post(
     const body = c.req.valid("json");
     const tenant = c.get("tenant") as any;
     const now = new Date();
+    // Máy khách cũ không gửi trường này → giữ nguyên hành vi QR ngân hàng.
+    const provider = body.provider || "sepay";
 
     const [order] = await db
       .select()
@@ -717,6 +1100,9 @@ payments.post(
       .where(eq(schema.branches.id, tenant.branchId))
       .limit(1);
 
+    // ⚠️ PHẢI lọc theo provider. Thu ngân in QR ngân hàng rồi bấm sang MoMo cho
+    // cùng đơn đó thì không có bộ lọc này sẽ trả về đúng cái yêu cầu SePay cũ —
+    // khách nhận QR ngân hàng trong khi màn hình bảo quét MoMo.
     const [active] = await db
       .select()
       .from(schema.paymentRequests)
@@ -724,12 +1110,23 @@ payments.post(
         and(
           eq(schema.paymentRequests.order_id, order.id),
           eq(schema.paymentRequests.branch_id, tenant.branchId),
+          eq(schema.paymentRequests.provider, provider),
           eq(schema.paymentRequests.status, "pending"),
           gt(schema.paymentRequests.expires_at, now),
         ),
       )
       .orderBy(desc(schema.paymentRequests.created_at))
       .limit(1);
+
+    if (active && provider === "momo") {
+      // Dùng lại nguyên chuỗi QR đã lưu. TUYỆT ĐỐI không gọi lại MoMo: MoMo đòi
+      // orderId duy nhất, mà orderId ở đây chính là payment_code đang giữ nguyên
+      // → lần gọi thứ hai sẽ bị từ chối vì trùng đơn.
+      return c.json({
+        success: true,
+        data: { ...active, reused: true, bank: null },
+      });
+    }
 
     if (active) {
       const transfer = buildTransferPayload(branch, active.payment_code, active.amount);
@@ -760,8 +1157,87 @@ payments.post(
     }
 
     const paymentCode = randomPaymentCode(order.order_number);
-    const transfer = buildTransferPayload(branch, paymentCode, amount);
     const expiresAt = new Date(now.getTime() + PAYMENT_REQUEST_TTL_MS);
+
+    if (provider === "momo") {
+      const momo = momoSettings(branch);
+      if (!momo.enabled || !hasMomoCredentials(momo)) {
+        return c.json(
+          {
+            success: false,
+            error: {
+              code: "BAD_REQUEST",
+              message: "Chi nhánh chưa bật MoMo. Vào Cài đặt → Chi nhánh để nhập khóa MoMo.",
+            },
+          },
+          400,
+        );
+      }
+
+      const amountVnd = centsToVnd(amount);
+      if (amountVnd < MOMO_MIN_VND || amountVnd > MOMO_MAX_VND) {
+        return c.json(
+          {
+            success: false,
+            error: {
+              code: "BAD_REQUEST",
+              message: `MoMo chỉ nhận từ ${MOMO_MIN_VND.toLocaleString("vi-VN")}đ đến ${MOMO_MAX_VND.toLocaleString("vi-VN")}đ. Đơn này ${amountVnd.toLocaleString("vi-VN")}đ — thu bằng cách khác.`,
+            },
+          },
+          400,
+        );
+      }
+
+      let momoResult;
+      try {
+        momoResult = await createMomoPayment({
+          ...momo,
+          orderId: paymentCode,
+          // requestId phải MỚI mỗi lần gọi, khác orderId.
+          requestId: crypto.randomUUID(),
+          amountVnd,
+          orderInfo: `Thanh toan don ${order.order_number}`,
+          ipnUrl: `${(process.env.PUBLIC_API_URL || "").replace(/\/+$/, "")}/api/payments/webhooks/momo`,
+          redirectUrl: (process.env.PUBLIC_WEB_URL || "").replace(/\/+$/, "") || "https://momo.vn",
+        });
+      } catch (err: any) {
+        // KHÔNG tạo payment_request khi MoMo lỗi — để lại một yêu cầu không có mã
+        // QR thì thu ngân thấy màn hình chờ trống rỗng, tưởng máy treo.
+        logger.error("Không tạo được giao dịch MoMo", {
+          orderId: order.id,
+          branchId: tenant.branchId,
+          err: err?.message,
+        });
+        return c.json(
+          {
+            success: false,
+            error: { code: "PAYMENT_GATEWAY_ERROR", message: err?.message || "MoMo không phản hồi" },
+          },
+          502,
+        );
+      }
+
+      const [createdMomo] = await db
+        .insert(schema.paymentRequests)
+        .values({
+          order_id: order.id,
+          organization_id: tenant.organizationId,
+          branch_id: tenant.branchId,
+          provider: "momo",
+          payment_code: paymentCode,
+          amount,
+          status: "pending",
+          // Đây là CHUỖI để vẽ QR, không phải link ảnh.
+          qr_payload: momoResult.qrCodeUrl,
+          qr_url: null,
+          expires_at: expiresAt,
+        })
+        .returning();
+
+      return c.json({ success: true, data: { ...createdMomo, reused: false, bank: null } }, 201);
+    }
+
+    const transfer = buildTransferPayload(branch, paymentCode, amount);
 
     const [created] = await db
       .insert(schema.paymentRequests)

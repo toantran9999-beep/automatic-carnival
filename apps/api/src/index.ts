@@ -3,6 +3,7 @@ import { logger } from "./lib/logger.js";
 import { redis } from "./lib/redis.js";
 import { wsManager } from "./ws/manager.js";
 import { handleWsMessage } from "./ws/handlers.js";
+import { startMomoReconciler } from "./routes/payments.js";
 
 const port = parseInt(process.env.API_PORT || "3001");
 
@@ -34,6 +35,9 @@ const server = Bun.serve({
 });
 
 logger.info("TODA POS API running", { port, url: `http://localhost:${port}` });
+
+// Lưới an toàn cho MoMo: hỏi lại các đơn còn treo phòng khi IPN không tới.
+startMomoReconciler();
 
 // Graceful shutdown
 async function shutdown(signal: string) {

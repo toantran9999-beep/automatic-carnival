@@ -18,6 +18,8 @@ export const translations = {
     invalid_session_table: "Phiên hoạt động không hợp lệ cho bàn ăn này",
     wait_retry: "Vui lòng đợi {sec}s trước khi gửi lại yêu cầu",
     table_not_found: "Không tìm thấy bàn ăn",
+    table_in_use_cannot_delete:
+      "Bàn đang có khách. Thanh toán hoặc huỷ bàn ở màn Bàn ăn trước khi xoá.",
     no_loyalty: "Bạn chưa có tài khoản thành viên",
     not_enrolled_loyalty: "Bạn chưa tham gia chương trình khách hàng thân thiết",
     reward_not_found: "Không tìm thấy phần thưởng",
@@ -111,6 +113,8 @@ export const translations = {
     invalid_session_table: "Invalid session for this table",
     wait_retry: "Please wait {sec}s before sending this request again",
     table_not_found: "Table not found",
+    table_in_use_cannot_delete:
+      "This table is in use. Settle or void it on the Tables screen before deleting.",
     no_loyalty: "You do not have a loyalty account",
     not_enrolled_loyalty: "You are not enrolled in the loyalty program",
     reward_not_found: "Reward not found",

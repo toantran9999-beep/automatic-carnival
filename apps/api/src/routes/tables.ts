@@ -100,7 +100,18 @@ tables.get("/", requirePermission("tables:read"), async (c) => {
     return c.json({
       success: true,
       data: {
-        tables: tables.map((t) => ({ ...t, activeSession: null })),
+        // ⚠️ CHỌN ĐÍCH DANH từng trường, KHÔNG dùng `...t` rồi xoá bớt. Bảng
+        // `tables` có cột `status` (available/occupied) — để lọt là vẫn nói được
+        // bàn nào đang có khách, dù đã giấu tên khách và số tiền. Chọn đích danh
+        // thì cột mới thêm vào bảng sau này cũng không tự lọt ra.
+        tables: tables.map((t) => ({
+          id: t.id,
+          number: t.number,
+          capacity: t.capacity,
+          space_id: t.space_id,
+          position_x: t.position_x,
+          position_y: t.position_y,
+        })),
         branchSlug: branch?.slug || "",
       },
     });
@@ -427,6 +438,34 @@ tables.delete(
   async (c) => {
     const { id } = c.req.valid("param");
     const tenant = c.get("tenant") as any;
+
+    // ⚠️ Chặn xoá bàn ĐANG CÓ KHÁCH — xoá là mất luôn đơn của khách đang ngồi.
+    // Phải kiểm Ở ĐÂY chứ không phải ở giao diện: màn Cài đặt → Sơ đồ bàn CỐ Ý
+    // không biết bàn nào đang có khách (không tải dữ liệu đó về máy), nên nó
+    // không thể tự tránh được.
+    const [activeSession] = await db
+      .select({ id: schema.tableSessions.id })
+      .from(schema.tableSessions)
+      .where(
+        and(
+          eq(schema.tableSessions.table_id, id),
+          eq(schema.tableSessions.status, "active"),
+        ),
+      )
+      .limit(1);
+
+    if (activeSession) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: "TABLE_IN_USE",
+            message: t(c, "table_in_use_cannot_delete"),
+          },
+        },
+        409,
+      );
+    }
 
     const [deleted] = await db
       .delete(schema.tables)

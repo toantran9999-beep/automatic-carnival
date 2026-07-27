@@ -7,6 +7,7 @@ import { RefreshCw } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
 import { useOverview, useRecentOrders } from "@/hooks/use-dashboard";
 import { useTranslation } from "@/stores/lang-store";
+import { PageHeader } from "@/components/page-header";
 import { isManagerRole, landingPathForRole } from "@/lib/roles";
 import { KpiCards } from "./_components/kpi-cards";
 import { RevenueWeekChart } from "./_components/revenue-week-chart";
@@ -50,22 +51,22 @@ export default function DashboardPage() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
-        <div>
-          <h1 className="text-2xl font-bold">{t("dashboard.title")}</h1>
-          <p className="text-sm text-muted-foreground">{t("dashboard.subtitle")}</p>
-        </div>
-        <Button
-          variant="outline"
-          size="sm"
-          onClick={() => refetchOverview()}
-          disabled={isFetching}
-          aria-label={t("dashboard.refresh")}
-        >
-          <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
-          <span className="ml-2 hidden sm:inline">{t("dashboard.refresh")}</span>
-        </Button>
-      </div>
+      <PageHeader
+        title={t("dashboard.title")}
+        description={t("dashboard.subtitle")}
+        actions={
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => refetchOverview()}
+            disabled={isFetching}
+            aria-label={t("dashboard.refresh")}
+          >
+            <RefreshCw className={`h-4 w-4 ${isFetching ? "animate-spin" : ""}`} />
+            <span className="ml-2 hidden sm:inline">{t("dashboard.refresh")}</span>
+          </Button>
+        }
+      />
 
       {overviewError ? (
         <div className="flex items-center justify-between rounded-lg border border-destructive/50 bg-destructive/5 p-4">

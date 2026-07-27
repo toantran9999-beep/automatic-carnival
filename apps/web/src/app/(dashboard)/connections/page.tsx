@@ -31,6 +31,7 @@ import { useBranchSettings, useBranches } from "@/hooks/use-settings";
 import { useAuthStore } from "@/stores/auth-store";
 import { useStationStore } from "@/stores/station-store";
 import { useTranslation } from "@/stores/lang-store";
+import { PageHeader } from "@/components/page-header";
 
 function formatDate(dateStr: string, lang: string) {
   const d = new Date(dateStr);
@@ -387,12 +388,13 @@ export default function ConnectionsPage() {
 
   return (
     <div className="space-y-4">
-      <div>
-        <h1 className="text-xl font-bold">{t("connections.title")}</h1>
-        <p className="text-sm text-muted-foreground">
-          {t("connections.subtitleStation", "Trạm in tại quầy, kết nối điện thoại order và phiên khách QR.")}
-        </p>
-      </div>
+      <PageHeader
+        title={t("connections.title")}
+        description={t(
+          "connections.subtitleStation",
+          "Trạm in tại quầy, kết nối điện thoại order và phiên khách QR.",
+        )}
+      />
 
       <Tabs value={mainTab} onValueChange={setMainTab}>
         <TabsList className="h-11">

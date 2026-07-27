@@ -302,7 +302,11 @@ loyalty.get(
       .where(eq(schema.customerLoyalty.customer_id, id));
 
     if (loyaltyRecords.length === 0) {
-      return c.json({ success: true, data: [], pagination: { page, limit, total: 0 } });
+      // pagination nằm TRONG data — xem ghi chú ở orders.ts.
+      return c.json({
+        success: true,
+        data: { transactions: [], pagination: { page, limit, total: 0, totalPages: 0 } },
+      });
     }
 
     const { inArray } = await import("drizzle-orm");
@@ -318,8 +322,15 @@ loyalty.get(
 
     return c.json({
       success: true,
-      data: transactions,
-      pagination: { page, limit, total: transactions.length },
+      data: {
+        transactions,
+        pagination: {
+          page,
+          limit,
+          total: transactions.length,
+          totalPages: Math.ceil(transactions.length / limit),
+        },
+      },
     });
   },
 );

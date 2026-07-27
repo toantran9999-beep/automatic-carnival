@@ -1,7 +1,6 @@
 "use client";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiFetch } from "@/lib/fetcher";
-import { useAuthStore } from "@/stores/auth-store";
 
 interface OrderFilters {
   status?: string;
@@ -21,25 +20,15 @@ interface OrdersResponse {
   pagination: Pagination;
 }
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
-
-async function fetchOrdersWithPagination(path: string): Promise<OrdersResponse> {
-  const { accessToken, selectedBranchId } = useAuthStore.getState();
-  const res = await fetch(`${API_URL}${path}`, {
-    headers: {
-      "Content-Type": "application/json",
-      ...(accessToken ? { Authorization: `Bearer ${accessToken}` } : {}),
-      ...(selectedBranchId ? { "x-branch-id": selectedBranchId } : {}),
-    },
-  });
-  const json = await res.json();
-  if (!json.success) throw new Error(json.error?.message || "Lỗi không xác định");
-  return {
-    orders: json.data ?? [],
-    pagination: json.pagination ?? { page: 1, limit: 20, total: 0, totalPages: 1 },
-  };
-}
-
+/**
+ * ⚠️ Trước đây hàm này tự gọi `fetch` vì máy chủ trả `pagination` NGOÀI `data`,
+ * mà `apiFetch` chỉ trả về `json.data`. Bản tự viết đó **thiếu phần tự làm mới
+ * phiên**, nên hết hạn token là riêng trang Đơn hàng chết trong khi các trang
+ * khác vẫn chạy — rất khó đoán ra nguyên nhân.
+ *
+ * Máy chủ đã chuyển `pagination` vào trong `data`, nên giờ dùng `apiFetch` như
+ * mọi chỗ khác: có tự làm mới phiên, tự gắn `x-branch-id`.
+ */
 export function useOrders(filters?: OrderFilters) {
   const params = new URLSearchParams();
   if (filters?.status && filters.status !== "all") params.set("status", filters.status);
@@ -49,7 +38,7 @@ export function useOrders(filters?: OrderFilters) {
 
   return useQuery<OrdersResponse>({
     queryKey: ["orders", filters],
-    queryFn: () => fetchOrdersWithPagination(`/api/orders${qs ? `?${qs}` : ""}`),
+    queryFn: () => apiFetch<OrdersResponse>(`/api/orders${qs ? `?${qs}` : ""}`),
     refetchInterval: 5000,
   });
 }

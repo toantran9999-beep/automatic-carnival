@@ -2,6 +2,14 @@
 @plugin "tailwindcss-animate";
 @source "../../../../packages/ui/src";
 
+/* ⚠️ BẮT BUỘC PHẢI CÓ. Tailwind v4 mặc định cho `dark:` chạy theo cài đặt của HỆ
+   ĐIỀU HÀNH (`prefers-color-scheme`). Nhưng app này đổi giao diện bằng nút
+   Sáng/Tối riêng, gắn class `.dark` lên thẻ gốc (xem `stores/theme-store.ts`).
+   Không khai dòng này thì 222 chỗ viết `dark:` trong repo chạy theo máy chứ
+   không theo nút — máy để chế độ sáng mà app đang tối thì màu sai hết.
+   Đã sống nhiều tháng với lỗi này trước khi phát hiện (2026-07-27). */
+@custom-variant dark (&:where(.dark, .dark *));
+
 /* TODA POS design tokens — accent matcha #7aa653 (đổi 1 dòng để sang vàng #c79a2e / terracotta #b06b4e). */
 :root {
   --accent-runtime: #7aa653; /* đổi runtime qua bộ chọn Giao diện; mặc định matcha */

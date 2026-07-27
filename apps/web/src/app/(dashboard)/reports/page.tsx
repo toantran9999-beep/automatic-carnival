@@ -21,6 +21,7 @@ import { PaymentMethodsChart } from "./_components/payment-methods-chart";
 import { TopItemsList } from "./_components/top-items-list";
 import { ShiftHistoryList } from "./_components/shift-history-list";
 import { useTranslation } from "@/stores/lang-store";
+import { PageHeader } from "@/components/page-header";
 
 function getDefaultDates() {
   const end = new Date();
@@ -133,9 +134,7 @@ export default function ReportsPage() {
   if (error) {
     return (
       <div className="space-y-6">
-        <div>
-          <h1 className="text-2xl font-bold">{t("reports.title")}</h1>
-        </div>
+        <PageHeader title={t("reports.title")} />
         <div className="p-4 rounded-lg border border-destructive/50 bg-destructive/5 flex items-center justify-between">
           <p className="text-sm text-destructive">{t("reports.errorLoad")}: {(error as Error).message}</p>
           <Button
@@ -157,12 +156,11 @@ export default function ReportsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row items-start sm:items-end justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">{t("reports.title")}</h1>
-          <p className="text-muted-foreground">{t("reports.analysis")}</p>
-        </div>
-        <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4">
+      <PageHeader
+        title={t("reports.title")}
+        description={t("reports.analysis")}
+        actions={
+          <div className="flex flex-col sm:flex-row items-start sm:items-end gap-4">
           <div className="space-y-2 w-full sm:w-auto sm:min-w-[220px]">
             <Label className="text-xs text-muted-foreground block pl-0.5">{t("reports.from")}</Label>
             <DatePicker
@@ -201,8 +199,9 @@ export default function ReportsPage() {
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
             {lang === "vi" ? "Cập nhật" : "Refresh"}
           </Button>
-        </div>
-      </div>
+          </div>
+        }
+      />
       <div className="flex flex-wrap items-center gap-2">
         <Button
           type="button"

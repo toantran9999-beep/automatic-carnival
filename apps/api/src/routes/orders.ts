@@ -77,10 +77,17 @@ orders.get("/", requirePermission("orders:read"), zValidator("query", orderQuery
     return { ...order, payment_status: paymentStatus };
   });
 
+  // ⚠️ `pagination` phải nằm TRONG `data`. `apiFetch` phía web chỉ trả về
+  // `json.data` — cái gì để ngoài là mất trắng. Trước đây để ngoài nên
+  // `use-orders.ts` buộc phải tự viết `fetch` riêng, và bản tự viết đó THIẾU
+  // phần tự làm mới phiên → hết hạn token là trang Đơn hàng chết trong khi các
+  // trang khác vẫn chạy.
   return c.json({
     success: true,
-    data: enriched,
-    pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    data: {
+      orders: enriched,
+      pagination: { page, limit, total, totalPages: Math.ceil(total / limit) },
+    },
   });
 });
 

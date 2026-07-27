@@ -156,6 +156,8 @@ grep -c -- '--tw-translate-x:0' "$f"   # phải >= 1 (default đã đổ xuống
 
 ## 8. Gotchas (đọc kỹ trước khi sửa)
 
+> 📐 Quy ước viết code (vỏ API, `AppError`, phân quyền, `Switch`/`Skeleton`/`PageHeader`/`SettingRow` dùng chung, 4 cái bẫy CSS đã trả giá): [CONVENTIONS.md](CONVENTIONS.md).
+
 - **WebView cũ trên POS Android**: xem mục 7 — đã TẮT (2026-07-04) vì cả fleet lên WebView mới. Nếu máy nào tụt lại bản cũ, bật lại theo hướng dẫn ở đầu mục 7.
 - **In**: máy in phải gắn ở thiết bị mở web. Desktop/browser fallback dùng `window.print()` (luôn hiện hộp thoại, không tắt được — hạn chế của trình duyệt, không phải bug). Android POS dùng APK `pos-android/` với `print_driver=android_bridge` để in ngầm qua USB; `rawbt_intent` (RawBT qua intent) đã THỬ và BỎ vì chập chờn, không hợp chạy lâu dài.
 - **Deploy web xong máy POS báo "Failed to load chunk /_next/static/chunks/….js"** = kẹt cache, KHÔNG phải máy hỏng. HTML bản cũ do service worker phục vụ đi đòi file JS mà build mới đã xoá. Từ 2026-07-27 app **tự chữa** (xoá cache + gỡ SW + tải lại, có chốt chống lặp ở `global-error.tsx` / `(dashboard)/error.tsx`) và `sw.js` điều hướng đã đổi sang **ưu tiên mạng, hạn chờ 2 giây**. Máy nào lỡ kẹt từ trước bản vá thì chữa tay: Cài đặt → Ứng dụng → TODA POS Quầy → Bộ nhớ → **Xoá bộ nhớ đệm** (không khỏi mới **Xoá dữ liệu** — sẽ phải đăng nhập + quét lại QR kết nối). ⚠️ Đổi chiến lược cache trong `sw.js` thì **phải tăng số bản** `toda-pos-shell-vN`.

@@ -68,7 +68,8 @@ export default function CustomerDetailPage({
   const [redeemOpen, setRedeemOpen] = useState(false);
   const [selectedRewardId, setSelectedRewardId] = useState("none");
 
-  const transactions: any[] = transactionsData ?? [];
+  // Máy chủ trả `{ transactions, pagination }` trong `data` (chuẩn chung).
+  const transactions: any[] = (transactionsData as any)?.transactions ?? [];
   const rewards: any[] = rewardsData ?? [];
   const loyalty = customer?.loyalty;
 

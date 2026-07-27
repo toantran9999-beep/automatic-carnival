@@ -39,7 +39,6 @@ import {
   useUpdateTableStatus,
   useDeleteTable,
   useSpaces,
-  useDeleteSpace,
   usePendingSessions,
   useApproveSession,
   useRejectSession,
@@ -60,8 +59,7 @@ import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FloorPlannerView } from "./_components/floor-planner-view";
 import { GridView } from "./_components/grid-view";
 import { QrDialog } from "./_components/qr-dialog";
-import { CreateTableDialog } from "./_components/create-table-dialog";
-import { CreateSpaceDialog, EditSpaceDialog, SpaceInfoCard } from "./_components/space-management";
+import { SpaceInfoCard } from "./_components/space-management";
 import { HistoryDialog } from "./_components/history-dialog";
 import { AssignmentDialog } from "./_components/assignment-dialog";
 import { TableOperationsDialog } from "./_components/table-operations-dialog";
@@ -101,9 +99,6 @@ export default function TablesPage() {
   const [viewMode, setViewMode] = useState<"grid" | "planner">("grid");
   const [withBillOnly, setWithBillOnly] = useState(false);
   const [qrDialog, setQrDialog] = useState<any>(null);
-  const [createTableDialog, setCreateTableDialog] = useState(false);
-  const [createSpaceDialog, setCreateSpaceDialog] = useState(false);
-  const [editSpaceDialog, setEditSpaceDialog] = useState<any>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "table" | "space"; id: string; name: string } | null>(null);
   const [historyDialog, setHistoryDialog] = useState<any>(null);
   const [assignDialog, setAssignDialog] = useState<any>(null);
@@ -179,7 +174,6 @@ export default function TablesPage() {
   const { data: tablesData, isLoading: tablesLoading, error, refetch } = useTables();
   const updateTableStatus = useUpdateTableStatus();
   const deleteTable = useDeleteTable();
-  const deleteSpace = useDeleteSpace();
   const { data: pendingData, refetch: refetchPendingSessions } = usePendingSessions();
   const approveSession = useApproveSession();
   const rejectSession = useRejectSession();
@@ -428,20 +422,12 @@ export default function TablesPage() {
     updateTableStatus.mutate({ id: tableId, status: newStatus });
   };
 
+  // Chỉ còn xoá BÀN ở màn này. Xoá KHU đã chuyển sang Cài đặt → Sơ đồ bàn.
   const handleDelete = () => {
     if (!deleteConfirm) return;
-    if (deleteConfirm.type === "table") {
-      deleteTable.mutate(deleteConfirm.id, {
-        onSuccess: () => setDeleteConfirm(null),
-      });
-    } else {
-      deleteSpace.mutate(deleteConfirm.id, {
-        onSuccess: () => {
-          setDeleteConfirm(null);
-          if (activeTab === deleteConfirm.id) setActiveTab("all");
-        },
-      });
-    }
+    deleteTable.mutate(deleteConfirm.id, {
+      onSuccess: () => setDeleteConfirm(null),
+    });
   };
 
   if (error) {
@@ -493,17 +479,14 @@ export default function TablesPage() {
                 <MapIcon className="h-4 w-4" />
               </Button>
             </div>
+            {/* Việc SẮP XẾP chỗ (thêm khu, thêm bàn, kéo vị trí) đã dọn hết sang
+                Cài đặt → Sơ đồ bàn, để chỉ còn MỘT nơi làm việc đó. Màn này giữ
+                đúng vai trò bán hàng. */}
             {canManageTables && (
-              <>
-                <Button variant="outline" onClick={() => setCreateSpaceDialog(true)}>
-                  <LayoutGrid className="h-4 w-4 mr-2" />
-                  {t("tables.addSpace")}
-                </Button>
-                <Button onClick={() => setCreateTableDialog(true)}>
-                  <Plus className="h-4 w-4 mr-2" />
-                  {t("tables.addTable")}
-                </Button>
-              </>
+              <Button variant="outline" onClick={() => router.push("/settings/floor")}>
+                <LayoutGrid className="h-4 w-4 mr-2" />
+                {t("settings.tabFloor", "Sơ đồ bàn")}
+              </Button>
             )}
           </>
         }
@@ -707,18 +690,13 @@ export default function TablesPage() {
           const currentSpace = spaces.find((s: any) => s.id === activeTab);
           if (!currentSpace) return null;
           return (
+            /* canManage={false}: sửa/xoá khu đã chuyển sang Cài đặt → Sơ đồ bàn. */
             <SpaceInfoCard
               space={currentSpace}
               tableCount={filteredTables.length}
-              canManage={canManageTables}
-              onEdit={() => setEditSpaceDialog(currentSpace)}
-              onDelete={() =>
-                setDeleteConfirm({
-                  type: "space",
-                  id: currentSpace.id,
-                  name: currentSpace.name,
-                })
-              }
+              canManage={false}
+              onEdit={() => {}}
+              onDelete={() => {}}
             />
           );
         })()}
@@ -888,20 +866,13 @@ export default function TablesPage() {
         </DialogContent>
       </Dialog>
       <QrDialog table={qrDialog} branchSlug={branchSlug} onClose={() => setQrDialog(null)} />
-      <CreateTableDialog open={createTableDialog} onOpenChange={setCreateTableDialog} spaces={spaces} />
-      <CreateSpaceDialog open={createSpaceDialog} onOpenChange={setCreateSpaceDialog} />
-      <EditSpaceDialog space={editSpaceDialog} onClose={() => setEditSpaceDialog(null)} />
       <ConfirmDialog
         open={!!deleteConfirm}
         onOpenChange={(open) => !open && setDeleteConfirm(null)}
         title={t("tables.confirmDelete")}
-        description={
-          deleteConfirm?.type === "space"
-            ? t("tables.deleteSpaceConfirm")
-            : t("tables.deleteTableConfirm")
-        }
+        description={t("tables.deleteTableConfirm")}
         onConfirm={handleDelete}
-        loading={deleteTable.isPending || deleteSpace.isPending}
+        loading={deleteTable.isPending}
       />
       <ConfirmDialog
         open={!!voidConfirm}

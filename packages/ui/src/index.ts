@@ -74,6 +74,11 @@ export {
   PopoverAnchor,
 } from "./components/popover";
 
+export { Switch } from "./components/switch";
+export type { SwitchProps } from "./components/switch";
+
+export { Skeleton } from "./components/skeleton";
+
 export { Calendar } from "./components/calendar";
 export type { CalendarProps } from "./components/calendar";
 

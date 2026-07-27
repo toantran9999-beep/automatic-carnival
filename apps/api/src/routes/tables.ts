@@ -91,6 +91,21 @@ tables.get("/", requirePermission("tables:read"), async (c) => {
     .where(eq(schema.branches.id, tenant.branchId))
     .limit(1);
 
+  // ?layout=1 — CHỈ sơ đồ phân bổ (màn sắp xếp bàn của quản lý).
+  // ⚠️ Thoát ra ở ĐÂY, trước khi truy vấn phiên bàn/đơn/món: tên khách và số tiền
+  // KHÔNG ĐƯỢC rời khỏi máy chủ cho màn này. Lọc ở giao diện là vô nghĩa — dữ liệu
+  // vẫn nằm trong bộ nhớ trình duyệt và vẫn xem được bằng công cụ nhà phát triển.
+  // Tiện thể đỡ 3 truy vấn nặng cho một màn không cần tới chúng.
+  if (c.req.query("layout") === "1") {
+    return c.json({
+      success: true,
+      data: {
+        tables: tables.map((t) => ({ ...t, activeSession: null })),
+        branchSlug: branch?.slug || "",
+      },
+    });
+  }
+
   // Get all active sessions for this branch
   const activeSessions = await db
     .select()

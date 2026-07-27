@@ -6,6 +6,7 @@ import { Input } from "@restai/ui/components/input";
 import { Label } from "@restai/ui/components/label";
 import { Button } from "@restai/ui/components/button";
 import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@restai/ui/components/select";
+import { Switch } from "@restai/ui/components/switch";
 import { cn } from "@/lib/utils";
 import { useBranchSettings, useUpdateBranch } from "@/hooks/use-settings";
 import {
@@ -18,33 +19,12 @@ import { Printer, Settings2, ReceiptText, ChefHat, QrCode } from "lucide-react";
 import { toast } from "sonner";
 import { useTranslation } from "@/stores/lang-store";
 
-function Toggle({ checked, onChange }: { checked: boolean; onChange: () => void }) {
-  return (
-    <button
-      type="button"
-      role="switch"
-      aria-checked={checked}
-      onClick={onChange}
-      className={cn(
-        "relative inline-flex h-6 w-11 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors",
-        checked ? "bg-primary" : "bg-muted"
-      )}
-    >
-      <span
-        className={cn(
-          "pointer-events-none block h-5 w-5 rounded-full bg-background shadow-lg ring-0 transition-transform",
-          checked ? "translate-x-5" : "translate-x-0"
-        )}
-      />
-    </button>
-  );
-}
-
 function ToggleRow({ label, checked, onChange }: { label: string; checked: boolean; onChange: () => void }) {
   return (
-    <div className="flex items-center justify-between min-h-10">
-      <span className="text-sm">{label}</span>
-      <Toggle checked={checked} onChange={onChange} />
+    <div className="flex items-center justify-between gap-3 min-h-10">
+      {/* min-w-0 để chữ co trước; nút gạt shrink-0 không bao giờ bị đẩy ra ngoài. */}
+      <span className="min-w-0 text-sm">{label}</span>
+      <Switch checked={checked} onCheckedChange={() => onChange()} />
     </div>
   );
 }
@@ -473,7 +453,10 @@ export function ReceiptTab() {
                       {t("settings.receiptUtf8Help", "In phiếu dạng ảnh (UTF-8 có dấu đầy đủ). Chậm hơn một chút so với in chữ thường bỏ dấu.")}
                     </p>
                   </div>
-                  <Toggle checked={form.utf8Bitmap} onChange={() => set({ utf8Bitmap: !form.utf8Bitmap })} />
+                  <Switch
+                    checked={form.utf8Bitmap}
+                    onCheckedChange={(v) => set({ utf8Bitmap: v })}
+                  />
                 </div>
               </>
             )}

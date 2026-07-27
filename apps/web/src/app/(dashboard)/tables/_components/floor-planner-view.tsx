@@ -18,13 +18,39 @@ interface TableServiceRequestIndicator {
   customerName: string;
 }
 
+/**
+ * Bảng màu theo KHU VỰC, dùng cho chế độ `layoutOnly`.
+ * Cố ý KHÔNG dùng màu trạng thái (xanh trống / đỏ có khách) — ở màn sắp xếp,
+ * màu phải nói "bàn này thuộc khu nào", không nói bàn đang có khách hay không.
+ */
+const ZONE_PALETTE = [
+  { bg: "bg-sky-100 dark:bg-sky-950/40", border: "border-sky-400", text: "text-sky-900 dark:text-sky-200" },
+  { bg: "bg-amber-100 dark:bg-amber-950/40", border: "border-amber-400", text: "text-amber-900 dark:text-amber-200" },
+  { bg: "bg-violet-100 dark:bg-violet-950/40", border: "border-violet-400", text: "text-violet-900 dark:text-violet-200" },
+  { bg: "bg-emerald-100 dark:bg-emerald-950/40", border: "border-emerald-400", text: "text-emerald-900 dark:text-emerald-200" },
+  { bg: "bg-rose-100 dark:bg-rose-950/40", border: "border-rose-400", text: "text-rose-900 dark:text-rose-200" },
+  { bg: "bg-teal-100 dark:bg-teal-950/40", border: "border-teal-400", text: "text-teal-900 dark:text-teal-200" },
+];
+
 export function FloorPlannerView({
   tables,
   requestByTableId,
+  layoutOnly = false,
+  zoneOrder,
 }: {
   tables: any[];
-  requestByTableId: Record<string, TableServiceRequestIndicator>;
+  requestByTableId?: Record<string, TableServiceRequestIndicator>;
+  /**
+   * Chế độ SƠ ĐỒ PHÂN BỔ cho quản lý: chỉ vị trí, khu vực, sức chứa.
+   * KHÔNG màu trạng thái, KHÔNG chuông gọi phục vụ, KHÔNG chữ trống/có khách.
+   * ⚠️ Đây chỉ là lớp hiển thị — trang gọi nó phải KHÔNG TẢI dữ liệu khách về
+   * máy ngay từ đầu, chứ không phải tải rồi ẩn đi.
+   */
+  layoutOnly?: boolean;
+  /** Thứ tự khu vực, để mỗi khu ăn một màu ổn định. */
+  zoneOrder?: string[];
 }) {
+  const requests = requestByTableId ?? {};
   const { t, lang } = useTranslation();
   const [offset, setOffset] = useState({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(1);
@@ -135,13 +161,28 @@ export function FloorPlannerView({
         >
           <Grid3X3 className="h-4 w-4" />
         </Button>
-        <div className="ml-auto flex gap-3 text-xs text-muted-foreground">
-          {Object.entries(plannerStatusColors).map(([status, colors]) => (
-            <div key={status} className="flex items-center gap-1">
-              <div className={cn("w-3 h-3 rounded border", colors.bg, colors.border)} />
-              <span>{t(`tables.${status === "available" ? "free" : status}`)}</span>
-            </div>
-          ))}
+        {/* Chú giải: chế độ sắp xếp giải thích MÀU KHU VỰC, chế độ bán hàng giải
+            thích màu trạng thái bàn. */}
+        <div className="ml-auto flex flex-wrap gap-3 text-xs text-muted-foreground">
+          {layoutOnly
+            ? (zoneOrder ?? []).map((zoneName, i) => (
+                <div key={zoneName} className="flex items-center gap-1">
+                  <div
+                    className={cn(
+                      "h-3 w-3 rounded border",
+                      ZONE_PALETTE[i % ZONE_PALETTE.length].bg,
+                      ZONE_PALETTE[i % ZONE_PALETTE.length].border,
+                    )}
+                  />
+                  <span>{zoneName}</span>
+                </div>
+              ))
+            : Object.entries(plannerStatusColors).map(([status, colors]) => (
+                <div key={status} className="flex items-center gap-1">
+                  <div className={cn("w-3 h-3 rounded border", colors.bg, colors.border)} />
+                  <span>{t(`tables.${status === "available" ? "free" : status}`)}</span>
+                </div>
+              ))}
         </div>
       </div>
 
@@ -183,8 +224,12 @@ export function FloorPlannerView({
             const posX = isBeingDragged ? dragTablePos.x : (localPos?.x ?? table.position_x);
             const posY = isBeingDragged ? dragTablePos.y : (localPos?.y ?? table.position_y);
             const size = getTableSize(table.capacity);
-            const colors = plannerStatusColors[table.status] || plannerStatusColors.available;
-            const serviceRequest = requestByTableId[table.id];
+            const zoneIdx = zoneOrder?.indexOf(table.space_name ?? "") ?? -1;
+            const colors = layoutOnly
+              ? ZONE_PALETTE[(zoneIdx >= 0 ? zoneIdx : 0) % ZONE_PALETTE.length]
+              : plannerStatusColors[table.status] || plannerStatusColors.available;
+            // Ở chế độ sắp xếp thì không có chuông gọi phục vụ nào cả.
+            const serviceRequest = layoutOnly ? undefined : requests[table.id];
             const hasServiceRequest = !!serviceRequest;
             const requestOutline =
               serviceRequest?.type === "request_bill"
@@ -216,9 +261,13 @@ export function FloorPlannerView({
                 <span className="text-[10px] text-muted-foreground mt-0.5">
                   {table.capacity}{t("tables.person").charAt(0)}
                 </span>
-                <span className={cn("text-[9px] mt-0.5", colors.text)}>
-                  {t(`tables.${table.status === "available" ? "free" : table.status}`)}
-                </span>
+                {/* Chữ trạng thái (trống / có khách) là DỮ LIỆU ĐANG BÁN HÀNG —
+                    không hiện ở màn sắp xếp. */}
+                {!layoutOnly && (
+                  <span className={cn("text-[9px] mt-0.5", colors.text)}>
+                    {t(`tables.${table.status === "available" ? "free" : table.status}`)}
+                  </span>
+                )}
                 {serviceRequest && (
                   <span
                     title={`${serviceRequest.customerName}: ${

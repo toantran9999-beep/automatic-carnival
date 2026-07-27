@@ -60,6 +60,36 @@ export function useTables(spaceId?: string) {
   });
 }
 
+/**
+ * Bàn cho màn SƠ ĐỒ PHÂN BỔ (quản lý sắp xếp chỗ).
+ *
+ * ⚠️ Khoá bộ nhớ đệm RIÊNG (`"tables-layout"`), KHÔNG dùng chung với `useTables`:
+ * nếu dùng chung, bản không-có-dữ-liệu-khách sẽ đè lên bản đầy đủ mà trang Bàn ăn
+ * đang dùng, làm thẻ bàn mất tên khách và số tiền.
+ *
+ * Máy chủ không trả tên khách / số tiền cho đường này (`?layout=1`) — dữ liệu
+ * không rời máy chủ, chứ không phải tải về rồi ẩn.
+ *
+ * Dùng STATIC_QUERY: sơ đồ chỗ ngồi cả tháng không đổi, không cần gọi lại liên tục.
+ */
+export function useTablesLayout() {
+  return useQuery({
+    queryKey: ["tables-layout"],
+    queryFn: () => apiFetch("/api/tables?layout=1"),
+    ...STATIC_QUERY,
+  });
+}
+
+/**
+ * ⚠️ Các thao tác SẮP XẾP bàn (tạo/sửa/xoá/đổi vị trí) phải làm mới CẢ HAI kho:
+ * `["tables"]` (trang Bàn ăn) và `["tables-layout"]` (màn Sơ đồ bàn). Quên một
+ * bên là hai màn hiện hai thứ khác nhau cho tới khi tải lại trang.
+ */
+function invalidateTableSetup(qc: ReturnType<typeof useQueryClient>) {
+  qc.invalidateQueries({ queryKey: ["tables"] });
+  qc.invalidateQueries({ queryKey: ["tables-layout"] });
+}
+
 export function useCreateTable() {
   const qc = useQueryClient();
   return useMutation({
@@ -68,7 +98,7 @@ export function useCreateTable() {
         method: "POST",
         body: JSON.stringify(data),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tables"] }),
+    onSuccess: () => invalidateTableSetup(qc),
   });
 }
 
@@ -80,7 +110,7 @@ export function useUpdateTable() {
         method: "PATCH",
         body: JSON.stringify(data),
       }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tables"] }),
+    onSuccess: () => invalidateTableSetup(qc),
   });
 }
 
@@ -89,7 +119,7 @@ export function useDeleteTable() {
   return useMutation({
     mutationFn: (id: string) =>
       apiFetch(`/api/tables/${id}`, { method: "DELETE" }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["tables"] }),
+    onSuccess: () => invalidateTableSetup(qc),
   });
 }
 
@@ -101,10 +131,12 @@ export function useUpdateTablePosition() {
         method: "PATCH",
         body: JSON.stringify({ x, y }),
       }),
+    // Vẽ vị trí mới ngay, không đợi máy chủ — kéo thả mà giật là rất khó dùng.
+    // Phải đổi ở CẢ HAI kho vì màn Sơ đồ bàn đọc `["tables-layout"]`.
     onMutate: async ({ id, x, y }) => {
       await qc.cancelQueries({ queryKey: ["tables"] });
-      const previous = qc.getQueryData(["tables"]);
-      qc.setQueryData(["tables"], (old: any) => {
+      await qc.cancelQueries({ queryKey: ["tables-layout"] });
+      const move = (old: any) => {
         if (!old?.tables) return old;
         return {
           ...old,
@@ -112,15 +144,18 @@ export function useUpdateTablePosition() {
             t.id === id ? { ...t, position_x: x, position_y: y } : t
           ),
         };
-      });
-      return { previous };
+      };
+      const previous = qc.getQueryData(["tables"]);
+      const previousLayout = qc.getQueryData(["tables-layout"]);
+      qc.setQueryData(["tables"], move);
+      qc.setQueryData(["tables-layout"], move);
+      return { previous, previousLayout };
     },
     onError: (_err, _vars, context) => {
-      if (context?.previous) {
-        qc.setQueryData(["tables"], context.previous);
-      }
+      if (context?.previous) qc.setQueryData(["tables"], context.previous);
+      if (context?.previousLayout) qc.setQueryData(["tables-layout"], context.previousLayout);
     },
-    onSettled: () => qc.invalidateQueries({ queryKey: ["tables"] }),
+    onSettled: () => invalidateTableSetup(qc),
   });
 }
 

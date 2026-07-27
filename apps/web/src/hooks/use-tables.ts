@@ -48,13 +48,16 @@ export function useDeleteSpace() {
 
 // --- Tables ---
 
-export function useTables(spaceId?: string) {
+export function useTables(spaceId?: string, options?: { enabled?: boolean }) {
   return useQuery({
     queryKey: ["tables", spaceId],
     queryFn: () => {
       const params = spaceId ? `?spaceId=${spaceId}` : "";
       return apiFetch(`/api/tables${params}`);
     },
+    // `enabled` để nơi CHỈ THỈNH THOẢNG cần bàn (hộp thoại chi tiết ở Bảng điều
+    // khiển) không kéo dữ liệu sẵn. Đây là truy vấn nặng: bàn + phiên + đơn + món.
+    enabled: options?.enabled ?? true,
     // Dữ liệu sống: vẽ ngay bản trước cho đỡ chớp, nhưng luôn gọi lại nền
     ...LIVE_QUERY,
   });

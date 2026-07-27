@@ -60,6 +60,10 @@ export interface Overview {
     totalTables: number;
     /** Tiền đang treo ở các bàn còn khách (chưa thu) — không phải doanh thu. */
     openTablesRevenue: number;
+    /** Đơn mang về chưa thu tiền (mọi ngày, không riêng hôm nay). */
+    openTakeawayOrders: number;
+    /** Tiền đang treo ở đơn mang về (chưa thu) — không chồng lấn openTablesRevenue. */
+    openTakeawayRevenue: number;
   };
   yesterday: { orders: number; revenue: number };
   deltas: { revenuePct: number | null; ordersPct: number | null };

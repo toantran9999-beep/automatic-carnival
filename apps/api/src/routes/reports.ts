@@ -159,6 +159,7 @@ reports.get("/overview", requirePermission("reports:read"), async (c) => {
     topItemRows,
     orderTypeRows,
     openTablesTotals,
+    openTakeawayTotals,
   ] = await Promise.all([
     // 1. Tổng hôm nay (hoàn tất)
     db
@@ -250,6 +251,29 @@ reports.get("/overview", requirePermission("reports:read"), async (c) => {
           ne(schema.orders.status, "cancelled"),
         ),
       ),
+    // 12. Đơn MANG VỀ đang mở (chưa thu tiền, chưa huỷ)
+    //
+    // ⚠️ Phải định nghĩa "đang mở" Y HỆT `GET /tables/takeaway` (routes/tables.ts):
+    // `type = 'takeout'` AND `status NOT IN ('completed','cancelled')`. Lệch một
+    // chút là số ở Bảng điều khiển không cộng ra được từ các thẻ ở tab Mang về —
+    // chủ quán xem một đằng một nẻo.
+    //
+    // ⚠️ KHÔNG giới hạn theo ngày: đơn mang về từ tối qua chưa thu vẫn là việc
+    // chưa xong. Giống truy vấn 11 ở trên.
+    //
+    // ⚠️ KHÔNG chồng lấn `openTablesRevenue` (truy vấn 11 chỉ tính đơn gắn phiên
+    // bàn, còn đây là đơn mang về không có phiên bàn) — cộng hai số lại mới ra
+    // toàn bộ tiền đang treo, không sợ đếm hai lần.
+    db
+      .select({ count: count(), total: sum(schema.orders.total) })
+      .from(schema.orders)
+      .where(
+        and(
+          ordersCondition,
+          eq(schema.orders.type, "takeout"),
+          sql`orders.status NOT IN ('completed','cancelled')`,
+        ),
+      ),
   ]);
 
   const todayOrders = Number(todayTotals[0]?.orders || 0);
@@ -290,6 +314,10 @@ reports.get("/overview", requirePermission("reports:read"), async (c) => {
         totalTables,
         /** Tiền đang treo ở các bàn còn khách — chưa thu, nên KHÔNG cộng vào doanh thu. */
         openTablesRevenue: Number(openTablesTotals[0]?.total || 0),
+        /** Đơn mang về chưa thu tiền (mọi ngày, không riêng hôm nay). */
+        openTakeawayOrders: Number(openTakeawayTotals[0]?.count || 0),
+        /** Tiền đang treo ở các đơn mang về — cũng chưa thu, KHÔNG cộng vào doanh thu. */
+        openTakeawayRevenue: Number(openTakeawayTotals[0]?.total || 0),
       },
       yesterday: { orders: yOrders, revenue: yRevenue },
       deltas: { revenuePct: pct(todayRevenue, yRevenue), ordersPct: pct(todayOrders, yOrders) },

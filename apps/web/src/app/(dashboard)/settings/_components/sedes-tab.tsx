@@ -425,13 +425,18 @@ export function SedesTab() {
                       Vì bảo mật, khóa đã lưu không hiện lại ở đây. Để trống là giữ nguyên khóa cũ.
                     </p>
                   </div>
+                  {/* KHÔNG bắt người dùng đi khai ipnUrl bên MoMo: địa chỉ này được
+                      gửi kèm trong TỪNG lệnh tạo giao dịch (và nằm trong chuỗi ký
+                      HMAC), nên MoMo luôn biết báo về đâu. Chỉ hiện ra để đối chiếu
+                      khi cần khai whitelist. */}
                   <p className="rounded-md bg-muted/50 p-2 text-xs text-muted-foreground">
-                    Nhớ khai <b>ipnUrl</b> bên MoMo trỏ về{" "}
+                    Không cần khai gì thêm bên MoMo — POS tự gửi địa chỉ nhận báo kèm mỗi
+                    giao dịch. Nếu trang Tích hợp của MoMo có ô <b>IPN URL</b> thì điền cho
+                    khớp:{" "}
                     <code className="break-all">
                       {(process.env.NEXT_PUBLIC_API_URL || "https://<tên-miền-API>").replace(/\/+$/, "")}
                       /api/payments/webhooks/momo
                     </code>
-                    . Không khai thì MoMo không báo về và sẽ không có gì tự động.
                   </p>
                 </>
               )}

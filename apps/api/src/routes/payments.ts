@@ -21,6 +21,7 @@ import {
   type MomoCredentials,
 } from "../lib/momo.js";
 import { logger } from "../lib/logger.js";
+import { createHmac, timingSafeEqual } from "node:crypto";
 
 const payments = new Hono<AppEnv>();
 const PAYMENT_REQUEST_TTL_MS = 60 * 60 * 1000;
@@ -505,11 +506,21 @@ async function finalizePaidRequest(request: any, args: {
 
 // Public SePay webhook. This must stay before auth middleware.
 payments.post("/webhooks/sepay", async (c) => {
-  const body = await c.req.json().catch(() => ({}));
+  // Giữ NGUYÊN chuỗi body thô để verify HMAC — SePay ký trên đúng byte đã gửi,
+  // JSON.stringify lại sẽ đổi thứ tự/khoảng trắng và chữ ký không bao giờ khớp.
+  const rawBody = await c.req.text();
+  let body: any = {};
+  try {
+    body = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    body = {};
+  }
   const providerTransactionId = webhookTransactionId(body);
   const amount = webhookAmountCents(body);
   const content = webhookContent(body);
-  const paymentCode = extractPaymentCode(content);
+  // SePay tự bóc mã đơn ra trường `code` theo cấu hình tiền tố bên nó. Ưu tiên
+  // dùng nếu có, không thì tự tìm "TODA-..." trong nội dung chuyển khoản.
+  const paymentCode = normalizeText(body.code).toUpperCase() || extractPaymentCode(content);
   const transferType = normalizeText(body.transferType || body.transfer_type).toLowerCase();
 
   if (transferType && transferType !== "in") {
@@ -540,11 +551,38 @@ payments.post("/webhooks/sepay", async (c) => {
     .limit(1);
   const sepay = paymentSettings(branch);
   const expectedSecret = normalizeText(sepay.webhook_secret || sepay.webhookSecret || sepay.api_key || sepay.apiKey);
-  const providedSecret = normalizeText(
-    c.req.header("x-sepay-api-key") ||
-    c.req.header("x-api-key") ||
-    c.req.header("authorization")?.replace(/^Bearer\s+/i, ""),
-  );
+
+  /**
+   * SePay cho chọn 4 kiểu xác thực; mình chấp nhận hai kiểu dùng được:
+   *
+   * - **API Key** → `Authorization: Apikey <khóa>`
+   *   ⚠️ Tiền tố là **"Apikey"**, KHÔNG phải "Bearer". Trước đây chỉ bóc "Bearer "
+   *   nên giá trị đem so là "Apikey abc..." → lệch → trả 401 cho MỌI giao dịch.
+   *   Khách chuyển tiền mà đơn treo mãi, và không có lỗi nào nổi lên.
+   * - **HMAC-SHA256** → `X-SePay-Signature: sha256=<hex>` + `X-SePay-Timestamp`,
+   *   ký trên chuỗi `{timestamp}.{body thô}`. Chắc hơn API Key vì chống sửa
+   *   nội dung giữa đường, nên thử trước.
+   */
+  const sigHeader = normalizeText(c.req.header("x-sepay-signature"));
+  const sigTimestamp = normalizeText(c.req.header("x-sepay-timestamp"));
+  let secretMatches = false;
+
+  if (expectedSecret && sigHeader && sigTimestamp) {
+    const expectedSig = createHmac("sha256", expectedSecret)
+      .update(`${sigTimestamp}.${rawBody}`)
+      .digest("hex");
+    const provided = sigHeader.replace(/^sha256=/i, "");
+    secretMatches =
+      provided.length === expectedSig.length &&
+      timingSafeEqual(Buffer.from(provided), Buffer.from(expectedSig));
+  } else if (expectedSecret) {
+    const providedSecret = normalizeText(
+      c.req.header("x-sepay-api-key") ||
+      c.req.header("x-api-key") ||
+      c.req.header("authorization")?.replace(/^(Apikey|Bearer)\s+/i, ""),
+    );
+    secretMatches = providedSecret === expectedSecret;
+  }
 
   // Bắt buộc phải cấu hình secret. Nếu chưa cấu hình, từ chối để tránh webhook
   // giả mạo báo "đã thanh toán" khi chi nhánh chưa đặt secret.
@@ -563,7 +601,7 @@ payments.post("/webhooks/sepay", async (c) => {
     return c.json({ success: false, error: "webhook secret not configured" }, 401);
   }
 
-  if (providedSecret !== expectedSecret) {
+  if (!secretMatches) {
     await logWebhookEvent({
       provider: "sepay",
       providerTransactionId,

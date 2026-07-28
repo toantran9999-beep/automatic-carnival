@@ -200,6 +200,63 @@ export function PosPaymentDialog({
     }
   };
 
+  /**
+   * Thu ngân tự xác nhận "khách đã chuyển tiền rồi" sau khi đã in phiếu QR.
+   *
+   * ⚠️ Không có nút này thì luồng chuyển khoản KHÔNG có đường đóng đơn: màn hình
+   * chỉ có mỗi nút in phiếu, nên thu ngân buộc phải quay ra bấm Tiền mặt/Thẻ để
+   * kết thúc. Hậu quả đo được trên dữ liệu thật (26-28/07): 32 phiếu QR in ra thì
+   * 24 đơn bị ghi thành "Thẻ", 7 đơn thành "Tiền mặt" — doanh thu chuyển khoản
+   * trong báo cáo bằng 0 dù ngày nào cũng có khách chuyển.
+   *
+   * Ghi `method: "transfer"` cho cả MoMo lẫn chuyển khoản ngân hàng — enum
+   * payment_method không có "momo", phân biệt bằng payment_requests.provider.
+   */
+  const handleConfirmQrPaid = async (shouldPrint: boolean) => {
+    if (!orderId || !isFormValid() || processing) return;
+    setProcessing(true);
+    setPrintedReceipt(shouldPrint);
+    try {
+      await createPayment.mutateAsync({
+        orderId,
+        method: "transfer",
+        amount: totalAmount,
+        tip: 0,
+      });
+      setPaymentSuccess(true);
+
+      if (shouldPrint) {
+        const org = orgSettings as any;
+        const branch = branchSettings as any;
+        printReceipt({
+          businessName: org?.name || "Restaurante",
+          ruc: org?.settings?.ruc || undefined,
+          address: branch?.address || undefined,
+          orderNumber,
+          createdAt: new Date().toISOString(),
+          items: mappedItems,
+          subtotal: totalAmount - taxAmount,
+          tax: taxAmount,
+          total: totalAmount,
+          paymentMethod: "transfer",
+          customerName: customerName || undefined,
+          docType,
+          docNumber: docType !== "boleta_simple" ? docNumber : undefined,
+          docHolderName: docType === "factura" ? docHolderName : undefined,
+        });
+      }
+
+      setTimeout(() => {
+        onSuccess();
+        onOpenChange(false);
+      }, 1500);
+    } catch {
+      // Lỗi đã có toast từ mutateAsync.
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const handlePaymentSubmit = async (shouldPrint: boolean) => {
     if (!orderId || !isFormValid() || processing) return;
     if (isQrMethod) {
@@ -510,25 +567,60 @@ export function PosPaymentDialog({
             số tiền bên phải. Xếp dọc vừa hết lỗi vừa dễ bấm trên máy quầy. */}
         {!paymentSuccess && (
           <div className="mt-2 flex flex-col gap-2">
-            <Button
-              onClick={() => handlePaymentSubmit(true)}
-              disabled={processing || !isFormValid()}
-              className="h-12 w-full font-semibold text-base"
-            >
-              {processing ? (
-                <>
+            {/* ĐÃ in phiếu QR rồi thì việc chính không còn là in nữa, mà là xác nhận
+                khách đã chuyển tiền. Đưa nút này lên TRÊN CÙNG để thu ngân bấm đúng
+                chỗ — trước đây không có nút này nên họ phải bấm Tiền mặt/Thẻ, làm
+                doanh thu chuyển khoản trong báo cáo bằng 0. */}
+            {isQrMethod && transferRequest && (
+              <Button
+                onClick={() => handleConfirmQrPaid(true)}
+                disabled={processing}
+                className="h-12 w-full font-semibold text-base bg-emerald-600 hover:bg-emerald-700 text-white"
+              >
+                {processing ? (
                   <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  {lang === "vi" ? "Đang xử lý..." : "Processing..."}
-                </>
-              ) : (
-                <>
-                  <Printer className="h-4 w-4 mr-2" />
-                  {isQrMethod
-                    ? "In phiếu tạm tính QR"
-                    : (lang === "vi" ? "Xác nhận & In hóa đơn" : "Confirm & Print Receipt")}
-                </>
-              )}
-            </Button>
+                ) : (
+                  <CheckCircle2 className="h-4 w-4 mr-2" />
+                )}
+                Khách đã chuyển — Thu tiền &amp; In hóa đơn
+              </Button>
+            )}
+
+            {/* In phiếu QR chỉ còn là việc chính khi CHƯA in lần nào. In rồi thì nút
+                in lại nằm ngay cạnh mã QR phía trên, khỏi lặp ở đây. */}
+            {!(isQrMethod && transferRequest) && (
+              <Button
+                onClick={() => handlePaymentSubmit(true)}
+                disabled={processing || !isFormValid()}
+                className="h-12 w-full font-semibold text-base"
+              >
+                {processing ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    {lang === "vi" ? "Đang xử lý..." : "Processing..."}
+                  </>
+                ) : (
+                  <>
+                    <Printer className="h-4 w-4 mr-2" />
+                    {isQrMethod
+                      ? "In phiếu tạm tính QR"
+                      : (lang === "vi" ? "Xác nhận & In hóa đơn" : "Confirm & Print Receipt")}
+                  </>
+                )}
+              </Button>
+            )}
+
+            {/* Không in hóa đơn — quán nhiều khách không lấy, đỡ tốn giấy. */}
+            {isQrMethod && transferRequest && (
+              <Button
+                variant="ghost"
+                onClick={() => handleConfirmQrPaid(false)}
+                disabled={processing}
+                className="h-11 w-full font-semibold"
+              >
+                Khách đã chuyển — Thu tiền, không in
+              </Button>
+            )}
 
             {/* Chuyển khoản chỉ có MỘT nút: phiếu đó mang mã QR cho khách quét,
                 không in thì khách không có gì để quét. */}

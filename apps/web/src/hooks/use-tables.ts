@@ -263,10 +263,14 @@ export interface TakeawayOrder {
     id: string;
     menuItemId: string;
     name: string;
+    /** Giá GỐC 1 đơn vị — CHƯA gồm tùy chọn. Tiền cả dòng nằm ở `total`. */
     unitPrice: number;
     quantity: number;
+    total: number;
+    unit?: string;
     notes?: string;
-    modifiers: { modifierId: string; name: string; price: number }[];
+    /** `modifierId` là null khi tùy chọn đã bị xóa khỏi thực đơn — tên/giá vẫn còn (snapshot). */
+    modifiers: { modifierId: string | null; name: string; price: number }[];
   }[];
 }
 

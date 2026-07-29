@@ -68,6 +68,9 @@ export function ReceiptDialog({ open, onOpenChange, payment }: ReceiptDialogProp
           quantity: i.quantity,
           unit_price: i.unit_price,
           total: i.total,
+          // GET /api/orders/:id có trả tùy chọn — thiếu dòng này là hóa đơn in lại
+          // mất phần giải thích vì sao "Bạc xỉu 20.000đ" mà thu 18.000đ.
+          modifiers: i.modifiers ?? [],
         })),
         subtotal: orderData?.subtotal ?? 0,
         tax: orderData?.tax ?? 0,

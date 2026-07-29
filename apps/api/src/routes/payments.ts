@@ -11,7 +11,7 @@ import { peruStartOfDay, peruEndOfDay } from "../lib/timezone.js";
 import { buildVietQrPayload, resolveBankBin, bankDisplayName } from "@restai/config";
 import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
-import { handleOrderCompletion } from "../services/order.service.js";
+import { handleOrderCompletion, loadItemModifiers } from "../services/order.service.js";
 import {
   createMomoPayment,
   verifyMomoIpnSignature,
@@ -391,8 +391,9 @@ async function buildPaidOrderPayload(orderId: string) {
       .limit(1);
     if (!order) return null;
 
-    const items = await db
+    const rawItems = await db
       .select({
+        id: schema.orderItems.id,
         name: schema.orderItems.name,
         quantity: schema.orderItems.quantity,
         unit_price: schema.orderItems.unit_price,
@@ -402,6 +403,11 @@ async function buildPaidOrderPayload(orderId: string) {
       })
       .from(schema.orderItems)
       .where(eq(schema.orderItems.order_id, orderId));
+
+    // Trạm quầy tự in hóa đơn từ gói tin này. Thiếu tùy chọn là phiếu in dòng món
+    // theo giá gốc mà tổng lại là giá đã trừ tùy chọn — hai số vênh nhau.
+    const modMap = await loadItemModifiers(rawItems.map((i) => i.id));
+    const items = rawItems.map((i) => ({ ...i, modifiers: modMap.get(i.id) ?? [] }));
 
     let tableNumber: number | null = null;
     if (order.table_session_id) {

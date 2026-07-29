@@ -18,6 +18,7 @@ import { generateOrderNumber, generateQrCode } from "../lib/id.js";
 import { signCustomerToken } from "../lib/jwt.js";
 import { wsManager } from "../ws/manager.js";
 import * as sessionService from "../services/session.service.js";
+import { loadItemModifiers } from "../services/order.service.js";
 import { t } from "../lib/i18n.js";
 
 const tables = new Hono<AppEnv>();
@@ -244,11 +245,17 @@ tables.get("/takeaway", requirePermission("orders:read"), async (c) => {
       name: schema.orderItems.name,
       unit_price: schema.orderItems.unit_price,
       quantity: schema.orderItems.quantity,
+      total: schema.orderItems.total,
       notes: schema.orderItems.notes,
       unit: schema.orderItems.unit,
     })
     .from(schema.orderItems)
     .where(inArray(schema.orderItems.order_id, orderIds));
+
+  // ⚠️ Chỗ này TỪNG ghi cứng `modifiers: []` — đơn mang về ra tới máy tính tiền là
+  // mất sạch tùy chọn, nên phiếu in dòng món theo `unit_price` (giá gốc 20.000đ)
+  // trong khi tổng lấy từ đơn (18.000đ). Một tờ giấy hai con số vênh nhau.
+  const modsByItem = await loadItemModifiers(items.map((i) => i.id));
 
   const byOrder = new Map<string, typeof items>();
   for (const it of items) {
@@ -267,8 +274,10 @@ tables.get("/takeaway", requirePermission("orders:read"), async (c) => {
         name: i.name,
         unitPrice: i.unit_price,
         quantity: i.quantity,
+        total: i.total,
+        unit: i.unit ?? undefined,
         notes: i.notes ?? undefined,
-        modifiers: [] as { modifierId: string; name: string; price: number }[],
+        modifiers: modsByItem.get(i.id) ?? [],
       })),
     };
   });
@@ -1579,35 +1588,13 @@ tables.get(
         .from(schema.orderItems)
         .where(inArray(schema.orderItems.order_id, orderIds));
 
-      // Fetch modifier options for each order item
-      const itemIds = items.map(it => it.id);
-      if (itemIds.length > 0) {
-        const modifiers = await db
-          .select({
-            order_item_id: schema.orderItemModifiers.order_item_id,
-            modifier_id: schema.orderItemModifiers.modifier_id,
-            name: schema.modifiers.name,
-            price: schema.modifiers.price,
-          })
-          .from(schema.orderItemModifiers)
-          .innerJoin(schema.modifiers, eq(schema.orderItemModifiers.modifier_id, schema.modifiers.id))
-          .where(inArray(schema.orderItemModifiers.order_item_id, itemIds));
-
-        // Group modifiers by order_item_id
-        const modMap = new Map<string, any[]>();
-        for (const mod of modifiers) {
-          if (!modMap.has(mod.order_item_id)) modMap.set(mod.order_item_id, []);
-          modMap.get(mod.order_item_id)!.push({
-            modifierId: mod.modifier_id,
-            name: mod.name,
-            price: mod.price,
-          });
-        }
-
-        // Map modifiers back to items
-        for (const item of items) {
-          item.modifiers = modMap.get(item.id) || [];
-        }
+      // Tùy chọn của từng dòng món.
+      // ⚠️ TỪNG innerJoin sang bảng `modifiers` hiện tại để lấy tên+giá: sửa giá tùy
+      // chọn trong thực đơn là phiếu cũ đổi giá theo, còn xóa tùy chọn khỏi thực đơn
+      // (modifier_id → NULL) là rớt hẳn dòng. Nay đọc snapshot lưu lúc bán.
+      const modMap = await loadItemModifiers(items.map((it) => it.id));
+      for (const item of items) {
+        item.modifiers = modMap.get(item.id) || [];
       }
     }
 

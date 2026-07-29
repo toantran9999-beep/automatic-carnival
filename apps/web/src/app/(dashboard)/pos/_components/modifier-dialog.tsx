@@ -22,8 +22,13 @@ import { useTranslation } from "@/stores/lang-store";
 // ---------------------------------------------------------------------------
 
 export interface CartModifier {
-  modifierId: string;
+  /**
+   * null khi tùy chọn đã bị xóa khỏi thực đơn — đơn cũ vẫn giữ tên & giá (snapshot)
+   * để in hóa đơn, nhưng không gọi lại được nữa (xem `toOrderItems` ở pos/page).
+   */
+  modifierId: string | null;
   name: string;
+  /** Phụ trội mỗi đơn vị, tính bằng xu. Âm = giảm giá. */
   price: number;
 }
 

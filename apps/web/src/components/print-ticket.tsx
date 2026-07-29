@@ -26,6 +26,21 @@ function qrSvgMarkup(payload: string, sizePx = 160): string {
   }
 }
 
+/** Tùy chọn kèm giá phụ trội MỖI ĐƠN VỊ (âm = giảm giá, VD "Nhẹ" = -200000 xu). */
+interface TicketModifier {
+  name: string;
+  price: number;
+}
+
+/**
+ * ⚠️ QUY ƯỚC TIỀN — mọi nơi gọi in phải theo đúng, kẻo phiếu ra sai:
+ * - `unit_price`: giá gốc 1 đơn vị, **CHƯA** gồm tùy chọn
+ * - `total`: tiền cả dòng, **ĐÃ** gồm tùy chọn
+ * - `modifiers[].price`: phụ trội **mỗi đơn vị**
+ *
+ * Bất biến: `Σ(unit_price×qty + Σ(mod.price×qty))` phải bằng `subtotal`. Nếu tầng
+ * gọi cộng sẵn tùy chọn vào `unit_price` thì phiếu tính phần phụ trội hai lần.
+ */
 interface OrderItem {
   name: string;
   quantity: number;
@@ -34,8 +49,31 @@ interface OrderItem {
   notes?: string;
   /** Đơn vị tính (Ly, Phần, Dĩa...) — tùy chọn */
   unit?: string;
-  /** Topping/tùy chọn — phiếu đặt món in mỗi topping 1 dòng riêng cho dễ pha chế */
-  modifiers?: string[];
+  /**
+   * Topping/tùy chọn — in mỗi thứ 1 dòng riêng.
+   * Phiếu đặt món chỉ cần tên (`string[]`); hóa đơn & tạm tính cần cả giá để khách
+   * hiểu vì sao "Bạc xỉu 20.000đ" lại thu 18.000đ.
+   */
+  modifiers?: Array<string | TicketModifier>;
+}
+
+/** Về một dạng duy nhất để 6 hàm dựng phiếu khỏi phải tự đoán kiểu dữ liệu. */
+function normalizeModifiers(mods: OrderItem["modifiers"]): TicketModifier[] {
+  return (mods ?? []).map((m) =>
+    typeof m === "string" ? { name: m, price: 0 } : { name: m.name, price: Number(m.price) || 0 },
+  );
+}
+
+/** "+5.000đ" / "-2.000đ"; chuỗi rỗng khi tùy chọn không đổi giá (khỏi in cột tiền). */
+function modMoneyVi(cents: number): string {
+  if (!cents) return "";
+  return `${cents > 0 ? "+" : "-"}${Math.round(Math.abs(cents) / 100).toLocaleString("vi-VN")}đ`;
+}
+
+/** Bản không dấu cho ESC/POS chữ thô — cùng đuôi " d" với moneyPlain cho thẳng cột. */
+function modMoneyPlain(cents: number): string {
+  if (!cents) return "";
+  return `${cents > 0 ? "+" : "-"}${Math.round(Math.abs(cents) / 100).toLocaleString("vi-VN")} d`;
 }
 
 function currentStaffName(): string {
@@ -365,6 +403,18 @@ function twoCol(left: string, right: string, width = ESC_POS_WIDTH): string {
   return `${l}${" ".repeat(Math.max(1, width - l.length - r.length))}${r}`;
 }
 
+/**
+ * Như `twoCol` nhưng GIỮ được phần thụt đầu dòng — `plainLine` bên trong `twoCol`
+ * trim sạch khoảng trắng, nên viết `twoCol("  - Nhẹ", ...)` là mất thụt lề và dòng
+ * tùy chọn tụt về sát lề trái, nhìn y như một món riêng.
+ */
+function twoColIndented(indent: number, left: string, right: string, width: number): string {
+  const pad = " ".repeat(indent);
+  const l = pad + plainLine(left, Math.max(4, width - indent - right.length - 1));
+  const r = plainLine(right, width);
+  return `${l}${" ".repeat(Math.max(1, width - l.length - r.length))}${r}`;
+}
+
 function escposAlign(position: "left" | "center" | "right"): number[] {
   const value = position === "center" ? 1 : position === "right" ? 2 : 0;
   return [0x1b, 0x61, value];
@@ -435,8 +485,9 @@ function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAUL
     for (let li = 1; li < nameLines.length; li++) {
       rows.push(`${" ".repeat(head.length)}${nameLines[li]}`);
     }
-    // Mỗi topping/tùy chọn 1 dòng riêng
-    for (const mod of item.modifiers ?? []) {
+    // Mỗi topping/tùy chọn 1 dòng riêng. Phiếu đặt món KHÔNG in giá — người pha chế
+    // chỉ cần biết pha thế nào, tiền nong là chuyện của hóa đơn.
+    for (const mod of normalizeModifiers(item.modifiers).map((m) => m.name)) {
       for (const ml of wrapPlain(mod, Math.max(8, width - 6))) {
         rows.push(`    - ${ml}`);
       }
@@ -482,7 +533,13 @@ function buildReceiptEscPos(data: ReceiptTicketData, cfg: ReceiptConfig = DEFAUL
   );
 
   for (const item of data.items) {
-    rows.push(twoCol(`${item.quantity}x ${plainLine(item.name, W - 12)}`, moneyPlain(item.total), W));
+    // Dòng món in GIÁ GỐC (chưa gồm tùy chọn), rồi mỗi tùy chọn một dòng kèm phần
+    // cộng/trừ — cộng dọc ra đúng Tạm tính nên khách tự kiểm được. Trước đây in
+    // thẳng item.total mà giấu tùy chọn, thành ra "Bạc xỉu 20.000" nhưng thu 18.000.
+    rows.push(twoCol(`${item.quantity}x ${plainLine(item.name, W - 12)}`, moneyPlain(item.unit_price * item.quantity), W));
+    for (const mod of normalizeModifiers(item.modifiers)) {
+      rows.push(twoColIndented(2, `- ${mod.name}`, modMoneyPlain(mod.price * item.quantity), W));
+    }
   }
 
   rows.push(
@@ -503,12 +560,18 @@ function buildReceiptEscPos(data: ReceiptTicketData, cfg: ReceiptConfig = DEFAUL
 // codepage tiếng Việt của máy (thứ mà ESC/POS text thô không có).
 // ---------------------------------------------------------------------------
 
+// ⚠️ `indent` tính bằng PIXEL, không phải khoảng trắng: hàm wrap() bên dưới trim
+// sạch khoảng trắng đầu dòng, nên thụt lề bằng dấu cách là mất trắng — dòng tùy
+// chọn tụt về sát lề trái, nhìn y như một món riêng.
 type RasterSeg =
-  | { kind: "text"; text: string; align?: "left" | "center"; bold?: boolean; big?: boolean }
-  | { kind: "twoCol"; left: string; right: string; bold?: boolean; big?: boolean }
+  | { kind: "text"; text: string; align?: "left" | "center"; bold?: boolean; big?: boolean; indent?: number }
+  | { kind: "twoCol"; left: string; right: string; bold?: boolean; big?: boolean; indent?: number }
   | { kind: "sep" }
   | { kind: "space" }
   | { kind: "qr"; payload: string };
+
+/** Thụt lề dòng tùy chọn (px) — dùng chung cho cả 3 loại phiếu cho nhìn giống nhau. */
+const MOD_INDENT_PX = 18;
 
 function moneyVi(cents: number): string {
   return `${Math.round(cents / 100).toLocaleString("vi-VN")}đ`;
@@ -529,7 +592,16 @@ function receiptRasterSegments(data: ReceiptTicketData, cfg: ReceiptConfig): Ras
   if (cfg.show.customer && data.customerName) segs.push({ kind: "text", text: `Khách: ${data.customerName}` });
   segs.push({ kind: "sep" });
   for (const item of data.items) {
-    segs.push({ kind: "twoCol", left: `${item.quantity}x ${item.name}`, right: moneyVi(item.total) });
+    // Giá gốc ở dòng món, phụ trội tách ra từng dòng — xem chú thích ở buildReceiptEscPos.
+    segs.push({ kind: "twoCol", left: `${item.quantity}x ${item.name}`, right: moneyVi(item.unit_price * item.quantity) });
+    for (const mod of normalizeModifiers(item.modifiers)) {
+      segs.push({
+        kind: "twoCol",
+        left: `- ${mod.name}`,
+        right: modMoneyVi(mod.price * item.quantity),
+        indent: MOD_INDENT_PX,
+      });
+    }
   }
   segs.push({ kind: "sep" });
   segs.push({ kind: "twoCol", left: "Tạm tính", right: moneyVi(data.subtotal) });
@@ -586,12 +658,13 @@ function drawSegmentsToCanvas(segs: Exclude<RasterSeg, { kind: "qr" }>[], cfg: R
   // Tiền xử lý: tính sẵn các dòng đã wrap cho từng segment để đo chiều cao
   const prepared = segs.map((s) => {
     if (s.kind === "text") {
-      return { seg: s, lines: wrap(s.text, fontOf(s), s.align === "center" ? width - 8 : width) };
+      const ind = s.indent ?? 0;
+      return { seg: s, lines: wrap(s.text, fontOf(s), (s.align === "center" ? width - 8 : width) - ind) };
     }
     if (s.kind === "twoCol") {
       measure.font = fontOf(s);
       const rightW = measure.measureText(s.right).width;
-      return { seg: s, lines: wrap(s.left, fontOf(s), width - rightW - 12) };
+      return { seg: s, lines: wrap(s.left, fontOf(s), width - rightW - 12 - (s.indent ?? 0)) };
     }
     return { seg: s, lines: null as string[] | null };
   });
@@ -648,10 +721,11 @@ function drawSegmentsToCanvas(segs: Exclude<RasterSeg, { kind: "qr" }>[], cfg: R
     const font = fontOf(s);
     ctx.font = font;
     const rowH = lineH((s as any).big);
+    const indent = (s as { indent?: number }).indent ?? 0;
     if (s.kind === "twoCol") {
       const lines = p.lines || [s.left];
       ctx.textAlign = "left";
-      lines.forEach((line, li) => ctx.fillText(line, 0, y + li * rowH));
+      lines.forEach((line, li) => ctx.fillText(line, indent, y + li * rowH));
       ctx.textAlign = "right";
       ctx.fillText(s.right, width, y); // số tiền nằm ở dòng đầu
       y += rowH * lines.length;
@@ -662,7 +736,7 @@ function drawSegmentsToCanvas(segs: Exclude<RasterSeg, { kind: "qr" }>[], cfg: R
         lines.forEach((line, li) => ctx.fillText(line, width / 2, y + li * rowH));
       } else {
         ctx.textAlign = "left";
-        lines.forEach((line, li) => ctx.fillText(line, 0, y + li * rowH));
+        lines.forEach((line, li) => ctx.fillText(line, indent, y + li * rowH));
       }
       y += rowH * lines.length;
     }
@@ -771,11 +845,11 @@ function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): Ras
   segs.push({ kind: "sep" });
   for (const item of data.items) {
     segs.push({ kind: "text", text: `${item.quantity} x ${item.name}${item.unit ? ` (${item.unit})` : ""}`, bold: true });
-    // Mỗi topping/tùy chọn 1 dòng riêng cho dễ pha chế
-    for (const mod of item.modifiers ?? []) {
-      segs.push({ kind: "text", text: `    - ${mod}` });
+    // Mỗi topping/tùy chọn 1 dòng riêng cho dễ pha chế (không in giá)
+    for (const mod of normalizeModifiers(item.modifiers)) {
+      segs.push({ kind: "text", text: `- ${mod.name}`, indent: MOD_INDENT_PX });
     }
-    if (item.notes) segs.push({ kind: "text", text: `  * ${item.notes}` });
+    if (item.notes) segs.push({ kind: "text", text: `* ${item.notes}`, indent: MOD_INDENT_PX });
   }
   if (data.notes) {
     segs.push({ kind: "sep" });
@@ -810,7 +884,16 @@ function transferRasterSegments(data: TemporaryTransferBillData, cfg: ReceiptCon
   if (cfg.transfer.show.customer && data.customerName) segs.push({ kind: "text", text: `Khách: ${data.customerName}` });
   segs.push({ kind: "sep" });
   for (const item of data.items) {
-    segs.push({ kind: "twoCol", left: `${item.quantity}x ${item.name}`, right: moneyVi(item.total) });
+    // Giá gốc ở dòng món, phụ trội tách ra từng dòng — xem chú thích ở buildReceiptEscPos.
+    segs.push({ kind: "twoCol", left: `${item.quantity}x ${item.name}`, right: moneyVi(item.unit_price * item.quantity) });
+    for (const mod of normalizeModifiers(item.modifiers)) {
+      segs.push({
+        kind: "twoCol",
+        left: `- ${mod.name}`,
+        right: modMoneyVi(mod.price * item.quantity),
+        indent: MOD_INDENT_PX,
+      });
+    }
   }
   segs.push({ kind: "sep" });
   segs.push({ kind: "twoCol", left: "Tạm tính", right: moneyVi(data.subtotal) });
@@ -869,7 +952,11 @@ function buildTemporaryTransferEscPos(data: TemporaryTransferBillData, cfg: Rece
   ].filter((r) => r !== "");
 
   for (const item of data.items) {
-    rows.push(twoCol(`${item.quantity}x ${plainLine(item.name, width - 12)}`, moneyPlain(item.total), width));
+    // Giá gốc ở dòng món, phụ trội tách ra từng dòng — xem chú thích ở buildReceiptEscPos.
+    rows.push(twoCol(`${item.quantity}x ${plainLine(item.name, width - 12)}`, moneyPlain(item.unit_price * item.quantity), width));
+    for (const mod of normalizeModifiers(item.modifiers)) {
+      rows.push(twoColIndented(2, `- ${mod.name}`, modMoneyPlain(mod.price * item.quantity), width));
+    }
   }
 
   rows.push(
@@ -915,6 +1002,36 @@ function formatCents(cents: number): string {
     minimumFractionDigits: 0,
     maximumFractionDigits: 0,
   }).format(value);
+}
+
+/** Dấu +/- cho phụ trội tùy chọn; chuỗi rỗng khi không đổi giá (khỏi in cột tiền). */
+function formatModCents(cents: number): string {
+  if (!cents) return "";
+  return `${cents > 0 ? "+" : "-"}${formatCents(Math.abs(cents))}`;
+}
+
+/**
+ * Một dòng món trên hóa đơn/tạm tính (HTML), kèm mỗi tùy chọn một dòng phụ.
+ *
+ * Dòng món in GIÁ GỐC, dòng phụ in phần cộng/trừ → cộng dọc ra đúng Tạm tính.
+ * Trước đây chỉ in `item.total` và giấu tùy chọn, nên "Bạc xỉu 20.000đ" mà thu
+ * 18.000đ, khách nhìn tưởng tính sai.
+ */
+function itemRowsHtml(item: OrderItem): string {
+  const base = `<tr>
+          <td style="text-align:left;padding:1px 0;">${item.quantity}x ${escapeHtml(item.name)}</td>
+          <td style="text-align:right;padding:1px 0;white-space:nowrap;">${formatCents(item.unit_price * item.quantity)}</td>
+        </tr>`;
+  const mods = normalizeModifiers(item.modifiers)
+    .map((m) => {
+      const money = formatModCents(m.price * item.quantity);
+      return `<tr>
+          <td style="text-align:left;padding:0 0 1px 10px;">- ${escapeHtml(m.name)}</td>
+          <td style="text-align:right;padding:0 0 1px 0;white-space:nowrap;">${money}</td>
+        </tr>`;
+    })
+    .join("");
+  return base + mods;
 }
 
 function formatDateTime(dateStr: string): string {
@@ -1011,8 +1128,8 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
 
   const rowsHtml = data.items
     .map((item) => {
-      const mods = (item.modifiers ?? [])
-        .map((m) => `<div class="sub">- ${escapeHtml(m)}</div>`)
+      const mods = normalizeModifiers(item.modifiers)
+        .map((m) => `<div class="sub">- ${escapeHtml(m.name)}</div>`)
         .join("");
       const note = item.notes ? `<div class="sub">* ${escapeHtml(item.notes)}</div>` : "";
       return `<tr>
@@ -1119,15 +1236,7 @@ function buildReceiptTicketHtml(data: ReceiptTicketData, cfg: ReceiptConfig = DE
     : cfg.separator === "stars" ? "border-top:1px dotted #000;"
     : "border-top:1px dashed #000;";
 
-  const itemsHtml = data.items
-    .map(
-      (item) =>
-        `<tr>
-          <td style="text-align:left;padding:1px 0;">${item.quantity}x ${item.name}</td>
-          <td style="text-align:right;padding:1px 0;white-space:nowrap;">${formatCents(item.total)}</td>
-        </tr>`
-    )
-    .join("");
+  const itemsHtml = data.items.map((item) => itemRowsHtml(item)).join("");
 
   // Determine document title and customer info based on docType
   let docTitle = t.retailReceipt;
@@ -1207,15 +1316,7 @@ function buildReceiptTicketHtml(data: ReceiptTicketData, cfg: ReceiptConfig = DE
 }
 
 function buildTemporaryTransferBillHtml(data: TemporaryTransferBillData, cfg: ReceiptConfig = DEFAULT_RECEIPT_CONFIG): string {
-  const itemsHtml = data.items
-    .map(
-      (item) =>
-        `<tr>
-          <td style="text-align:left;padding:1px 0;">${item.quantity}x ${escapeHtml(item.name)}</td>
-          <td style="text-align:right;padding:1px 0;white-space:nowrap;">${formatCents(item.total)}</td>
-        </tr>`,
-    )
-    .join("");
+  const itemsHtml = data.items.map((item) => itemRowsHtml(item)).join("");
   const expires = new Date(data.expiresAt).toLocaleTimeString("vi-VN", {
     hour: "2-digit",
     minute: "2-digit",
@@ -1544,9 +1645,17 @@ export function usePrintSampleReceipt() {
       phone: branchSettings?.phone || undefined,
       orderNumber: "IN-THU-01",
       createdAt: new Date().toISOString(),
+      // Có 1 món kèm tùy chọn GIẢM giá để in thử thấy luôn dòng phụ: 31.000 - 2.000
+      // = 29.000, cộng với 50.000 ra đúng 79.000 ở dòng Tạm tính.
       items: [
         { name: "Cà phê sữa", quantity: 2, unit_price: 2500000, total: 5000000 },
-        { name: "Bạc xỉu", quantity: 1, unit_price: 2900000, total: 2900000 },
+        {
+          name: "Bạc xỉu",
+          quantity: 1,
+          unit_price: 3100000,
+          total: 2900000,
+          modifiers: [{ name: "Nhẹ", price: -200000 }],
+        },
       ],
       subtotal: 7900000,
       tax: 0,
@@ -1637,9 +1746,17 @@ export function usePrintSampleTransfer() {
       customerName: "Khách in thử",
       createdAt: new Date().toISOString(),
       expiresAt: new Date(Date.now() + 15 * 60 * 1000).toISOString(),
+      // Giữ nguyên tổng 79.000 để khớp số tiền trong QR mẫu ở trên; món thứ hai có
+      // tùy chọn giảm giá để in thử thấy luôn dòng phụ.
       items: [
         { name: "Cà phê sữa", quantity: 2, unit_price: 2500000, total: 5000000 },
-        { name: "Bạc xỉu", quantity: 1, unit_price: 2900000, total: 2900000 },
+        {
+          name: "Bạc xỉu",
+          quantity: 1,
+          unit_price: 3100000,
+          total: 2900000,
+          modifiers: [{ name: "Nhẹ", price: -200000 }],
+        },
       ],
       subtotal: 7900000,
       tax: 0,

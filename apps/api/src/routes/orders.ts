@@ -17,7 +17,7 @@ import { requirePermission, blockLiveOps } from "../middleware/rbac.js";
 import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
 import { z } from "zod";
-import { createOrder, addItemsToOrder, handleOrderCompletion, OrderValidationError } from "../services/order.service.js";
+import { createOrder, addItemsToOrder, handleOrderCompletion, loadItemModifiers, OrderValidationError } from "../services/order.service.js";
 import { signCustomerToken } from "../lib/jwt.js";
 
 const orders = new Hono<AppEnv>();
@@ -452,10 +452,15 @@ orders.get(
       );
     }
 
-    const items = await db
+    const rawItems = await db
       .select()
       .from(schema.orderItems)
       .where(eq(schema.orderItems.order_id, order.id));
+
+    // Tùy chọn phải đi kèm: màn In lại hóa đơn (payments) đọc đúng endpoint này,
+    // thiếu là hóa đơn in ra mất dòng giải thích chênh lệch giá.
+    const modMap = await loadItemModifiers(rawItems.map((i) => i.id));
+    const items = rawItems.map((i) => ({ ...i, modifiers: modMap.get(i.id) ?? [] }));
 
     return c.json({ success: true, data: { ...order, items } });
   },

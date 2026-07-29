@@ -183,18 +183,22 @@ export function PosPaymentDialog({
     setDocHolderName("");
   };
 
+  /**
+   * ⚠️ `unit_price` = giá GỐC chưa gồm tùy chọn, `total` = tiền cả dòng đã gồm —
+   * đúng quy ước của print-ticket, để phiếu in được dòng phụ "- Nhẹ  -2.000đ" mà
+   * cộng dọc vẫn ra đúng Tạm tính. Đừng cộng phụ trội vào `unit_price` hay ghép
+   * tên tùy chọn vào tên món: sẽ tính phụ trội hai lần.
+   */
   const mappedItems = cart.map((i) => {
     const modTotal = i.modifiers.reduce((sum, m) => sum + m.price, 0);
-    const nameWithMods = i.modifiers.length > 0
-      ? `${i.name} (${i.modifiers.map((m) => m.name).join(", ")})`
-      : i.name;
     return {
-      name: nameWithMods,
+      name: i.name,
       quantity: i.quantity,
-      unit_price: i.unitPrice + modTotal,
+      unit_price: i.unitPrice,
       total: (i.unitPrice + modTotal) * i.quantity,
       notes: i.notes,
       unit: i.unit,
+      modifiers: i.modifiers.map((m) => ({ name: m.name, price: m.price })),
     };
   });
 

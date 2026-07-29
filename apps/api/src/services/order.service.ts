@@ -165,6 +165,53 @@ async function getBranchTaxRate(branchId: string): Promise<number> {
   return branch?.tax_rate ?? 1000;
 }
 
+export interface ItemModifierSnapshot {
+  modifierId: string | null;
+  name: string;
+  /** Phụ trội MỖI ĐƠN VỊ, tính bằng xu. Âm = giảm giá (VD "Nhẹ" = -200000). */
+  price: number;
+}
+
+/**
+ * Lấy tùy chọn (topping/size/liều) của một loạt dòng món, gom sẵn theo
+ * `order_item_id` để gắn vào kết quả.
+ *
+ * ⚠️ Đọc tên + giá từ SNAPSHOT trong `order_item_modifiers`, KHÔNG join sang bảng
+ * `modifiers` hiện tại. Join sang bảng gốc thì sửa giá tùy chọn trong thực đơn là
+ * phiếu cũ đổi giá theo, còn xóa tùy chọn khỏi thực đơn (`modifier_id` → NULL) là
+ * `innerJoin` rớt hẳn dòng — hóa đơn mất luôn phần giải thích chênh lệch giá.
+ *
+ * ⚠️ Mọi chỗ đọc dòng món ra để IN đều phải gọi hàm này. Thiếu tùy chọn thì phiếu
+ * in ra `unit_price` (giá gốc, chưa gồm tùy chọn) mà tổng lại lấy từ đơn, thành ra
+ * hai con số vênh nhau trên cùng tờ giấy.
+ */
+export async function loadItemModifiers(
+  itemIds: string[],
+): Promise<Map<string, ItemModifierSnapshot[]>> {
+  const map = new Map<string, ItemModifierSnapshot[]>();
+  if (itemIds.length === 0) return map;
+
+  const rows = await db
+    .select({
+      order_item_id: schema.orderItemModifiers.order_item_id,
+      modifier_id: schema.orderItemModifiers.modifier_id,
+      name: schema.orderItemModifiers.name,
+      price: schema.orderItemModifiers.price,
+    })
+    .from(schema.orderItemModifiers)
+    .where(inArray(schema.orderItemModifiers.order_item_id, itemIds));
+
+  for (const r of rows) {
+    if (!map.has(r.order_item_id)) map.set(r.order_item_id, []);
+    map.get(r.order_item_id)!.push({
+      modifierId: r.modifier_id,
+      name: r.name,
+      price: r.price,
+    });
+  }
+  return map;
+}
+
 /**
  * Validates menu items and creates an order with its items.
  * Returns the created order and items, or throws an error if validation fails.

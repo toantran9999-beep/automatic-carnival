@@ -82,6 +82,8 @@ export function StationProvider() {
           total: i.total,
           notes: i.notes ?? undefined,
           unit: i.unit ?? undefined,
+          // Thiếu tùy chọn là hóa đơn in giá gốc mà tổng lại đã trừ tùy chọn.
+          modifiers: (i as any).modifiers ?? [],
         })),
         subtotal: (p.subtotal ?? 0),
         tax: p.tax ?? 0,

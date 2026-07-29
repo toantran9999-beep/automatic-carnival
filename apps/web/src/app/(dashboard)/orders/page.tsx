@@ -47,6 +47,9 @@ export default function OrdersPage() {
           quantity: i.quantity,
           unit_price: i.unit_price,
           total: i.total,
+          // Không có dòng này thì hóa đơn in ra `unit_price` (giá gốc) mà tổng lại
+          // là giá đã trừ tùy chọn — hai con số vênh nhau trên cùng tờ giấy.
+          modifiers: i.modifiers ?? [],
         })),
         subtotal: order.subtotal ?? 0,
         tax: order.tax ?? 0,

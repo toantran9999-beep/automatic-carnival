@@ -220,7 +220,11 @@ export default function PosPage() {
             menuItemId: item.menuItemId,
             quantity: item.quantity,
             notes: item.notes || undefined,
-            modifiers: item.modifiers.map((m) => ({ modifierId: m.modifierId })),
+            // Bỏ tùy chọn đã bị xóa khỏi thực đơn (modifierId null) — gửi lên là
+            // máy chủ báo lỗi. Đơn cũ vẫn in ra được vì tên/giá đã chụp ảnh sẵn.
+            modifiers: item.modifiers
+              .filter((m): m is typeof m & { modifierId: string } => !!m.modifierId)
+              .map((m) => ({ modifierId: m.modifierId })),
           }
         : {
             customName: item.name,
@@ -243,19 +247,23 @@ export default function PosPage() {
     setCart((prev) => prev.filter((c) => c.lineId !== lineId));
   };
 
+  /**
+   * ⚠️ Giữ đúng quy ước tiền của print-ticket: `unit_price` là giá GỐC chưa gồm tùy
+   * chọn, `total` mới là tiền cả dòng đã gồm. Trước đây hàm này cộng phụ trội vào
+   * `unit_price` và nhét tên tùy chọn vào tên món — làm vậy nữa là phiếu vừa in
+   * "Bạc xỉu (Nhẹ)" vừa in thêm dòng "- Nhẹ", và tính phụ trội hai lần.
+   */
   const mapTicketItems = (items: PosCartItem[]) =>
     items.map((i) => {
       const modTotal = i.modifiers.reduce((sum, m) => sum + m.price, 0);
-      const nameWithMods = i.modifiers.length > 0
-        ? `${i.name} (${i.modifiers.map((m) => m.name).join(", ")})`
-        : i.name;
       return {
-        name: nameWithMods,
+        name: i.name,
         quantity: i.quantity,
-        unit_price: i.unitPrice + modTotal,
+        unit_price: i.unitPrice,
         total: (i.unitPrice + modTotal) * i.quantity,
         notes: i.notes,
         unit: i.unit,
+        modifiers: i.modifiers.map((m) => ({ name: m.name, price: m.price })),
       };
     });
 

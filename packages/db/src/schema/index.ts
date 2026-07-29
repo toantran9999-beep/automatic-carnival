@@ -10,3 +10,4 @@ export * from "./payments";
 export * from "./staff";
 export * from "./coupons";
 export * from "./register";
+export * from "./history";

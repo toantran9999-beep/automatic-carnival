@@ -346,6 +346,120 @@ reports.get("/overview", requirePermission("reports:read"), async (c) => {
   });
 });
 
+/**
+ * GET /history - Lịch sử bán hàng từ POS CŨ (trước 26/07/2026).
+ *
+ * Đọc `sales_history_daily` / `sales_history_items` — hai bảng chỉ chứa dữ liệu nhập
+ * một lần từ bản xuất Excel của hệ thống cũ, KHÔNG dính gì tới `orders`. Nhờ vậy
+ * trang Tổng quan so được "tháng này với tháng trước" thay vì bắt đầu lại từ 0 vào
+ * ngày chuyển hệ thống.
+ *
+ * ⚠️ KHÔNG cộng `interval '7 hours'` như các endpoint khác: `business_date` đã là
+ * kiểu `date` theo giờ VN sẵn rồi, cộng thêm là lệch một ngày.
+ *
+ * Không có dữ liệu theo GIỜ: bản xuất cũ chỉ cho tổng theo giờ của cả năm, không tách
+ * được theo ngày, nên không cắt theo khoảng thời gian được. Thứ trong tuần thì ngược
+ * lại — suy ra được từ `business_date` nên vẫn lọc theo khoảng được.
+ */
+reports.get("/history", requirePermission("reports:read"), async (c) => {
+  const tenant = c.get("tenant") as any;
+  if (!tenant?.branchId) {
+    return c.json(
+      { success: false, error: { code: "BAD_REQUEST", message: t(c, "branch_header_required") } },
+      400,
+    );
+  }
+
+  const branchScope = eq(schema.salesHistoryDaily.branch_id, tenant.branchId);
+  const itemScope = eq(schema.salesHistoryItems.branch_id, tenant.branchId);
+
+  const monthExpr = sql<string>`to_char(${schema.salesHistoryDaily.business_date}, 'YYYY-MM')`;
+  // 0 = Chủ nhật … 6 = Thứ bảy (quy ước của Postgres, frontend tự đặt tên).
+  const dowExpr = sql<number>`extract(dow from ${schema.salesHistoryDaily.business_date})::int`;
+
+  const [totals, monthly, weekday, topItems] = await Promise.all([
+    db
+      .select({
+        days: count(),
+        revenue: sum(schema.salesHistoryDaily.revenue),
+        orders: sum(schema.salesHistoryDaily.order_count),
+        first: sql<string>`min(${schema.salesHistoryDaily.business_date})`,
+        last: sql<string>`max(${schema.salesHistoryDaily.business_date})`,
+      })
+      .from(schema.salesHistoryDaily)
+      .where(branchScope),
+    db
+      .select({
+        month: monthExpr,
+        days: count(),
+        revenue: sum(schema.salesHistoryDaily.revenue),
+        orders: sum(schema.salesHistoryDaily.order_count),
+      })
+      .from(schema.salesHistoryDaily)
+      .where(branchScope)
+      .groupBy(monthExpr)
+      .orderBy(monthExpr),
+    db
+      .select({
+        dow: dowExpr,
+        days: count(),
+        revenue: sum(schema.salesHistoryDaily.revenue),
+        orders: sum(schema.salesHistoryDaily.order_count),
+      })
+      .from(schema.salesHistoryDaily)
+      .where(branchScope)
+      .groupBy(dowExpr)
+      .orderBy(dowExpr),
+    db
+      .select({
+        name: schema.salesHistoryItems.item_name,
+        group: schema.salesHistoryItems.group_name,
+        quantity: sum(schema.salesHistoryItems.quantity),
+        revenue: sum(schema.salesHistoryItems.revenue),
+      })
+      .from(schema.salesHistoryItems)
+      .where(itemScope)
+      .groupBy(schema.salesHistoryItems.item_name, schema.salesHistoryItems.group_name)
+      .orderBy(desc(sum(schema.salesHistoryItems.revenue)))
+      .limit(20),
+  ]);
+
+  const total = totals[0];
+  const num = (v: unknown) => Number(v || 0);
+
+  return c.json({
+    success: true,
+    data: {
+      /** Chưa nhập lịch sử thì frontend ẩn hẳn khối này đi. */
+      available: num(total?.days) > 0,
+      range: { first: total?.first ?? null, last: total?.last ?? null },
+      totals: {
+        days: num(total?.days),
+        revenue: num(total?.revenue),
+        orders: num(total?.orders),
+      },
+      monthly: monthly.map((m) => ({
+        month: m.month,
+        days: num(m.days),
+        revenue: num(m.revenue),
+        orders: num(m.orders),
+      })),
+      weekday: weekday.map((w) => ({
+        dow: num(w.dow),
+        days: num(w.days),
+        revenue: num(w.revenue),
+        orders: num(w.orders),
+      })),
+      topItems: topItems.map((it) => ({
+        name: it.name,
+        group: it.group,
+        quantity: num(it.quantity),
+        revenue: num(it.revenue),
+      })),
+    },
+  });
+});
+
 // GET /sales - Sales summary with daily breakdown and payment methods
 reports.get(
   "/sales",

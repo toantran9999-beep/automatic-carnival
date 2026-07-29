@@ -12,7 +12,8 @@
     "migrate": "drizzle-kit migrate",
     "push": "drizzle-kit push",
     "studio": "drizzle-kit studio",
-    "seed": "bun run src/seed.ts"
+    "seed": "bun run src/seed.ts",
+    "import-legacy": "bun run src/import-legacy-sales.ts"
   },
   "dependencies": {
     "@node-rs/argon2": "^2.0.2",

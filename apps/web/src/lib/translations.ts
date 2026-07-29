@@ -113,7 +113,16 @@ export const translations = {
       sold: "đã bán",
       noData: "Chưa có dữ liệu",
       updated: "Cập nhật",
-      refresh: "Làm mới"
+      refresh: "Làm mới",
+      historyTitle: "Lịch sử hệ thống cũ",
+      historySource: "Nhập từ POS cũ, không phải dữ liệu đang bán",
+      historyMonthly: "Doanh thu theo tháng",
+      historyWeekday: "Trung bình theo thứ",
+      historyTopItems: "Món bán chạy cả kỳ",
+      historyTotalRevenue: "Tổng doanh thu",
+      historyTotalOrders: "Tổng hoá đơn",
+      historyDays: "Số ngày",
+      historyAvgPerDay: "TB mỗi ngày"
     },
     common: {
       loading: "Đang tải dữ liệu...",
@@ -936,7 +945,16 @@ export const translations = {
       sold: "sold",
       noData: "No data yet",
       updated: "Updated",
-      refresh: "Refresh"
+      refresh: "Refresh",
+      historyTitle: "Legacy system history",
+      historySource: "Imported from the old POS, not live data",
+      historyMonthly: "Revenue by month",
+      historyWeekday: "Average by weekday",
+      historyTopItems: "Best sellers for the period",
+      historyTotalRevenue: "Total revenue",
+      historyTotalOrders: "Total bills",
+      historyDays: "Days",
+      historyAvgPerDay: "Avg per day"
     },
     common: {
       loading: "Loading data...",

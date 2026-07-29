@@ -56,6 +56,10 @@ nul
 coverage/
 .nyc_output/
 
+# Python bytecode (scripts/extract-legacy-sales.py)
+__pycache__/
+*.pyc
+
 # Secrets / keys (extra safety)
 *.pem
 *.key
@@ -71,6 +75,10 @@ momo key/
 momo-key/
 *momokey*
 *momo-key*
+
+# Dữ liệu xuất từ POS cũ (~80MB xlsx). Chỉ dùng một lần để nhập lịch sử qua
+# scripts/extract-legacy-sales.py — đã nằm trong DB rồi thì không cần trong repo.
+data_old/
 
 # Docker
 docker-compose.override.yml

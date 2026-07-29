@@ -83,3 +83,46 @@ export function useOverview(allBranches?: boolean) {
     refetchInterval: 60000,
   });
 }
+
+export interface SalesHistoryMonth {
+  month: string; // 'YYYY-MM'
+  days: number;
+  revenue: number;
+  orders: number;
+}
+
+export interface SalesHistoryWeekday {
+  dow: number; // 0 = Chủ nhật … 6 = Thứ bảy (quy ước Postgres)
+  days: number;
+  revenue: number;
+  orders: number;
+}
+
+export interface SalesHistoryItem {
+  name: string;
+  group: string | null;
+  quantity: number;
+  revenue: number;
+}
+
+export interface SalesHistory {
+  /** false = chưa nhập lịch sử → ẩn hẳn khối này. */
+  available: boolean;
+  range: { first: string | null; last: string | null };
+  totals: { days: number; revenue: number; orders: number };
+  monthly: SalesHistoryMonth[];
+  weekday: SalesHistoryWeekday[];
+  topItems: SalesHistoryItem[];
+}
+
+/**
+ * Lịch sử bán hàng từ POS cũ (trước 26/07/2026). Dữ liệu tĩnh — nhập một lần rồi
+ * không đổi nữa — nên KHÔNG đặt refetchInterval như các query sống khác.
+ */
+export function useSalesHistory() {
+  return useQuery<SalesHistory>({
+    queryKey: ["dashboard", "history"],
+    queryFn: () => apiFetch<SalesHistory>("/api/reports/history"),
+    staleTime: 60 * 60_000,
+  });
+}

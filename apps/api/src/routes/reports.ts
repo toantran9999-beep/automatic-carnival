@@ -556,13 +556,17 @@ reports.get(
         ),
       );
 
-    let paymentMethods: { name: string; value: number }[] = [];
+    // ⚠️ Phải trả cả `amount`: trước đây chỉ có `value` (phần trăm ĐÃ làm tròn) nên
+    // trang Báo cáo không cách nào hiện được số tiền, mà cộng các lát lại cũng không
+    // chắc ra 100%. Giữ `value` để bản web cũ trong lúc deploy không vỡ biểu đồ.
+    let paymentMethods: { name: string; value: number; amount: number; count: number }[] = [];
     if (completedOrders.length > 0) {
       const orderIds = completedOrders.map((o) => o.id);
       const pmData = await db
         .select({
           method: schema.payments.method,
           total: sum(schema.payments.amount),
+          count: count(),
         })
         .from(schema.payments)
         .where(
@@ -571,12 +575,15 @@ reports.get(
             eq(schema.payments.status, "completed"),
           ),
         )
-        .groupBy(schema.payments.method);
+        .groupBy(schema.payments.method)
+        .orderBy(desc(sum(schema.payments.amount)));
 
       const grandTotal = pmData.reduce((s, p) => s + Number(p.total || 0), 0);
       paymentMethods = pmData.map((p) => ({
         name: p.method,
         value: grandTotal > 0 ? Math.round((Number(p.total || 0) / grandTotal) * 100) : 0,
+        amount: Number(p.total || 0),
+        count: Number(p.count || 0),
       }));
     }
 

@@ -10,7 +10,12 @@ export interface SalesReportDay {
 
 export interface PaymentMethodShare {
   name: string;
+  /** Phần trăm ĐÃ làm tròn — chỉ để hiện, đừng chia lát biểu đồ bằng số này. */
   value: number;
+  /** Số tiền (xu). Chia lát và hiện tiền đều dùng cột này. */
+  amount: number;
+  /** Số lượt thanh toán bằng phương thức này. */
+  count: number;
 }
 
 export interface BranchSalesShare {

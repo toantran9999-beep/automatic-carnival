@@ -51,6 +51,28 @@ export function formatCurrency(cents: number, currencyCode?: string): string {
 }
 
 
+/**
+ * Ngày dạng 'YYYY-MM-DD' → '26/07/2026'.
+ *
+ * ⚠️ Ghép "T00:00:00Z" rồi đọc bằng getUTC*: dùng `new Date('2026-07-26')` rồi
+ * `toLocaleDateString` thì máy ở múi giờ âm sẽ lùi mất một ngày.
+ */
+export function formatDayMonthYear(isoDate: string, lang: string = "vi"): string {
+  const d = new Date(isoDate + "T00:00:00Z");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  const month = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const year = d.getUTCFullYear();
+  return lang === "vi" ? `${day}/${month}/${year}` : `${month}/${day}/${year}`;
+}
+
+/** Tiền (xu) rút gọn cho trục biểu đồ: 405000000 → '4tr'. */
+export function shortMoney(cents: number, lang: string = "vi"): string {
+  const dong = cents / 100;
+  if (dong >= 1_000_000) return `${Math.round(dong / 1_000_000)}${lang === "vi" ? "tr" : "M"}`;
+  if (dong >= 1_000) return `${Math.round(dong / 1_000)}k`;
+  return String(Math.round(dong));
+}
+
 export function formatDate(date: string | Date): string {
   let lang = "vi";
   try {

@@ -2,7 +2,7 @@
 
 import { Card, CardContent, CardHeader, CardTitle } from "@restai/ui/components/card";
 import type { PaymentMethodShare } from "@/hooks/use-reports";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatDayMonthYear } from "@/lib/utils";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
 
 import { useTranslation } from "@/stores/lang-store";
@@ -16,6 +16,12 @@ function Skeleton({ className }: { className?: string }) {
 interface PaymentMethodsChartProps {
   paymentMethods: PaymentMethodShare[];
   isLoading: boolean;
+  /**
+   * Ngày bắt đầu có dữ liệu hình thức thanh toán. Truyền vào khi khoảng ngày đang chọn
+   * lấn sang phần nhập từ POS cũ (bản xuất cũ không ghi hình thức trả), để hiện ghi chú
+   * — nếu không người xem sẽ tưởng tỉ lệ tiền mặt/chuyển khoản là của cả kỳ.
+   */
+  noteFrom?: string | null;
 }
 
 /**
@@ -28,7 +34,11 @@ interface PaymentMethodsChartProps {
  * ⚠️ Lát bánh chia theo `amount` chứ KHÔNG theo `value`: `value` là phần trăm đã làm
  * tròn, cộng lại chưa chắc đủ 100 nên lát vẽ ra sẽ lệch so với số hiện bên cạnh.
  */
-export function PaymentMethodsChart({ paymentMethods, isLoading }: PaymentMethodsChartProps) {
+export function PaymentMethodsChart({
+  paymentMethods,
+  isLoading,
+  noteFrom,
+}: PaymentMethodsChartProps) {
   const { t, lang } = useTranslation();
 
   const total = paymentMethods.reduce((s, p) => s + (p.amount ?? 0), 0);
@@ -36,8 +46,13 @@ export function PaymentMethodsChart({ paymentMethods, isLoading }: PaymentMethod
 
   return (
     <Card>
-      <CardHeader>
+      <CardHeader className="gap-1">
         <CardTitle>{t("reports.paymentShare")}</CardTitle>
+        {noteFrom && (
+          <p className="text-xs text-muted-foreground">
+            {t("reports.onlyFrom")} {formatDayMonthYear(noteFrom, lang)}
+          </p>
+        )}
       </CardHeader>
       <CardContent>
         {isLoading ? (

@@ -1,7 +1,7 @@
 "use client";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@restai/ui/components/card";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, shortMoney } from "@/lib/utils";
 import type { SalesReportDay } from "@/hooks/use-reports";
 import {
   AreaChart,
@@ -22,10 +22,22 @@ function Skeleton({ className }: { className?: string }) {
 interface SalesChartProps {
   days: SalesReportDay[];
   isLoading: boolean;
+  /**
+   * 'month' khi khoảng chọn dài hơn 92 ngày — lúc đó `date` là 'YYYY-MM' chứ không
+   * phải 'YYYY-MM-DD', nên nhãn và tooltip phải đổi theo.
+   */
+  granularity?: "day" | "month";
 }
 
-export function SalesChart({ days, isLoading }: SalesChartProps) {
+/** '2026-07' hoặc '2026-07-26' → nhãn ngắn cho trục X. */
+function axisLabel(raw: string, byMonth: boolean): string {
+  const [y, m, d] = raw.split("-");
+  return byMonth ? `${m}/${y.slice(2)}` : `${Number(d)}/${Number(m)}`;
+}
+
+export function SalesChart({ days, isLoading, granularity = "day" }: SalesChartProps) {
   const { t, lang } = useTranslation();
+  const byMonth = granularity === "month";
   return (
     <Card>
       <CardHeader>
@@ -38,43 +50,54 @@ export function SalesChart({ days, isLoading }: SalesChartProps) {
           ) : days.length > 0 ? (
             <ResponsiveContainer width="100%" height="100%">
               <AreaChart data={days}>
-                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" />
+                <CartesianGrid strokeDasharray="3 3" className="stroke-muted" vertical={false} />
                 <XAxis
                   dataKey="date"
                   className="text-xs"
                   tick={{ fill: "currentColor" }}
-                  tickFormatter={(v) => {
-                    const d = new Date(v + "T00:00:00");
-                    return `${d.getDate()}/${d.getMonth() + 1}`;
-                  }}
+                  tickLine={false}
+                  axisLine={false}
+                  minTickGap={24}
+                  tickFormatter={(v: string) => axisLabel(v, byMonth)}
                 />
                 <YAxis
                   className="text-xs"
                   tick={{ fill: "currentColor" }}
-                  tickFormatter={(v) => {
-                    const val = v / 100;
-                    return lang === "vi" ? `${val} đ` : `$${val}`;
-                  }}
+                  tickLine={false}
+                  axisLine={false}
+                  width={48}
+                  // Trước đây in `${v / 100} đ` → ra "3936000 đ", khoảng dài càng vỡ trục.
+                  tickFormatter={(v: number) => shortMoney(v, lang)}
                 />
                 <Tooltip
                   formatter={(value: number) => [formatCurrency(value), lang === "vi" ? "Doanh thu" : "Sales"]}
-                  labelFormatter={(label) => {
-                    const d = new Date(label + "T00:00:00");
-                    return d.toLocaleDateString(lang === "vi" ? "vi-VN" : "en-US", { dateStyle: "medium" });
+                  labelFormatter={(label: string) => {
+                    if (byMonth) {
+                      const [y, m] = label.split("-");
+                      return lang === "vi" ? `Tháng ${Number(m)}/${y}` : `${m}/${y}`;
+                    }
+                    // "T00:00:00Z" + getUTC*: đọc bằng giờ máy thì múi âm lùi mất một ngày.
+                    const d = new Date(label + "T00:00:00Z");
+                    return d.toLocaleDateString(lang === "vi" ? "vi-VN" : "en-US", {
+                      dateStyle: "medium",
+                      timeZone: "UTC",
+                    });
                   }}
                   contentStyle={{
                     backgroundColor: "var(--card)",
                     border: "1px solid var(--border)",
                     borderRadius: "0.5rem",
+                    color: "var(--foreground)",
                   }}
                 />
                 <Area
                   type="monotone"
                   dataKey="revenue"
-                  stroke="#3b82f6"
-                  fill="#3b82f6"
-                  fillOpacity={0.1}
+                  stroke="var(--primary)"
+                  fill="var(--primary)"
+                  fillOpacity={0.12}
                   strokeWidth={2}
+                  isAnimationActive={false}
                 />
               </AreaChart>
             </ResponsiveContainer>

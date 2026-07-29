@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@restai/ui/components/button";
 import { RefreshCw } from "lucide-react";
 import { useAuthStore } from "@/stores/auth-store";
-import { useOverview, useRecentOrders, useSalesHistory } from "@/hooks/use-dashboard";
+import { useOverview, useRecentOrders } from "@/hooks/use-dashboard";
 import { useTranslation } from "@/stores/lang-store";
 import { PageHeader } from "@/components/page-header";
 import { isManagerRole, landingPathForRole } from "@/lib/roles";
@@ -18,7 +18,6 @@ import { LowStockCard } from "./_components/low-stock-card";
 import { ShiftStatusCard } from "./_components/shift-status-card";
 import { RecentOrdersCard } from "./_components/recent-orders-card";
 import { OrderMixCard } from "./_components/order-mix-card";
-import { SalesHistoryCard } from "./_components/sales-history-card";
 
 export default function DashboardPage() {
   const { user } = useAuthStore();
@@ -45,8 +44,6 @@ export default function DashboardPage() {
     error: ordersError,
     refetch: refetchOrders,
   } = useRecentOrders();
-  // Lịch sử POS cũ — tĩnh, tự ẩn nếu chưa nhập. Lỗi ở đây KHÔNG được chặn cả trang.
-  const { data: salesHistory, isLoading: historyLoading } = useSalesHistory();
 
   if (user && !isManagerRole(user.role)) return null;
 
@@ -126,10 +123,6 @@ export default function DashboardPage() {
               </div>
             </div>
           </div>
-
-          {/* Hàng 5: lịch sử hệ thống cũ — đặt cuối cùng và tách riêng để không ai
-              đọc nhầm thành dữ liệu đang bán. Tự ẩn nếu chưa nhập. */}
-          <SalesHistoryCard data={salesHistory} isLoading={historyLoading} />
         </>
       )}
     </div>

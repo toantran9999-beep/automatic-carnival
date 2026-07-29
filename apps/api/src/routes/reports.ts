@@ -50,6 +50,70 @@ function resolveReportScope(c: any) {
   return { ok: true as const, useAll, tenant, ordersCondition };
 }
 
+/**
+ * Ngày làm ăn theo giờ VN của một đơn, dạng 'YYYY-MM-DD'.
+ *
+ * 🔴 DB chạy múi giờ UTC. Không cộng 7 tiếng thì đơn buổi sáng 6–7h giờ VN
+ * (= 23h–0h UTC hôm trước) bị tính sang NGÀY HÔM TRƯỚC — mà đó lại đúng là giờ cao
+ * điểm của quán, tức ~10–15% đơn mỗi ngày rơi nhầm. Mọi chỗ gom đơn theo ngày đều
+ * phải dùng hàm này, đừng viết lại `to_char` bằng tay.
+ */
+const vnDayExpr = sql<string>`to_char(${schema.orders.created_at} + interval '7 hours', 'YYYY-MM-DD')`;
+const vnMonthExpr = sql<string>`to_char(${schema.orders.created_at} + interval '7 hours', 'YYYY-MM')`;
+
+/** Khoảng ngày VN [start, end] áp lên `orders.created_at` (so bằng chuỗi ngày, khỏi lệch múi giờ). */
+function ordersInVnRange(startDate: string, endDate: string) {
+  return sql`to_char(${schema.orders.created_at} + interval '7 hours', 'YYYY-MM-DD') BETWEEN ${startDate} AND ${endDate}`;
+}
+
+/**
+ * Ngày cuối cùng mà dữ liệu đến từ HỆ THỐNG CŨ (bảng `sales_history_*`).
+ *
+ * Lấy từ chính dữ liệu chứ không viết cứng, để nhập thêm/bớt lịch sử là tự đúng.
+ * Chưa nhập gì → null → mọi báo cáo chạy y như trước.
+ *
+ * Quy tắc chống trùng ở mọi chỗ hợp nhất: **ngày ≤ cutover lấy bảng lịch sử, ngày >
+ * cutover lấy `orders`** — không bao giờ cộng cả hai nguồn cho cùng một ngày.
+ */
+async function getLegacyCutover(branchId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ cutover: sql<string | null>`max(${schema.salesHistoryDaily.business_date})` })
+    .from(schema.salesHistoryDaily)
+    .where(eq(schema.salesHistoryDaily.branch_id, branchId));
+  return row?.cutover ?? null;
+}
+
+const nextDay = (isoDate: string) =>
+  new Date(new Date(isoDate + "T00:00:00Z").getTime() + 86400000).toISOString().slice(0, 10);
+
+/**
+ * Tên món của hệ cũ → tên tương ứng của hệ mới.
+ *
+ * Hệ cũ tách độ đậm thành SKU RIÊNG ("Cà phê đá (nhẹ)" 13.000đ), hệ mới để nó là tuỳ
+ * chọn "Nhẹ −2.000đ" trên chính món gốc. Không gộp lại thì bảng món bán chạy xuyên kỳ
+ * hiện hai dòng cho cùng một món, và "Cà phê đá" bị hụt ~10% ở phần lịch sử.
+ */
+const LEGACY_ITEM_ALIASES: Record<string, string> = {
+  "Cà phê đá (nhẹ)": "Cà phê đá",
+  "Cà phê sữa đá (nhẹ)": "Cà phê sữa đá",
+  "Trà đường (Trà lài)": "Trà lài",
+  "Cà phê bột Toda 1 (500g)": "Cà phê Toda 1 (500g)",
+};
+
+const canonicalItemName = (name: string) => LEGACY_ITEM_ALIASES[name] ?? name;
+
+/** Nhóm mà POS cũ dùng để ghi tuỳ chọn (giá 0đ) — không phải món, phải loại khỏi top món. */
+const LEGACY_MODIFIER_GROUP = "Đường sữa";
+
+/** Khoảng dài hơn mức này thì gom theo tháng — 365 điểm trên một biểu đồ là không đọc được. */
+const MAX_DAYS_FOR_DAILY_GRANULARITY = 92;
+
+function daysBetween(startDate: string, endDate: string): number {
+  const ms =
+    new Date(endDate + "T00:00:00Z").getTime() - new Date(startDate + "T00:00:00Z").getTime();
+  return Math.floor(ms / 86400000) + 1;
+}
+
 // GET /dashboard - Dashboard stats
 reports.get("/dashboard", requirePermission("reports:read"), async (c) => {
   const scope = resolveReportScope(c);
@@ -346,120 +410,6 @@ reports.get("/overview", requirePermission("reports:read"), async (c) => {
   });
 });
 
-/**
- * GET /history - Lịch sử bán hàng từ POS CŨ (trước 26/07/2026).
- *
- * Đọc `sales_history_daily` / `sales_history_items` — hai bảng chỉ chứa dữ liệu nhập
- * một lần từ bản xuất Excel của hệ thống cũ, KHÔNG dính gì tới `orders`. Nhờ vậy
- * trang Tổng quan so được "tháng này với tháng trước" thay vì bắt đầu lại từ 0 vào
- * ngày chuyển hệ thống.
- *
- * ⚠️ KHÔNG cộng `interval '7 hours'` như các endpoint khác: `business_date` đã là
- * kiểu `date` theo giờ VN sẵn rồi, cộng thêm là lệch một ngày.
- *
- * Không có dữ liệu theo GIỜ: bản xuất cũ chỉ cho tổng theo giờ của cả năm, không tách
- * được theo ngày, nên không cắt theo khoảng thời gian được. Thứ trong tuần thì ngược
- * lại — suy ra được từ `business_date` nên vẫn lọc theo khoảng được.
- */
-reports.get("/history", requirePermission("reports:read"), async (c) => {
-  const tenant = c.get("tenant") as any;
-  if (!tenant?.branchId) {
-    return c.json(
-      { success: false, error: { code: "BAD_REQUEST", message: t(c, "branch_header_required") } },
-      400,
-    );
-  }
-
-  const branchScope = eq(schema.salesHistoryDaily.branch_id, tenant.branchId);
-  const itemScope = eq(schema.salesHistoryItems.branch_id, tenant.branchId);
-
-  const monthExpr = sql<string>`to_char(${schema.salesHistoryDaily.business_date}, 'YYYY-MM')`;
-  // 0 = Chủ nhật … 6 = Thứ bảy (quy ước của Postgres, frontend tự đặt tên).
-  const dowExpr = sql<number>`extract(dow from ${schema.salesHistoryDaily.business_date})::int`;
-
-  const [totals, monthly, weekday, topItems] = await Promise.all([
-    db
-      .select({
-        days: count(),
-        revenue: sum(schema.salesHistoryDaily.revenue),
-        orders: sum(schema.salesHistoryDaily.order_count),
-        first: sql<string>`min(${schema.salesHistoryDaily.business_date})`,
-        last: sql<string>`max(${schema.salesHistoryDaily.business_date})`,
-      })
-      .from(schema.salesHistoryDaily)
-      .where(branchScope),
-    db
-      .select({
-        month: monthExpr,
-        days: count(),
-        revenue: sum(schema.salesHistoryDaily.revenue),
-        orders: sum(schema.salesHistoryDaily.order_count),
-      })
-      .from(schema.salesHistoryDaily)
-      .where(branchScope)
-      .groupBy(monthExpr)
-      .orderBy(monthExpr),
-    db
-      .select({
-        dow: dowExpr,
-        days: count(),
-        revenue: sum(schema.salesHistoryDaily.revenue),
-        orders: sum(schema.salesHistoryDaily.order_count),
-      })
-      .from(schema.salesHistoryDaily)
-      .where(branchScope)
-      .groupBy(dowExpr)
-      .orderBy(dowExpr),
-    db
-      .select({
-        name: schema.salesHistoryItems.item_name,
-        group: schema.salesHistoryItems.group_name,
-        quantity: sum(schema.salesHistoryItems.quantity),
-        revenue: sum(schema.salesHistoryItems.revenue),
-      })
-      .from(schema.salesHistoryItems)
-      .where(itemScope)
-      .groupBy(schema.salesHistoryItems.item_name, schema.salesHistoryItems.group_name)
-      .orderBy(desc(sum(schema.salesHistoryItems.revenue)))
-      .limit(20),
-  ]);
-
-  const total = totals[0];
-  const num = (v: unknown) => Number(v || 0);
-
-  return c.json({
-    success: true,
-    data: {
-      /** Chưa nhập lịch sử thì frontend ẩn hẳn khối này đi. */
-      available: num(total?.days) > 0,
-      range: { first: total?.first ?? null, last: total?.last ?? null },
-      totals: {
-        days: num(total?.days),
-        revenue: num(total?.revenue),
-        orders: num(total?.orders),
-      },
-      monthly: monthly.map((m) => ({
-        month: m.month,
-        days: num(m.days),
-        revenue: num(m.revenue),
-        orders: num(m.orders),
-      })),
-      weekday: weekday.map((w) => ({
-        dow: num(w.dow),
-        days: num(w.days),
-        revenue: num(w.revenue),
-        orders: num(w.orders),
-      })),
-      topItems: topItems.map((it) => ({
-        name: it.name,
-        group: it.group,
-        quantity: num(it.quantity),
-        revenue: num(it.revenue),
-      })),
-    },
-  });
-});
-
 // GET /sales - Sales summary with daily breakdown and payment methods
 reports.get(
   "/sales",
@@ -471,47 +421,145 @@ reports.get(
     if (!scope.ok) return scope.response;
     const { useAll, tenant, ordersCondition } = scope;
 
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    // Set end to end of day
-    end.setHours(23, 59, 59, 999);
+    // Mốc nối cũ↔mới. Chế độ "tất cả chi nhánh" thì bỏ qua lịch sử: bản xuất cũ chỉ
+    // có của chi nhánh chính, trộn vào sẽ ra tổng nửa vời không giải thích được.
+    const cutover = useAll ? null : await getLegacyCutover(tenant.branchId);
+    /** Phần khoảng ngày do dữ liệu cũ phụ trách: [startDate, min(endDate, cutover)]. */
+    const legacyEnd = cutover && startDate <= cutover ? (endDate < cutover ? endDate : cutover) : null;
+    /** Phần do đơn thật phụ trách: [max(startDate, cutover+1), endDate]. */
+    const liveStart = cutover ? (startDate > cutover ? startDate : nextDay(cutover)) : startDate;
+    const hasLive = liveStart <= endDate;
 
-    // Totals for the range
-    const [totals] = await db
-      .select({
-        totalOrders: count(),
-        totalRevenue: sum(schema.orders.total),
-        totalTax: sum(schema.orders.tax),
-        totalDiscount: sum(schema.orders.discount),
-      })
-      .from(schema.orders)
-      .where(
-        and(
-          ordersCondition,
-          gte(schema.orders.created_at, start),
-          lte(schema.orders.created_at, end),
-          eq(schema.orders.status, "completed"),
-        ),
-      );
+    const legacyScope = legacyEnd
+      ? and(
+          eq(schema.salesHistoryDaily.branch_id, tenant.branchId),
+          gte(schema.salesHistoryDaily.business_date, startDate),
+          lte(schema.salesHistoryDaily.business_date, legacyEnd),
+        )
+      : undefined;
 
-    // Daily breakdown
-    const dailyData = await db
-      .select({
-        date: sql<string>`to_char(${schema.orders.created_at}, 'YYYY-MM-DD')`,
-        orders: count(),
-        revenue: sum(schema.orders.total),
-      })
-      .from(schema.orders)
-      .where(
-        and(
-          ordersCondition,
-          gte(schema.orders.created_at, start),
-          lte(schema.orders.created_at, end),
-          eq(schema.orders.status, "completed"),
-        ),
-      )
-      .groupBy(sql`to_char(${schema.orders.created_at}, 'YYYY-MM-DD')`)
-      .orderBy(sql`to_char(${schema.orders.created_at}, 'YYYY-MM-DD')`);
+    const liveScope = and(
+      ordersCondition,
+      eq(schema.orders.status, "completed"),
+      ordersInVnRange(liveStart, endDate),
+    );
+
+    const granularity: "day" | "month" =
+      daysBetween(startDate, endDate) > MAX_DAYS_FOR_DAILY_GRANULARITY ? "month" : "day";
+
+    const [liveTotals, legacyTotals, liveBuckets, legacyBuckets, liveDow, legacyDow] =
+      await Promise.all([
+        hasLive
+          ? db
+              .select({
+                orders: count(),
+                revenue: sum(schema.orders.total),
+                tax: sum(schema.orders.tax),
+                discount: sum(schema.orders.discount),
+              })
+              .from(schema.orders)
+              .where(liveScope)
+          : Promise.resolve([]),
+        legacyScope
+          ? db
+              .select({
+                days: count(),
+                orders: sum(schema.salesHistoryDaily.order_count),
+                revenue: sum(schema.salesHistoryDaily.revenue),
+              })
+              .from(schema.salesHistoryDaily)
+              .where(legacyScope)
+          : Promise.resolve([]),
+        // Gom theo ngày hoặc theo tháng, tuỳ độ dài khoảng đã chọn.
+        hasLive
+          ? (() => {
+              const bucket = granularity === "month" ? vnMonthExpr : vnDayExpr;
+              return db
+                .select({ bucket, orders: count(), revenue: sum(schema.orders.total) })
+                .from(schema.orders)
+                .where(liveScope)
+                .groupBy(bucket)
+                .orderBy(bucket);
+            })()
+          : Promise.resolve([]),
+        legacyScope
+          ? (() => {
+              const bucket =
+                granularity === "month"
+                  ? sql<string>`to_char(${schema.salesHistoryDaily.business_date}, 'YYYY-MM')`
+                  : sql<string>`to_char(${schema.salesHistoryDaily.business_date}, 'YYYY-MM-DD')`;
+              return db
+                .select({
+                  bucket,
+                  orders: sum(schema.salesHistoryDaily.order_count),
+                  revenue: sum(schema.salesHistoryDaily.revenue),
+                })
+                .from(schema.salesHistoryDaily)
+                .where(legacyScope)
+                .groupBy(bucket)
+                .orderBy(bucket);
+            })()
+          : Promise.resolve([]),
+        // Theo thứ trong tuần: cần cả SỐ NGÀY để chia trung bình, không so tổng.
+        hasLive
+          ? db
+              .select({
+                dow: sql<number>`extract(dow from ${schema.orders.created_at} + interval '7 hours')::int`,
+                days: sql<number>`count(distinct to_char(${schema.orders.created_at} + interval '7 hours', 'YYYY-MM-DD'))::int`,
+                orders: count(),
+                revenue: sum(schema.orders.total),
+              })
+              .from(schema.orders)
+              .where(liveScope)
+              .groupBy(sql`extract(dow from ${schema.orders.created_at} + interval '7 hours')`)
+          : Promise.resolve([]),
+        legacyScope
+          ? db
+              .select({
+                dow: sql<number>`extract(dow from ${schema.salesHistoryDaily.business_date})::int`,
+                days: count(),
+                orders: sum(schema.salesHistoryDaily.order_count),
+                revenue: sum(schema.salesHistoryDaily.revenue),
+              })
+              .from(schema.salesHistoryDaily)
+              .where(legacyScope)
+              .groupBy(sql`extract(dow from ${schema.salesHistoryDaily.business_date})`)
+          : Promise.resolve([]),
+      ]);
+
+    const n = (v: unknown) => Number(v || 0);
+
+    const totals = {
+      totalOrders: n(liveTotals[0]?.orders) + n(legacyTotals[0]?.orders),
+      totalRevenue: n(liveTotals[0]?.revenue) + n(legacyTotals[0]?.revenue),
+      // Thuế/giảm giá chỉ có ở đơn thật; bản xuất cũ không lưu (và thực tế luôn bằng 0).
+      totalTax: n(liveTotals[0]?.tax),
+      totalDiscount: n(liveTotals[0]?.discount),
+    };
+
+    // Hai nguồn không chồng ngày nên chỉ cần nối rồi sắp lại, không phải cộng dồn.
+    const dailyData = [...legacyBuckets, ...liveBuckets]
+      .map((b) => ({ date: b.bucket, orders: n(b.orders), revenue: n(b.revenue) }))
+      .sort((a, b) => a.date.localeCompare(b.date));
+
+    const dowAcc = new Map<number, { days: number; orders: number; revenue: number }>();
+    for (const row of [...legacyDow, ...liveDow]) {
+      const key = n(row.dow);
+      const acc = dowAcc.get(key) ?? { days: 0, orders: 0, revenue: 0 };
+      acc.days += n(row.days);
+      acc.orders += n(row.orders);
+      acc.revenue += n(row.revenue);
+      dowAcc.set(key, acc);
+    }
+    const weekday = [...dowAcc.entries()]
+      .map(([dow, a]) => ({
+        dow,
+        days: a.days,
+        orders: a.orders,
+        revenue: a.revenue,
+        avgRevenue: a.days > 0 ? Math.round(a.revenue / a.days) : 0,
+      }))
+      .sort((a, b) => a.dow - b.dow);
 
     // Per-branch breakdown (only meaningful in all-branches mode)
     let branches: { branchId: string; name: string; orders: number; revenue: number }[] = [];
@@ -528,9 +576,8 @@ reports.get(
         .where(
           and(
             eq(schema.orders.organization_id, tenant.organizationId),
-            gte(schema.orders.created_at, start),
-            lte(schema.orders.created_at, end),
             eq(schema.orders.status, "completed"),
+            ordersInVnRange(startDate, endDate),
           ),
         )
         .groupBy(schema.orders.branch_id, schema.branches.name)
@@ -543,25 +590,17 @@ reports.get(
       }));
     }
 
-    // Payment method breakdown - join completed orders with payments
-    const completedOrders = await db
-      .select({ id: schema.orders.id })
-      .from(schema.orders)
-      .where(
-        and(
-          ordersCondition,
-          gte(schema.orders.created_at, start),
-          lte(schema.orders.created_at, end),
-          eq(schema.orders.status, "completed"),
-        ),
-      );
-
     // ⚠️ Phải trả cả `amount`: trước đây chỉ có `value` (phần trăm ĐÃ làm tròn) nên
     // trang Báo cáo không cách nào hiện được số tiền, mà cộng các lát lại cũng không
     // chắc ra 100%. Giữ `value` để bản web cũ trong lúc deploy không vỡ biểu đồ.
+    //
+    // Chỉ có ở phần dữ liệu mới — bản xuất của POS cũ không ghi hình thức thanh toán.
+    // Giao diện dựa vào `legacyDaysInRange` để ghi chú "chỉ tính từ …".
+    //
+    // Dùng innerJoin thay vì nạp hết id đơn rồi `inArray`: khoảng ngày dài sẽ đụng
+    // trần 65535 tham số của Postgres.
     let paymentMethods: { name: string; value: number; amount: number; count: number }[] = [];
-    if (completedOrders.length > 0) {
-      const orderIds = completedOrders.map((o) => o.id);
+    if (hasLive) {
       const pmData = await db
         .select({
           method: schema.payments.method,
@@ -569,12 +608,8 @@ reports.get(
           count: count(),
         })
         .from(schema.payments)
-        .where(
-          and(
-            inArray(schema.payments.order_id, orderIds),
-            eq(schema.payments.status, "completed"),
-          ),
-        )
+        .innerJoin(schema.orders, eq(schema.orders.id, schema.payments.order_id))
+        .where(and(liveScope, eq(schema.payments.status, "completed")))
         .groupBy(schema.payments.method)
         .orderBy(desc(sum(schema.payments.amount)));
 
@@ -590,17 +625,17 @@ reports.get(
     return c.json({
       success: true,
       data: {
-        totalOrders: totals.totalOrders,
-        totalRevenue: Number(totals.totalRevenue || 0),
-        totalTax: Number(totals.totalTax || 0),
-        totalDiscount: Number(totals.totalDiscount || 0),
-        days: dailyData.map((d) => ({
-          date: d.date,
-          orders: d.orders,
-          revenue: Number(d.revenue || 0),
-        })),
+        ...totals,
+        /** 'day' hoặc 'month' — khoảng dài thì `days[].date` là 'YYYY-MM'. */
+        granularity,
+        days: dailyData,
+        weekday,
         paymentMethods,
         branches,
+        /** Ngày đầu tiên có dữ liệu đầy đủ (thanh toán/ca/giờ). null = không có lịch sử. */
+        liveDataFrom: cutover ? nextDay(cutover) : null,
+        /** >0 nghĩa là khoảng đang chọn có lấn vào dữ liệu cũ → giao diện ghi chú. */
+        legacyDaysInRange: Number(legacyTotals[0]?.days || 0),
       },
     });
   },
@@ -615,54 +650,85 @@ reports.get(
     const { startDate, endDate } = c.req.valid("query");
     const scope = resolveReportScope(c);
     if (!scope.ok) return scope.response;
-    const { ordersCondition } = scope;
-
-    const start = new Date(startDate);
-    const end = new Date(endDate);
-    end.setHours(23, 59, 59, 999);
+    const { useAll, tenant, ordersCondition } = scope;
 
     const limitParam = c.req.query("limit");
     const limit = limitParam ? Math.min(parseInt(limitParam, 10) || 10, 50) : 10;
 
-    // Get completed orders in range
-    const completedOrders = await db
-      .select({ id: schema.orders.id })
-      .from(schema.orders)
-      .where(
-        and(
-          ordersCondition,
-          gte(schema.orders.created_at, start),
-          lte(schema.orders.created_at, end),
-          eq(schema.orders.status, "completed"),
-        ),
-      );
+    // Cùng quy tắc chia nguồn như /sales — xem getLegacyCutover().
+    const cutover = useAll ? null : await getLegacyCutover(tenant.branchId);
+    const legacyEnd = cutover && startDate <= cutover ? (endDate < cutover ? endDate : cutover) : null;
+    const liveStart = cutover ? (startDate > cutover ? startDate : nextDay(cutover)) : startDate;
+    const hasLive = liveStart <= endDate;
 
-    if (completedOrders.length === 0) {
-      return c.json({ success: true, data: [] });
+    const [liveRows, legacyRows] = await Promise.all([
+      hasLive
+        ? db
+            .select({
+              name: schema.orderItems.name,
+              quantity: sum(schema.orderItems.quantity),
+              revenue: sum(schema.orderItems.total),
+            })
+            .from(schema.orderItems)
+            // innerJoin thay cho `inArray(orderIds)`: khoảng dài sẽ đụng trần 65535
+            // tham số của Postgres.
+            .innerJoin(schema.orders, eq(schema.orders.id, schema.orderItems.order_id))
+            .where(
+              and(
+                ordersCondition,
+                eq(schema.orders.status, "completed"),
+                ordersInVnRange(liveStart, endDate),
+              ),
+            )
+            .groupBy(schema.orderItems.name)
+        : Promise.resolve([]),
+      legacyEnd
+        ? db
+            .select({
+              name: schema.salesHistoryItems.item_name,
+              quantity: sum(schema.salesHistoryItems.quantity),
+              revenue: sum(schema.salesHistoryItems.revenue),
+            })
+            .from(schema.salesHistoryItems)
+            .where(
+              and(
+                eq(schema.salesHistoryItems.branch_id, tenant.branchId),
+                gte(schema.salesHistoryItems.business_date, startDate),
+                lte(schema.salesHistoryItems.business_date, legacyEnd),
+                // POS cũ ghi tuỳ chọn ("Nhiều đường", "Ít đá"…) thành dòng món giá 0đ.
+                // Hệ mới để chúng ở `order_item_modifiers` — bảng khác, không lọt vào
+                // đây. Không loại ra thì "Nhiều đường" chen lên top món bán chạy.
+                //
+                // IS DISTINCT FROM chứ không phải `<>`: cột nullable, mà `NULL <> 'x'`
+                // ra NULL nên món thiếu nhóm sẽ bị loại im lặng.
+                sql`${schema.salesHistoryItems.group_name} IS DISTINCT FROM ${LEGACY_MODIFIER_GROUP}`,
+              ),
+            )
+            .groupBy(schema.salesHistoryItems.item_name)
+        : Promise.resolve([]),
+    ]);
+
+    // Gộp theo tên đã chuẩn hoá, nếu không cùng một món ra hai dòng (xem
+    // LEGACY_ITEM_ALIASES). Xếp hạng và cắt `limit` SAU khi gộp — cắt trước rồi gộp
+    // là hạng sai.
+    const merged = new Map<string, { totalQuantity: number; totalRevenue: number }>();
+    for (const row of [...legacyRows, ...liveRows]) {
+      const key = canonicalItemName(row.name);
+      const acc = merged.get(key) ?? { totalQuantity: 0, totalRevenue: 0 };
+      acc.totalQuantity += Number(row.quantity || 0);
+      acc.totalRevenue += Number(row.revenue || 0);
+      merged.set(key, acc);
     }
 
-    const orderIds = completedOrders.map((o) => o.id);
+    // Xếp theo DOANH THU, không theo số lượng: khi có cả lịch sử thì đơn vị lẫn lộn
+    // (ly, túi, ký, và cả gram cà phê rời của hệ cũ) nên cộng/so số lượng là vô nghĩa
+    // — 21.725 gram sẽ chen lên trên 8.335 ly. Danh sách vẫn hiện cả hai số.
+    const data = [...merged.entries()]
+      .map(([name, v]) => ({ name, ...v }))
+      .sort((a, b) => b.totalRevenue - a.totalRevenue)
+      .slice(0, limit);
 
-    const topItems = await db
-      .select({
-        name: schema.orderItems.name,
-        totalQuantity: sum(schema.orderItems.quantity),
-        totalRevenue: sum(schema.orderItems.total),
-      })
-      .from(schema.orderItems)
-      .where(inArray(schema.orderItems.order_id, orderIds))
-      .groupBy(schema.orderItems.name)
-      .orderBy(desc(sum(schema.orderItems.quantity)))
-      .limit(limit);
-
-    return c.json({
-      success: true,
-      data: topItems.map((item) => ({
-        name: item.name,
-        totalQuantity: Number(item.totalQuantity || 0),
-        totalRevenue: Number(item.totalRevenue || 0),
-      })),
-    });
+    return c.json({ success: true, data });
   },
 );
 

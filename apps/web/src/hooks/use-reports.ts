@@ -25,14 +25,34 @@ export interface BranchSalesShare {
   revenue: number;
 }
 
+export interface SalesReportWeekday {
+  /** 0 = Chủ nhật … 6 = Thứ bảy (quy ước `extract(dow …)` của Postgres). */
+  dow: number;
+  days: number;
+  orders: number;
+  revenue: number;
+  /** Trung bình mỗi ngày — mỗi thứ có số ngày khác nhau trong kỳ nên phải so cái này. */
+  avgRevenue: number;
+}
+
 export interface SalesReportData {
   totalOrders: number;
   totalRevenue: number;
   totalTax: number;
   totalDiscount: number;
+  /** 'month' khi khoảng dài hơn 92 ngày — lúc đó `days[].date` là 'YYYY-MM'. */
+  granularity: "day" | "month";
   days: SalesReportDay[];
+  weekday: SalesReportWeekday[];
   paymentMethods: PaymentMethodShare[];
   branches?: BranchSalesShare[];
+  /**
+   * Ngày đầu tiên có dữ liệu đầy đủ (hình thức thanh toán, ca làm, theo giờ).
+   * Trước ngày này là số nhập từ POS cũ — chỉ có doanh thu, số hoá đơn và món.
+   */
+  liveDataFrom: string | null;
+  /** >0 nghĩa là khoảng đang chọn lấn vào dữ liệu cũ → phải ghi chú ở panel thiếu. */
+  legacyDaysInRange: number;
 }
 
 export interface TopItemReport {

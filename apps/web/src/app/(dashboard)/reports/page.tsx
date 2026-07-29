@@ -19,6 +19,7 @@ import { ReportStats } from "./_components/report-stats";
 import { SalesChart } from "./_components/sales-chart";
 import { PaymentMethodsChart } from "./_components/payment-methods-chart";
 import { TopItemsList } from "./_components/top-items-list";
+import { WeekdayChart } from "./_components/weekday-chart";
 import { ShiftHistoryList } from "./_components/shift-history-list";
 import { useTranslation } from "@/stores/lang-store";
 import { PageHeader } from "@/components/page-header";
@@ -55,6 +56,26 @@ function getCurrentMonthRange() {
     start: start.toISOString().split("T")[0],
     end: now.toISOString().split("T")[0],
   };
+}
+
+function getLastMonthsRange(months: number) {
+  const end = new Date();
+  const start = new Date();
+  start.setMonth(start.getMonth() - months);
+  return {
+    start: start.toISOString().split("T")[0],
+    end: end.toISOString().split("T")[0],
+  };
+}
+
+/**
+ * "Tất cả" — lùi xa hơn mọi dữ liệu có thể có.
+ *
+ * Máy chủ tự cắt theo dữ liệu thật nên không cần biết trước ngày đầu tiên; chọn mốc
+ * 2020 cho chắc, đỡ phải thêm một vòng gọi chỉ để hỏi ngày cũ nhất.
+ */
+function getAllTimeRange() {
+  return { start: "2020-01-01", end: new Date().toISOString().split("T")[0] };
 }
 
 export default function ReportsPage() {
@@ -104,6 +125,9 @@ export default function ReportsPage() {
     name: METHOD_LABELS[pm.name] || pm.name,
   }));
   const topItems: TopItemReport[] = topItemsData ?? [];
+
+  /** Khoảng đang chọn có lấn sang phần nhập từ POS cũ hay không. */
+  const hasLegacyInRange = (salesData?.legacyDaysInRange ?? 0) > 0;
 
   const totalRevenue = salesData?.totalRevenue || 0;
   const totalOrders = salesData?.totalOrders || 0;
@@ -239,6 +263,35 @@ export default function ReportsPage() {
         >
           {t("reports.thisMonth")}
         </Button>
+        {/* Khoảng dài: cần thiết để với tới phần lịch sử nhập từ POS cũ — trước đây
+            dài nhất chỉ có "Tháng này" nên dữ liệu cũ có nối vào cũng không ai xem được. */}
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 active:translate-y-px active:scale-[0.98]"
+          onClick={() => applyRange(getLastMonthsRange(3))}
+        >
+          {t("reports.last3months")}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 active:translate-y-px active:scale-[0.98]"
+          onClick={() => applyRange(getLastMonthsRange(12))}
+        >
+          {t("reports.last12months")}
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="h-8 active:translate-y-px active:scale-[0.98]"
+          onClick={() => applyRange(getAllTimeRange())}
+        >
+          {t("reports.allTime")}
+        </Button>
         {canViewAll && (
           <Button
             type="button"
@@ -300,9 +353,21 @@ export default function ReportsPage() {
       )}
 
       <div className="grid gap-6 lg:grid-cols-2">
-        <SalesChart days={days} isLoading={salesLoading} />
-        <PaymentMethodsChart paymentMethods={paymentMethods} isLoading={salesLoading} />
+        <SalesChart
+          days={days}
+          isLoading={salesLoading}
+          granularity={salesData?.granularity}
+        />
+        <PaymentMethodsChart
+          paymentMethods={paymentMethods}
+          isLoading={salesLoading}
+          // Chỉ ghi chú khi khoảng chọn lấn sang phần nhập từ POS cũ (không có hình
+          // thức thanh toán); khoảng toàn dữ liệu mới thì không thêm chữ vô ích.
+          noteFrom={hasLegacyInRange ? salesData?.liveDataFrom : null}
+        />
       </div>
+
+      <WeekdayChart weekday={salesData?.weekday ?? []} isLoading={salesLoading} />
 
       <TopItemsList topItems={topItems} isLoading={topItemsLoading} />
 

@@ -660,10 +660,18 @@ export default function DashboardLayout({
         {/* Đệm đáy phải TÍNH ĐỘNG: thanh menu dưới là h-16 (64px) CỘNG thêm
             env(safe-area-inset-bottom). Đệm cứng pb-24 (96px) là thiếu chỗ trên máy
             có vạch gạt dưới (~34px) → hàng cuối bị che. Máy tính (md) của admin thì
-            thanh menu ẩn nên không cần đệm. */}
+            thanh menu ẩn nên không cần đệm.
+
+            ⚠️ TUYỆT ĐỐI KHÔNG dùng `md:py-*` (hay `md:p-*`) ở đây — `py` là
+            padding-block, đặt CẢ TRÊN LẪN DƯỚI, mà class có tiền tố `md:` luôn được
+            ghi SAU class không tiền tố nên nó ĂN MẤT `pb-[calc(...)]` bên dưới, im
+            lặng không báo lỗi gì. Đã trả giá: máy POS nằm ngang (≥768px, tài khoản
+            nhân viên nên thanh menu KHÔNG ẩn) chỉ còn đệm 12px < nav 64px → vuốt hết
+            cỡ vẫn mất ~52px cuối, đúng chỗ nút Hủy bàn / Thanh toán của thẻ bàn.
+            Chỉ được đụng chiều trên bằng `md:pt-*`. */}
         <main
           className={cn(
-            "flex-1 overflow-y-auto p-4 md:px-4 md:py-3",
+            "flex-1 overflow-y-auto p-4 md:px-4 md:pt-3",
             staffNav
               ? "pb-[calc(5rem+env(safe-area-inset-bottom))]"
               : "pb-[calc(6rem+env(safe-area-inset-bottom))] md:pb-3"

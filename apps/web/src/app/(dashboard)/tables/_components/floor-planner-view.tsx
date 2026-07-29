@@ -186,11 +186,15 @@ export function FloorPlannerView({
         </div>
       </div>
 
-      {/* Canvas */}
+      {/* Canvas
+          ⚠️ 100dvh chứ KHÔNG phải 100vh: trên WebView Android, 100vh cao hơn vùng
+          nhìn thấy thật → khung sơ đồ thò xuống dưới thanh menu. Trừ 30rem (480px)
+          để chừa header + tab khu + thanh công cụ + thanh menu dưới (64px).
+          minHeight giữ nguyên: máy màn thấp mà tính ra số âm là mất luôn khung. */}
       <div
         ref={canvasRef}
         className="relative overflow-hidden rounded-lg border bg-muted/30 select-none"
-        style={{ height: "calc(100vh - 420px)", minHeight: 400, cursor: isPanning ? "grabbing" : "grab" }}
+        style={{ height: "calc(100dvh - 30rem)", minHeight: 400, cursor: isPanning ? "grabbing" : "grab" }}
         onWheel={handleWheel}
         onPointerDown={handlePointerDown}
         onPointerMove={handlePointerMove}

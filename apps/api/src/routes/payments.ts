@@ -1311,6 +1311,63 @@ payments.post(
 );
 
 // GET /requests/:id - Get payment request status.
+/**
+ * Phiếu QR còn hiệu lực của MỘT đơn (nếu có).
+ *
+ * Sinh ra để chữa cảnh này: thu ngân in phiếu QR, đóng hộp thoại, mở lại thì mã
+ * QR biến mất (id chỉ nằm trong state của hộp thoại) và phương thức nhảy về Tiền
+ * mặt. Muốn quay lại luồng chuyển khoản phải in thêm một phiếu nữa — nên đường
+ * dễ nhất thành ra bấm Tiền mặt/Thẻ. Đo trên dữ liệu thật 26-29/07: 41 phiếu QR
+ * in ra thì 31 đơn bị ghi thành Thẻ, chỉ 1 đơn ghi đúng Chuyển khoản.
+ *
+ * Không tìm thấy thì trả `data: null` chứ KHÔNG 404 — "đơn này chưa in phiếu QR"
+ * là chuyện thường ngày, không phải lỗi để client phải bắt.
+ *
+ * Đặt TRƯỚC `/requests/:id` để khỏi phải nghĩ về thứ tự khớp đường dẫn.
+ */
+payments.get("/requests/by-order/:orderId", requirePermission("payments:read"), async (c) => {
+  const tenant = c.get("tenant") as any;
+  const orderId = c.req.param("orderId");
+  const now = new Date();
+
+  const [request] = await db
+    .select()
+    .from(schema.paymentRequests)
+    .where(
+      and(
+        eq(schema.paymentRequests.order_id, orderId),
+        eq(schema.paymentRequests.branch_id, tenant.branchId),
+        eq(schema.paymentRequests.status, "pending"),
+        gt(schema.paymentRequests.expires_at, now),
+      ),
+    )
+    .orderBy(desc(schema.paymentRequests.created_at))
+    .limit(1);
+
+  if (!request) return c.json({ success: true, data: null });
+
+  // Chuyển khoản ngân hàng cần khối `bank` để in lại phiếu; MoMo thì tiền vào ví
+  // nên không có số tài khoản nào để in.
+  let bank = null;
+  if (request.provider !== "momo") {
+    const [branch] = await db
+      .select()
+      .from(schema.branches)
+      .where(eq(schema.branches.id, tenant.branchId))
+      .limit(1);
+    const transfer = buildTransferPayload(branch, request.payment_code, request.amount);
+    bank = {
+      bankCode: transfer.bankCode,
+      accountNumber: transfer.accountNumber,
+      accountName: transfer.accountName,
+      amountVnd: transfer.amountVnd,
+      addInfo: transfer.addInfo,
+    };
+  }
+
+  return c.json({ success: true, data: { ...request, bank } });
+});
+
 payments.get("/requests/:id", requirePermission("payments:read"), async (c) => {
   const tenant = c.get("tenant") as any;
   const id = c.req.param("id");

@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { WsMessage } from "@restai/types";
 import { Printer, CheckCircle2, Loader2, Banknote, CreditCard, Landmark, Clock3, Wallet } from "lucide-react";
@@ -15,7 +15,12 @@ import {
   DialogHeader,
   DialogTitle,
 } from "@restai/ui/components/dialog";
-import { useCreatePayment, useCreatePaymentRequest, usePaymentRequest } from "@/hooks/use-payments";
+import {
+  useCreatePayment,
+  useCreatePaymentRequest,
+  usePaymentRequest,
+  useActivePaymentRequestByOrder,
+} from "@/hooks/use-payments";
 import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
 import { usePrintReceipt, usePrintTemporaryTransferBill } from "@/components/print-ticket";
 import { formatCurrency } from "@/lib/utils";
@@ -64,6 +69,8 @@ export function PosPaymentDialog({
   /** Lần thanh toán này có in hóa đơn không — để màn báo thành công nói đúng sự thật. */
   const [printedReceipt, setPrintedReceipt] = useState(true);
   const [paymentRequestId, setPaymentRequestId] = useState<string | undefined>();
+  /** Đã tự nhận phiếu QR cũ cho lần mở này chưa — xem effect bên dưới. */
+  const adoptedRef = useRef(false);
 
   const { data: orgSettings } = useOrgSettings();
   const { data: branchSettings } = useBranchSettings();
@@ -95,8 +102,45 @@ export function PosPaymentDialog({
       setDocNumber("");
       setDocHolderName("");
       setPaymentRequestId(undefined);
+      adoptedRef.current = false;
     }
   }, [open, totalAmount]);
+
+  /**
+   * Đơn này đã in phiếu QR chưa? Hỏi mỗi lần mở hộp thoại.
+   *
+   * `paymentRequestId` chỉ sống trong state, đóng hộp thoại là mất. Không có
+   * truy vấn này thì mở lại đơn đã in phiếu QR sẽ thấy màn hình trắng trơn ở
+   * mục Chuyển khoản, và thu ngân phải in thêm một phiếu nữa mới quay lại được
+   * luồng đó — nên họ bấm Tiền mặt/Thẻ cho nhanh.
+   */
+  const { data: existingRequest } = useActivePaymentRequestByOrder(orderId, open);
+
+  /**
+   * Phiếu cũ chỉ dùng lại được khi số tiền CÒN KHỚP.
+   *
+   * ⚠️ Khách gọi thêm món sau lúc in phiếu là mã QR cũ mang số tiền cũ. Nếu cứ
+   * dùng lại thì khách quét ra số nhỏ, chuyển đúng số nhỏ đó, mà nút xác nhận
+   * lại ghi nhận đủ tổng mới — thất thu và sổ sách sai. Lệch tiền thì coi như
+   * chưa có phiếu, thu ngân in phiếu mới (máy chủ tự huỷ phiếu cũ khi tạo).
+   */
+  const reusableQrRequest =
+    (existingRequest as any)?.id && (existingRequest as any).amount === totalAmount
+      ? (existingRequest as any)
+      : null;
+
+  /**
+   * Tự nhảy vào đúng phương thức của phiếu đã in.
+   *
+   * `adoptedRef` để chỉ làm ĐÚNG MỘT LẦN mỗi lần mở: thu ngân chủ động đổi sang
+   * Tiền mặt (khách đổi ý) thì không bị effect kéo ngược về Chuyển khoản.
+   */
+  useEffect(() => {
+    if (!open || adoptedRef.current || !reusableQrRequest) return;
+    adoptedRef.current = true;
+    setPaymentRequestId(reusableQrRequest.id);
+    setMethod(reusableQrRequest.provider === "momo" ? "momo" : "transfer");
+  }, [open, reusableQrRequest]);
 
   useEffect(() => {
     const request = paymentRequest as any;
@@ -483,6 +527,16 @@ export function PosPaymentDialog({
                   );
                 })}
               </div>
+
+              {/* Cảnh báo, KHÔNG chặn: khách in phiếu QR rồi đổi ý trả tiền mặt là
+                  chuyện có thật (dữ liệu 26-29/07 có 8 đơn kiểu đó). Chặn cứng chỉ
+                  đẻ ra cách lách tệ hơn. Nếu số liệu vẫn sai thì mới siết. */}
+              {!isQrMethod && reusableQrRequest && (
+                <p className="rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+                  ⚠️ Đơn này đã in phiếu chuyển khoản QR. Chỉ chọn Tiền mặt/Thẻ nếu khách
+                  đổi ý trả kiểu khác.
+                </p>
+              )}
             </div>
 
             {/* Tendered and change */}

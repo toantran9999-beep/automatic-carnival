@@ -48,6 +48,22 @@ export function usePaymentRequest(id?: string) {
   });
 }
 
+/**
+ * Phiếu QR còn hiệu lực của một đơn — để hộp thoại thanh toán mở lên là nhận
+ * lại đúng phiếu đã in, thay vì bắt thu ngân in thêm phiếu mới.
+ *
+ * Cố ý KHÔNG có `refetchInterval`: đây là truy vấn một lần lúc mở hộp thoại.
+ * Việc theo dõi trạng thái "đã nhận tiền chưa" là của `usePaymentRequest`.
+ */
+export function useActivePaymentRequestByOrder(orderId?: string, enabled = true) {
+  return useQuery({
+    queryKey: ["payments", "requests", "by-order", orderId],
+    queryFn: () => apiFetch(`/api/payments/requests/by-order/${orderId}`),
+    enabled: Boolean(orderId) && enabled,
+    staleTime: 0,
+  });
+}
+
 export function usePaymentSummary() {
   return useQuery({
     queryKey: ["payments", "summary"],

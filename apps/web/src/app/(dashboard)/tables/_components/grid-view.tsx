@@ -1,7 +1,7 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { cn } from "@/lib/utils";
+import { useNow } from "@/hooks/use-now";
 import { TableCard } from "./table-card";
 
 interface TableServiceRequestIndicator {
@@ -68,11 +68,7 @@ export function GridView({
   onVoid,
 }: GridViewProps) {
   // 1 đồng hồ chung cho mọi card (hiện thời gian ngồi), tick mỗi 30s
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, []);
+  const now = useNow();
 
   return (
     // auto-rows-fr: kéo MỌI hàng bằng hàng cao nhất. Không có nó thì chiều cao mỗi hàng

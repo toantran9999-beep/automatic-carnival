@@ -17,19 +17,12 @@ import {
   ArrowRightLeft,
   Clock,
 } from "lucide-react";
-import { cn, formatCurrency } from "@/lib/utils";
+import { cn, formatCurrency, formatElapsed } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
 
 interface TableServiceRequestIndicator {
   type: "request_bill" | "call_waiter";
   customerName: string;
-}
-
-/** "54p" khi dưới 1 giờ, "1h26p" khi trên — giống iPOS */
-function formatElapsed(startedAt: string, now: number): string {
-  const mins = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 60000));
-  if (mins < 60) return `${mins}p`;
-  return `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, "0")}p`;
 }
 
 interface TableCardProps {

@@ -19,6 +19,19 @@ export function sortByOrder<T extends Record<string, any>>(list: T[]): T[] {
   });
 }
 
+/**
+ * Thời gian đã trôi: "54p" khi dưới 1 giờ, "1h26p" khi trên — kiểu iPOS.
+ *
+ * ⚠️ Dùng CHUNG cho thẻ bàn, thẻ đơn mang về và các hộp thoại chi tiết. Trước đây hàm
+ * này bị chép đôi ở hai file; thêm chỗ dùng thứ ba mà cứ chép tiếp thì sửa cách hiện
+ * phải nhớ sửa đủ ba nơi. Đừng đổi định dạng: nhân viên đã quen đọc "1h26p".
+ */
+export function formatElapsed(startedAt: string, now: number): string {
+  const mins = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 60000));
+  if (mins < 60) return `${mins}p`;
+  return `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, "0")}p`;
+}
+
 export function formatCurrency(cents: number, currencyCode?: string): string {
   let lang = "vi";
   try {

@@ -301,6 +301,8 @@ export interface TakeawayOrder {
   total: number;
   tax: number;
   created_at: string;
+  /** null = đơn cũ (trước 30/07/2026, chưa lưu người bấm). */
+  created_by_name: string | null;
   itemSummary: string;
   items: {
     id: string;
@@ -312,15 +314,22 @@ export interface TakeawayOrder {
     total: number;
     unit?: string;
     notes?: string;
+    createdAt: string | null;
+    createdByName: string | null;
     /** `modifierId` là null khi tùy chọn đã bị xóa khỏi thực đơn — tên/giá vẫn còn (snapshot). */
     modifiers: { modifierId: string | null; name: string; price: number }[];
   }[];
 }
 
-export function useTakeawayOrders() {
+/**
+ * ⚠️ `enabled` cho hộp thoại chi tiết ở Tổng quan: quản lý chỉ thỉnh thoảng liếc, để
+ * chạy sẵn là mỗi 20 giây lại kéo cả đơn + món + tùy chọn mà không ai nhìn.
+ */
+export function useTakeawayOrders(options?: { enabled?: boolean }) {
   return useQuery<TakeawayOrder[]>({
     queryKey: ["tables", "takeaway"],
     queryFn: () => apiFetch<TakeawayOrder[]>("/api/tables/takeaway"),
+    enabled: options?.enabled ?? true,
     refetchInterval: 20000,
   });
 }

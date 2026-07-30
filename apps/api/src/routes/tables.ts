@@ -286,8 +286,12 @@ tables.get("/takeaway", requirePermission("orders:read"), async (c) => {
       total: schema.orders.total,
       tax: schema.orders.tax,
       created_at: schema.orders.created_at,
+      created_by_name: schema.users.name,
     })
     .from(schema.orders)
+    // leftJoin: đơn cũ (trước 30/07/2026) không có người bấm — phải ra null chứ
+    // không được làm mất dòng đơn.
+    .leftJoin(schema.users, eq(schema.orders.created_by, schema.users.id))
     .where(
       and(
         eq(schema.orders.branch_id, tenant.branchId),
@@ -295,6 +299,7 @@ tables.get("/takeaway", requirePermission("orders:read"), async (c) => {
         sql`orders.status NOT IN ('completed','cancelled')`,
       ),
     )
+    // Mới nhất lên đầu: thu ngân vừa tạo đơn là thấy ngay ở đầu danh sách.
     .orderBy(desc(schema.orders.created_at));
 
   if (orders.length === 0) return c.json({ success: true, data: [] });
@@ -311,9 +316,14 @@ tables.get("/takeaway", requirePermission("orders:read"), async (c) => {
       total: schema.orderItems.total,
       notes: schema.orderItems.notes,
       unit: schema.orderItems.unit,
+      created_at: schema.orderItems.created_at,
+      created_by_name: schema.users.name,
     })
     .from(schema.orderItems)
-    .where(inArray(schema.orderItems.order_id, orderIds));
+    .leftJoin(schema.users, eq(schema.orderItems.created_by, schema.users.id))
+    .where(inArray(schema.orderItems.order_id, orderIds))
+    // Theo giờ thêm: món gọi thêm nằm dưới, đọc ra đúng thứ tự khách gọi.
+    .orderBy(schema.orderItems.created_at);
 
   // ⚠️ Chỗ này TỪNG ghi cứng `modifiers: []` — đơn mang về ra tới máy tính tiền là
   // mất sạch tùy chọn, nên phiếu in dòng món theo `unit_price` (giá gốc 20.000đ)
@@ -340,6 +350,8 @@ tables.get("/takeaway", requirePermission("orders:read"), async (c) => {
         total: i.total,
         unit: i.unit ?? undefined,
         notes: i.notes ?? undefined,
+        createdAt: i.created_at,
+        createdByName: i.created_by_name ?? null,
         modifiers: modsByItem.get(i.id) ?? [],
       })),
     };

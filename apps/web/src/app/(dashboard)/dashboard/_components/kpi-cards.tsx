@@ -14,6 +14,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
 import type { Overview } from "@/hooks/use-dashboard";
 import { OpenTablesDialog } from "./open-tables-dialog";
+import { OpenTakeawayDialog } from "./open-takeaway-dialog";
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className ?? ""}`} />;
@@ -45,6 +46,7 @@ interface KpiCardsProps {
 export function KpiCards({ data, isLoading }: KpiCardsProps) {
   const { t } = useTranslation();
   const [tablesOpen, setTablesOpen] = useState(false);
+  const [takeawayOpen, setTakeawayOpen] = useState(false);
 
   if (isLoading || !data) {
     return (
@@ -98,6 +100,7 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
       // Tiền của đơn mang về chưa thu. KHÔNG chồng lấn số ở thẻ bàn bên cạnh —
       // bên đó chỉ tính đơn gắn phiên bàn.
       foot: `${t("dashboard.openTablesRevenue")}: ${formatCurrency(today.openTakeawayRevenue)}`,
+      onClick: () => setTakeawayOpen(true),
     },
     {
       title: t("dashboard.occupiedTables"),
@@ -168,6 +171,7 @@ export function KpiCards({ data, isLoading }: KpiCardsProps) {
       </div>
 
       <OpenTablesDialog open={tablesOpen} onOpenChange={setTablesOpen} />
+      <OpenTakeawayDialog open={takeawayOpen} onOpenChange={setTakeawayOpen} />
     </>
   );
 }

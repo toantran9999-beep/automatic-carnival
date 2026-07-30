@@ -48,8 +48,9 @@ import {
   type TakeawayOrder,
 } from "@/hooks/use-tables";
 import { useQueryClient } from "@tanstack/react-query";
-import { ShoppingBag } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { ShoppingBag, Clock } from "lucide-react";
+import { formatCurrency, formatElapsed } from "@/lib/utils";
+import { useNow } from "@/hooks/use-now";
 import { PosPaymentDialog } from "../pos/_components/pos-payment-dialog";
 import type { PosCartItem } from "../pos/page";
 import { useBranchSettings } from "@/hooks/use-settings";
@@ -205,6 +206,9 @@ export default function TablesPage() {
   }, [pendingData]);
 
   const isTakeawayTab = activeTab === TAKEAWAY_TAB;
+  // Đồng hồ cho thẻ mang về — chỉ chạy khi đang đứng ở tab đó, kẻo cứ 30 giây lại
+  // dựng lại cả trang Bàn ăn trong khi không ai nhìn danh sách mang về.
+  const takeawayNow = useNow(isTakeawayTab);
 
   const zoneTables = useMemo(() => {
     // Chặn sớm: id giả sẽ rơi vào nhánh so space_id ở cuối và lọc ra mảng rỗng vô nghĩa
@@ -726,14 +730,25 @@ export default function TablesPage() {
               <div className="grid auto-rows-fr gap-3 grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6">
                 {takeawayList.map((o) => (
                   <div key={o.id} className="rounded-2xl p-4 flex flex-col gap-2 bg-card border">
-                    <div className="flex items-center justify-between">
-                      <span className="inline-flex items-center gap-1 text-xs font-semibold text-primary">
-                        <ShoppingBag className="h-3.5 w-3.5" />
+                    <div className="flex items-start justify-between gap-2">
+                      <span className="inline-flex min-w-0 items-center gap-1 text-xs font-semibold text-primary">
+                        <ShoppingBag className="h-3.5 w-3.5 shrink-0" />
                         #{o.order_number}
                       </span>
-                      <span className="text-sm font-bold text-primary tabular-nums">
-                        {formatCurrency(o.total)}
-                      </span>
+                      {/* Đồng hồ đặt dưới số tiền, canh phải — đúng chỗ thẻ bàn đang
+                          để. Với đơn mang về con số này còn đáng giá hơn ở bàn: đơn
+                          nằm đó tới khi thu tiền, treo lâu là dấu hiệu có chuyện. */}
+                      <div className="flex shrink-0 flex-col items-end gap-0.5">
+                        <span className="text-sm font-bold text-primary tabular-nums">
+                          {formatCurrency(o.total)}
+                        </span>
+                        {o.created_at && (
+                          <span className="inline-flex items-center gap-1 text-xs font-bold tabular-nums text-muted-foreground">
+                            <Clock className="h-3.5 w-3.5" />
+                            {formatElapsed(o.created_at, takeawayNow)}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     <p className="text-xs font-medium truncate text-muted-foreground">
                       {o.customer_name || (lang === "vi" ? "Khách lẻ" : "Walk-in")}

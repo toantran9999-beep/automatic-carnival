@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useMemo } from "react";
 import {
   Dialog,
   DialogContent,
@@ -10,17 +10,11 @@ import {
 } from "@restai/ui/components/dialog";
 import { Skeleton } from "@restai/ui/components/skeleton";
 import { Clock } from "lucide-react";
-import { formatCurrency } from "@/lib/utils";
+import { formatCurrency, formatElapsed } from "@/lib/utils";
+import { useNow } from "@/hooks/use-now";
 import { useOpenTablesDetail, type OpenTableOrder } from "@/hooks/use-tables";
 import { OrderItemLines } from "@/components/order-item-lines";
 import { useTranslation } from "@/stores/lang-store";
-
-/** "54p" khi dưới 1 giờ, "1h26p" khi trên — cùng cách hiện với thẻ bàn bên Bàn ăn. */
-function formatElapsed(startedAt: string, now: number): string {
-  const mins = Math.max(0, Math.floor((now - Date.parse(startedAt)) / 60000));
-  if (mins < 60) return `${mins}p`;
-  return `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, "0")}p`;
-}
 
 /** "14:35" theo giờ VN. */
 function vnTime(iso: string | null): string {
@@ -60,13 +54,7 @@ export function OpenTablesDialog({
   const { data, isLoading } = useOpenTablesDetail({ enabled: open });
 
   // Đồng hồ chỉ chạy khi hộp thoại đang mở.
-  const [now, setNow] = useState(() => Date.now());
-  useEffect(() => {
-    if (!open) return;
-    setNow(Date.now());
-    const timer = setInterval(() => setNow(Date.now()), 30_000);
-    return () => clearInterval(timer);
-  }, [open]);
+  const now = useNow(open);
 
   const openTables = useMemo(() => {
     const list: any[] = (data as any)?.tables ?? [];

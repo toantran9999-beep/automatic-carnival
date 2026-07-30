@@ -50,10 +50,14 @@ orders.get("/", requirePermission("orders:read"), zValidator("query", orderQuery
         item_count: sql<number>`(SELECT COUNT(*)::int FROM order_items WHERE order_items.order_id = ${schema.orders.id})`,
         total_paid: sql<number>`COALESCE((SELECT SUM(amount)::int FROM payments WHERE payments.order_id = ${schema.orders.id} AND payments.status = 'completed'), 0)`,
         table_number: schema.tables.number,
+        // Tên người bấm đơn. leftJoin: đơn cũ (trước 30/07/2026) và đơn khách tự gọi
+        // không có người, phải ra null chứ không được làm mất dòng đơn.
+        created_by_name: schema.users.name,
       })
       .from(schema.orders)
       .leftJoin(schema.tableSessions, eq(schema.orders.table_session_id, schema.tableSessions.id))
       .leftJoin(schema.tables, eq(schema.tableSessions.table_id, schema.tables.id))
+      .leftJoin(schema.users, eq(schema.orders.created_by, schema.users.id))
       .where(whereClause)
       .orderBy(desc(schema.orders.created_at))
       .limit(limit)
@@ -209,6 +213,9 @@ orders.post(
         tableSessionId,
         // Ca đã tra ở cổng chặn phía trên — đơn được cấp số 01, 02… theo ca
         registerShiftId: openShift.id,
+        // Người bấm đơn. Đây là chỗ DUY NHẤT ghi lại được — suy qua ca làm thì cả
+        // buổi chỉ có một tên (mỗi chi nhánh tối đa 1 ca mở).
+        createdBy: user?.role === "customer" ? null : user?.sub ?? null,
       });
     } catch (err) {
       if (err instanceof OrderValidationError) {
@@ -332,7 +339,12 @@ orders.post(
 
     let result;
     try {
-      result = await addItemsToOrder({ orderId: id, branchId: tenant.branchId, items });
+      result = await addItemsToOrder({
+        orderId: id,
+        branchId: tenant.branchId,
+        items,
+        createdBy: user?.role === "customer" ? null : user?.sub ?? null,
+      });
     } catch (err) {
       if (err instanceof OrderValidationError) {
         return c.json(
@@ -435,8 +447,15 @@ orders.get(
     const tenant = c.get("tenant") as any;
 
     const [order] = await db
-      .select()
+      .select({
+        ...getTableColumns(schema.orders),
+        table_number: schema.tables.number,
+        created_by_name: schema.users.name,
+      })
       .from(schema.orders)
+      .leftJoin(schema.tableSessions, eq(schema.orders.table_session_id, schema.tableSessions.id))
+      .leftJoin(schema.tables, eq(schema.tableSessions.table_id, schema.tables.id))
+      .leftJoin(schema.users, eq(schema.orders.created_by, schema.users.id))
       .where(
         and(
           eq(schema.orders.id, id),
@@ -452,17 +471,37 @@ orders.get(
       );
     }
 
+    // Tên người thêm TỪNG món: món gọi thêm giữa buổi thường do người khác bấm, và
+    // đó là thứ hộp thoại chi tiết cần chỉ ra.
     const rawItems = await db
-      .select()
+      .select({
+        ...getTableColumns(schema.orderItems),
+        created_by_name: schema.users.name,
+      })
       .from(schema.orderItems)
-      .where(eq(schema.orderItems.order_id, order.id));
+      .leftJoin(schema.users, eq(schema.orderItems.created_by, schema.users.id))
+      .where(eq(schema.orderItems.order_id, order.id))
+      .orderBy(schema.orderItems.created_at);
 
     // Tùy chọn phải đi kèm: màn In lại hóa đơn (payments) đọc đúng endpoint này,
     // thiếu là hóa đơn in ra mất dòng giải thích chênh lệch giá.
     const modMap = await loadItemModifiers(rawItems.map((i) => i.id));
     const items = rawItems.map((i) => ({ ...i, modifiers: modMap.get(i.id) ?? [] }));
 
-    return c.json({ success: true, data: { ...order, items } });
+    // Các lần thu tiền — đơn có thể trả nhiều lần (một phần tiền mặt, một phần chuyển khoản).
+    const payments = await db
+      .select({
+        id: schema.payments.id,
+        method: schema.payments.method,
+        amount: schema.payments.amount,
+        status: schema.payments.status,
+        created_at: schema.payments.created_at,
+      })
+      .from(schema.payments)
+      .where(eq(schema.payments.order_id, order.id))
+      .orderBy(schema.payments.created_at);
+
+    return c.json({ success: true, data: { ...order, items, payments } });
   },
 );
 

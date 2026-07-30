@@ -130,25 +130,46 @@ tables.get("/", requirePermission("tables:read"), async (c) => {
     );
 
   const sessionIds = activeSessions.map(s => s.id);
-  
+
+  // ?withItems=1 — chi tiết từng đơn & từng món (hộp thoại "Bàn đang có khách" ở
+  // Tổng quan). Mặc định KHÔNG bật.
+  //
+  // ⚠️ Đường mặc định chỉ trả `itemSummary` — một chuỗi gộp theo TÊN món, nên hai ly
+  // cùng tên khác tùy chọn bị nhập thành một dòng. Muốn hiện dòng phụ thì phải lấy
+  // thêm cột, mà đường mặc định là truy vấn SỐNG (trang Bàn ăn gọi lại mỗi 20 giây)
+  // — nhồi vào đó là mỗi lượt kéo thêm một mớ chẳng ai xem. Vì vậy tách cờ riêng,
+  // cùng lối `?layout=1` ở trên.
+  const withItems = c.req.query("withItems") === "1";
+
   let ordersList: any[] = [];
   let orderItemsList: any[] = [];
-  
+
   if (sessionIds.length > 0) {
     ordersList = await db
       .select({
         id: schema.orders.id,
         table_session_id: schema.orders.table_session_id,
         total: schema.orders.total,
+        ...(withItems
+          ? {
+              order_number: schema.orders.order_number,
+              created_at: schema.orders.created_at,
+              created_by_name: schema.users.name,
+            }
+          : {}),
       })
       .from(schema.orders)
+      // leftJoin: đơn cũ và đơn khách tự gọi không có người bấm — phải ra null chứ
+      // không được làm mất dòng đơn (mất đơn là mất tiền khỏi tổng của bàn).
+      .leftJoin(schema.users, eq(schema.orders.created_by, schema.users.id))
       .where(
         and(
           eq(schema.orders.branch_id, tenant.branchId),
           inArray(schema.orders.table_session_id, sessionIds),
           sql`orders.status != 'cancelled'`
         ),
-      );
+      )
+      .orderBy(schema.orders.created_at);
 
     const orderIds = ordersList.map(o => o.id);
     if (orderIds.length > 0) {
@@ -157,11 +178,29 @@ tables.get("/", requirePermission("tables:read"), async (c) => {
           order_id: schema.orderItems.order_id,
           name: schema.orderItems.name,
           quantity: schema.orderItems.quantity,
+          ...(withItems
+            ? {
+                id: schema.orderItems.id,
+                unit_price: schema.orderItems.unit_price,
+                total: schema.orderItems.total,
+                unit: schema.orderItems.unit,
+                notes: schema.orderItems.notes,
+                created_at: schema.orderItems.created_at,
+                created_by_name: schema.users.name,
+              }
+            : {}),
         })
         .from(schema.orderItems)
-        .where(inArray(schema.orderItems.order_id, orderIds));
+        .leftJoin(schema.users, eq(schema.orderItems.created_by, schema.users.id))
+        .where(inArray(schema.orderItems.order_id, orderIds))
+        .orderBy(schema.orderItems.created_at);
     }
   }
+
+  // Một truy vấn cho tùy chọn của TOÀN BỘ món của mọi bàn — không N+1 theo bàn.
+  const modsByItem = withItems
+    ? await loadItemModifiers(orderItemsList.map((i) => i.id))
+    : new Map();
 
   // Map orders to sessions
   const sessionOrdersMap = new Map<string, any[]>();
@@ -201,6 +240,30 @@ tables.get("/", requirePermission("tables:read"), async (c) => {
       startedAt: session.started_at,
       total,
       itemSummary,
+      ...(withItems
+        ? {
+            orders: orders.map((o) => ({
+              id: o.id,
+              orderNumber: o.order_number,
+              createdAt: o.created_at,
+              createdByName: o.created_by_name ?? null,
+              total: o.total,
+              items: (orderItemsMap.get(o.id) || []).map((i) => ({
+                id: i.id,
+                name: i.name,
+                quantity: i.quantity,
+                // Quy ước tiền của repo: unit_price CHƯA gồm tùy chọn, total ĐÃ gồm.
+                unit_price: i.unit_price,
+                total: i.total,
+                unit: i.unit ?? undefined,
+                notes: i.notes ?? undefined,
+                createdAt: i.created_at,
+                createdByName: i.created_by_name ?? null,
+                modifiers: modsByItem.get(i.id) ?? [],
+              })),
+            })),
+          }
+        : {}),
     });
   }
 

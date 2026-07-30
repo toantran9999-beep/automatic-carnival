@@ -759,6 +759,8 @@ customer.post("/orders", customerAuth, requireActiveSession, zValidator("json", 
       redemptionId: body.redemptionId || null,
       lang: getLang(c),
       registerShiftId: openShift?.id ?? null,
+      // Khách tự gọi qua QR: không có nhân viên nào bấm, để trống chứ đừng gán bừa.
+      createdBy: null,
     });
   } catch (err) {
     if (err instanceof OrderValidationError) {

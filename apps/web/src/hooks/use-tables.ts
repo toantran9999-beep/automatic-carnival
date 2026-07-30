@@ -63,6 +63,49 @@ export function useTables(spaceId?: string, options?: { enabled?: boolean }) {
   });
 }
 
+export interface OpenTableItem {
+  id: string;
+  name: string;
+  quantity: number;
+  /** Giá GỐC 1 đơn vị — CHƯA gồm tùy chọn. Tiền cả dòng ở `total`. */
+  unit_price: number;
+  total: number;
+  unit?: string;
+  notes?: string;
+  createdAt: string | null;
+  createdByName: string | null;
+  /** `modifierId` null khi tùy chọn đã bị xóa khỏi thực đơn — tên/giá vẫn còn (snapshot). */
+  modifiers: { modifierId: string | null; name: string; price: number }[];
+}
+
+export interface OpenTableOrder {
+  id: string;
+  orderNumber: string;
+  createdAt: string;
+  /** null = đơn cũ (chưa lưu người bấm) hoặc khách tự gọi qua QR. */
+  createdByName: string | null;
+  total: number;
+  items: OpenTableItem[];
+}
+
+/**
+ * Bàn đang có khách kèm CHI TIẾT từng đơn & từng món — cho hộp thoại ở Tổng quan.
+ *
+ * ⚠️ Khoá bộ nhớ đệm RIÊNG (`["tables","with-items"]`), KHÔNG dùng chung với
+ * `useTables`: đây là bản dữ liệu nặng hơn, trộn chung là trang Bàn ăn (gọi lại mỗi
+ * 20 giây) cũng phải kéo theo mớ chi tiết chẳng ai xem.
+ *
+ * ⚠️ Chỉ chạy khi hộp thoại MỞ (`enabled`).
+ */
+export function useOpenTablesDetail(options?: { enabled?: boolean }) {
+  return useQuery({
+    queryKey: ["tables", "with-items"],
+    queryFn: () => apiFetch(`/api/tables?withItems=1`),
+    enabled: options?.enabled ?? true,
+    ...LIVE_QUERY,
+  });
+}
+
 /**
  * Bàn cho màn SƠ ĐỒ PHÂN BỔ (quản lý sắp xếp chỗ).
  *

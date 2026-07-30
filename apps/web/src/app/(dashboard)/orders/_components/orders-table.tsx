@@ -61,6 +61,8 @@ interface OrdersTableProps {
   onUpdateStatus: (id: string, status: string) => void;
   onPrintReceipt: (order: any) => void;
   onCharge?: (order: any) => void;
+  /** Bấm vào dòng để xem chi tiết đơn (ai order, giờ order, món kèm tùy chọn). */
+  onRowClick?: (order: any) => void;
 }
 
 export function OrdersTable({
@@ -77,6 +79,7 @@ export function OrdersTable({
   onUpdateStatus,
   onPrintReceipt,
   onCharge,
+  onRowClick,
 }: OrdersTableProps) {
   const { t } = useTranslation();
 
@@ -175,6 +178,7 @@ export function OrdersTable({
                       <tr
                         key={order.id}
                         className="border-b last:border-0 hover:bg-muted/50 cursor-pointer transition-colors"
+                        onClick={() => onRowClick?.(order)}
                       >
                         <td className="p-3 font-medium text-sm">{orderNum}</td>
                         <td className="p-3 text-sm">{table}</td>
@@ -201,7 +205,9 @@ export function OrdersTable({
                         <td className="p-3 text-sm text-muted-foreground text-right hidden lg:table-cell">
                           {createdAt ? formatDate(createdAt) : "-"}
                         </td>
-                        <td className="p-3 text-center">
+                        {/* stopPropagation: cả dòng đã bấm được để xem chi tiết, không
+                            chặn ở đây thì bấm Thu tiền / In là mở kèm hộp thoại chi tiết. */}
+                        <td className="p-3 text-center" onClick={(e) => e.stopPropagation()}>
                           <div className="flex items-center justify-center gap-1">
                             {nextStatus && (
                               <Button

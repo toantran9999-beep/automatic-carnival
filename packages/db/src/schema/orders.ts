@@ -14,6 +14,7 @@ import {
   orderItemStatusEnum,
 } from "./enums";
 import { organizations, branches } from "./tenants";
+import { users } from "./auth";
 import { tableSessions } from "./tables";
 import { customers } from "./loyalty";
 import { menuItems } from "./menu";
@@ -49,6 +50,12 @@ export const orders = pgTable("orders", {
   total: integer("total").notNull().default(0),
   notes: text("notes"),
   inventory_deducted: boolean("inventory_deducted").default(false).notNull(),
+  /**
+   * Nhân viên bấm đơn. Null = đơn cũ (trước 30/07/2026, lúc đó chưa lưu ai cả) hoặc
+   * khách tự gọi qua QR. ĐỪNG suy ra từ ca làm: mỗi chi nhánh chỉ có 1 ca mở nên mọi
+   * đơn cả buổi sẽ quy về cùng một người.
+   */
+  created_by: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
   created_at: timestamp("created_at", { withTimezone: true }).defaultNow().notNull(),
   updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
 }, (table) => [
@@ -74,6 +81,13 @@ export const orderItems = pgTable("order_items", {
   notes: text("notes"),
   unit: varchar("unit", { length: 20 }), // snapshot đơn vị tính
   status: orderItemStatusEnum("status").default("pending").notNull(),
+  /** Nhân viên thêm món này — khác `orders.created_by` khi khách gọi thêm giữa buổi. */
+  created_by: uuid("created_by").references(() => users.id, { onDelete: "set null" }),
+  /**
+   * Giờ thêm món. Để trống được vì món cũ được lấp bằng giờ đơn cha ở migration
+   * 0012 — không đặt notNull kẻo một dòng sót lại là chặn cả việc bán hàng.
+   */
+  created_at: timestamp("created_at", { withTimezone: true }).defaultNow(),
 }, (table) => [
   index("idx_order_items_order").on(table.order_id),
 ]);

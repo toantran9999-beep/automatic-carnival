@@ -43,11 +43,58 @@ export function useOrders(filters?: OrderFilters) {
   });
 }
 
-export function useOrder(id: string) {
-  return useQuery({
+export interface OrderDetailItem {
+  id: string;
+  name: string;
+  quantity: number;
+  /** Giá GỐC 1 đơn vị — CHƯA gồm tùy chọn. Tiền cả dòng ở `total`. */
+  unit_price: number;
+  total: number;
+  unit?: string | null;
+  notes?: string | null;
+  created_at: string | null;
+  /** null = món của đơn cũ (trước khi lưu người bấm) hoặc khách tự gọi. */
+  created_by_name: string | null;
+  modifiers: { modifierId: string | null; name: string; price: number }[];
+}
+
+export interface OrderDetail {
+  id: string;
+  order_number: string;
+  type: string;
+  status: string;
+  customer_name: string | null;
+  table_number: number | null;
+  created_at: string;
+  /** null = đơn cũ (chưa lưu người bấm) hoặc khách tự gọi qua QR. */
+  created_by_name: string | null;
+  subtotal: number;
+  tax: number;
+  discount: number;
+  total: number;
+  notes: string | null;
+  items: OrderDetailItem[];
+  payments: {
+    id: string;
+    method: string;
+    amount: number;
+    status: string;
+    created_at: string;
+  }[];
+}
+
+/**
+ * Chi tiết một đơn: món + tùy chọn, ai bấm & lúc nào (cả đơn lẫn từng món), các lần
+ * thu tiền.
+ *
+ * ⚠️ `enabled` để hộp thoại chi tiết chỉ gọi KHI MỞ. Không đặt `refetchInterval` như
+ * `useOrders`: đây là dữ liệu đứng yên của một đơn, hỏi lại mỗi 5 giây là vô ích.
+ */
+export function useOrder(id: string, options?: { enabled?: boolean }) {
+  return useQuery<OrderDetail>({
     queryKey: ["orders", id],
-    queryFn: () => apiFetch(`/api/orders/${id}`),
-    enabled: !!id,
+    queryFn: () => apiFetch<OrderDetail>(`/api/orders/${id}`),
+    enabled: !!id && (options?.enabled ?? true),
   });
 }
 

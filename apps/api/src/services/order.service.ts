@@ -30,6 +30,12 @@ interface CreateOrderParams {
   lang?: "vi" | "en";
   /** Ca đang mở. Có thì đơn được cấp số thứ tự theo ca (01, 02…); không có thì rơi về mã dài. */
   registerShiftId?: string | null;
+  /**
+   * Nhân viên bấm đơn (`users.id`). Null khi khách tự gọi qua QR.
+   * ⚠️ Đừng bỏ trống cho tiện: đây là thứ DUY NHẤT cho biết ai order, không suy ra
+   * được từ chỗ nào khác (ca làm chỉ có một tên cho cả buổi).
+   */
+  createdBy?: string | null;
 }
 
 interface CreateOrderResult {
@@ -230,6 +236,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     redemptionId,
     lang,
     registerShiftId,
+    createdBy,
   } = params;
 
   const { subtotal, orderItemsData, modifierMap } = await resolveOrderItems(items);
@@ -313,15 +320,19 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
         discount,
         total,
         notes: notes || null,
+        created_by: createdBy ?? null,
       })
       .returning();
 
+    // Ghi người bấm lên TỪNG món, không chỉ trên đơn: khách gọi thêm giữa buổi thì
+    // người thêm món khác người mở đơn, mà đó đúng là ca cần truy nhất.
     const createdItems = await tx
       .insert(schema.orderItems)
       .values(
         orderItemsData.map(({ modifiers: _mods, ...item }) => ({
           order_id: order.id,
           ...item,
+          created_by: createdBy ?? null,
         })),
       )
       .returning();
@@ -392,6 +403,8 @@ interface AddItemsParams {
   orderId: string;
   branchId: string;
   items: OrderItemInput[];
+  /** Nhân viên thêm món — thường KHÁC người mở đơn, đó chính là lý do phải ghi. */
+  createdBy?: string | null;
 }
 
 /**
@@ -407,7 +420,7 @@ interface AddItemsParams {
 export async function addItemsToOrder(
   params: AddItemsParams,
 ): Promise<{ order: typeof schema.orders.$inferSelect; addedItems: (typeof schema.orderItems.$inferSelect)[] }> {
-  const { orderId, branchId, items } = params;
+  const { orderId, branchId, items, createdBy } = params;
 
   const [order] = await db
     .select()
@@ -436,12 +449,15 @@ export async function addItemsToOrder(
   const taxRate = await getBranchTaxRate(branchId);
 
   return await db.transaction(async (tx) => {
+    // ⚠️ KHÔNG lấy `order.created_by`: món thêm phải ghi người BẤM LẦN NÀY, đó mới là
+    // thông tin mới. Ghi lại người mở đơn thì cột này thành vô nghĩa.
     const addedItems = await tx
       .insert(schema.orderItems)
       .values(
         orderItemsData.map(({ modifiers: _mods, ...item }) => ({
           order_id: orderId,
           ...item,
+          created_by: createdBy ?? null,
         })),
       )
       .returning();

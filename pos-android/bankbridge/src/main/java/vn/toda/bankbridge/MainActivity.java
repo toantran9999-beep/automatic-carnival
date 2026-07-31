@@ -193,6 +193,14 @@ public class MainActivity extends Activity {
     protected void onResume() {
         super.onResume();
         refresh();
+        // Mở app cũng là một dịp đẩy hàng đợi: bộ hẹn giờ của Android trên máy
+        // Xiaomi có thể không bao giờ chạy, nên đừng chỉ trông vào nó.
+        if (Bridge.queueSize(this) > 0) {
+            new Thread(() -> {
+                Bridge.flush(getApplicationContext());
+                runOnUiThread(this::refresh);
+            }).start();
+        }
     }
 
     private void refresh() {

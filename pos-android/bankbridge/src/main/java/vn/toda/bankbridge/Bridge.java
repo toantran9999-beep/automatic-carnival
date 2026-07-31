@@ -181,7 +181,7 @@ public final class Bridge {
                 }
             }
 
-            int code = post(ctx, head);
+            int code = postWithRetry(ctx, head);
             if (code >= 200 && code < 300) {
                 synchronized (LOCK) {
                     JSONArray queue = readArray(ctx, K_QUEUE);
@@ -198,6 +198,38 @@ public final class Bridge {
                 return false;
             }
         }
+    }
+
+    /**
+     * Thử gửi vài lần ngay tại chỗ trước khi bỏ vào hàng đợi chờ lượt sau.
+     *
+     * ⚠️ Vì sao cần: ngày 31/07 một giao dịch 18.000đ nằm kẹt **23 phút** — lần
+     * gửi đầu hỏng do chập mạng, rồi JobScheduler của Android KHÔNG chạy (MIUI
+     * bóp tiến trình nền rất mạnh), mãi tới khi có thông báo kế tiếp kích hoạt
+     * mới đẩy đi được. Trong lúc đó thu ngân đã phải bấm tay.
+     *
+     * Chập mạng vài giây là chuyện thường ở quán, nên thử lại ngay tại đây chữa
+     * được gần hết. Hàng đợi + JobScheduler vẫn giữ làm lớp cuối.
+     */
+    private static int postWithRetry(Context ctx, JSONObject item) {
+        final int[] chos = {0, 2_000, 5_000, 10_000};
+        int code = 0;
+        for (int cho : chos) {
+            if (cho > 0) {
+                try {
+                    Thread.sleep(cho);
+                } catch (InterruptedException e) {
+                    Thread.currentThread().interrupt();
+                    break;
+                }
+            }
+            code = post(ctx, item);
+            if (code >= 200 && code < 300) return code;
+            // Sai khóa thì thử lại bao nhiêu lần cũng vậy — để dành cho lượt sau,
+            // sau khi người dùng sửa cấu hình.
+            if (code == 401) return code;
+        }
+        return code;
     }
 
     /** @return mã HTTP, hoặc 0 nếu không nối được. */

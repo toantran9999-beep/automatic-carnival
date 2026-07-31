@@ -26,7 +26,9 @@ import org.json.JSONObject;
 public class MainActivity extends Activity {
 
     private EditText configInput;
+    private EditText packagesInput;
     private TextView statusView;
+    private TextView ignoredView;
     private TextView logView;
 
     @Override
@@ -76,6 +78,23 @@ public class MainActivity extends Activity {
             refresh();
         }));
 
+        TextView pkgLabel = new TextView(this);
+        pkgLabel.setText("App theo dõi (tên gói, cách nhau dấu phẩy)");
+        pkgLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        pkgLabel.setPadding(0, dp(12), 0, 0);
+        root.addView(pkgLabel);
+
+        packagesInput = new EditText(this);
+        packagesInput.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        root.addView(packagesInput);
+
+        root.addView(button("Lưu app theo dõi", v -> {
+            Bridge.setAllowedPackages(this, packagesInput.getText().toString());
+            Bridge.log(this, "Đổi app theo dõi: " + packagesInput.getText());
+            toast("Đã lưu");
+            refresh();
+        }));
+
         root.addView(button("Bật quyền đọc thông báo", v ->
                 startActivity(new Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS))));
 
@@ -111,6 +130,28 @@ public class MainActivity extends Activity {
 
         root.addView(button("Xoá nhật ký", v -> {
             Bridge.clearLog(this);
+            refresh();
+        }));
+
+        TextView ignoredTitle = new TextView(this);
+        ignoredTitle.setText("App có thông báo nhưng bị bỏ qua");
+        ignoredTitle.setPadding(0, dp(12), 0, dp(2));
+        root.addView(ignoredTitle);
+
+        TextView ignoredHint = new TextView(this);
+        ignoredHint.setText("Nếu app ngân hàng nằm trong danh sách này, chép tên gói của nó lên ô "
+                + "\"App theo dõi\" ở trên. Chỉ lưu tên gói, không lưu nội dung, không gửi đi đâu.");
+        ignoredHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        root.addView(ignoredHint);
+
+        ignoredView = new TextView(this);
+        ignoredView.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        ignoredView.setTypeface(android.graphics.Typeface.MONOSPACE);
+        ignoredView.setPadding(0, dp(4), 0, 0);
+        root.addView(ignoredView);
+
+        root.addView(button("Xoá danh sách app bỏ qua", v -> {
+            Bridge.clearIgnoredPackages(this);
             refresh();
         }));
 
@@ -150,6 +191,11 @@ public class MainActivity extends Activity {
 
         statusView.setText(sb.toString());
         statusView.setTextColor(configured && access ? Color.parseColor("#1B7F3B") : Color.parseColor("#B3261E"));
+        // Chỉ nạp lại ô app theo dõi khi người dùng chưa gõ dở, kẻo đang sửa thì bị nuốt mất.
+        if (!packagesInput.hasFocus()) {
+            packagesInput.setText(TextUtils.join(", ", Bridge.allowedPackages(this)));
+        }
+        ignoredView.setText(Bridge.ignoredPackagesText(this));
         logView.setText(Bridge.logText(this));
     }
 

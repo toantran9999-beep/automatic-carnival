@@ -25,7 +25,12 @@ public class BankNotificationListener extends NotificationListenerService {
 
             String pkg = sbn.getPackageName();
             // Hàng rào riêng tư: thông báo của app khác không bao giờ rời máy.
-            if (!Bridge.isAllowedPackage(this, pkg)) return;
+            // Chỉ ghi lại TÊN GÓI ở máy để còn biết app ngân hàng tên là gì —
+            // đoán sai tên gói thì app im lặng không làm gì và không ai hiểu vì sao.
+            if (!Bridge.isAllowedPackage(this, pkg)) {
+                Bridge.noteIgnoredPackage(this, pkg);
+                return;
+            }
 
             Bundle extras = sbn.getNotification().extras;
             if (extras == null) return;

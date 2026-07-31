@@ -31,6 +31,7 @@ public final class Bridge {
     private static final String K_PKGS = "pkgs";
     private static final String K_QUEUE = "queue";
     private static final String K_LOG = "log";
+    private static final String K_SEEN = "seenPkgs";
 
     private static final int JOB_ID = 8801;
     /** Chặn hàng đợi phình vô hạn khi máy chủ chết dài ngày. */
@@ -105,6 +106,16 @@ public final class Bridge {
         String[] parts = raw.split(",");
         for (int i = 0; i < parts.length; i++) parts[i] = parts[i].trim();
         return parts;
+    }
+
+    /**
+     * Đổi danh sách app theo dõi ngay trên điện thoại.
+     *
+     * Có cái này để lúc phát hiện tên gói ngân hàng khác dự đoán thì sửa tại chỗ,
+     * khỏi phải quay về máy tính tạo lại khóa rồi dán lại chuỗi cấu hình.
+     */
+    public static void setAllowedPackages(Context ctx, String csv) {
+        prefs(ctx).edit().putString(K_PKGS, csv == null ? "" : csv.trim()).apply();
     }
 
     public static boolean isAllowedPackage(Context ctx, String pkg) {
@@ -214,6 +225,54 @@ public final class Bridge {
             js.schedule(job);
         } catch (Exception ignored) {
         }
+    }
+
+    // ------------------------------------------------- app đã thấy nhưng bỏ qua
+
+    /**
+     * Ghi lại TÊN GÓI của thông báo bị bỏ qua, kèm số lần.
+     *
+     * Đây là công cụ chẩn đoán chính: đoán sai tên gói app ngân hàng thì app im
+     * lặng không làm gì, không cách nào biết vì sao. Nhìn danh sách này là thấy
+     * ngay app ngân hàng đang mang tên gói nào mà điền cho đúng.
+     *
+     * Chỉ giữ TÊN GÓI, tuyệt đối không giữ nội dung — và không bao giờ gửi đi
+     * đâu cả, chỉ hiện trên màn hình máy anh.
+     */
+    public static void noteIgnoredPackage(Context ctx, String pkg) {
+        if (pkg == null || pkg.isEmpty()) return;
+        synchronized (LOCK) {
+            try {
+                JSONObject seen = new JSONObject(prefs(ctx).getString(K_SEEN, "{}"));
+                if (seen.length() >= 40 && !seen.has(pkg)) return; // chặn phình vô hạn
+                seen.put(pkg, seen.optInt(pkg, 0) + 1);
+                prefs(ctx).edit().putString(K_SEEN, seen.toString()).apply();
+            } catch (Exception ignored) {
+            }
+        }
+    }
+
+    public static String ignoredPackagesText(Context ctx) {
+        synchronized (LOCK) {
+            try {
+                JSONObject seen = new JSONObject(prefs(ctx).getString(K_SEEN, "{}"));
+                if (seen.length() == 0) return "(chưa thấy thông báo nào từ app khác)";
+                StringBuilder sb = new StringBuilder();
+                java.util.Iterator<String> it = seen.keys();
+                while (it.hasNext()) {
+                    String k = it.next();
+                    if (sb.length() > 0) sb.append("\n");
+                    sb.append("• ").append(k).append("  (").append(seen.optInt(k)).append(" lần)");
+                }
+                return sb.toString();
+            } catch (Exception e) {
+                return "(lỗi đọc)";
+            }
+        }
+    }
+
+    public static void clearIgnoredPackages(Context ctx) {
+        prefs(ctx).edit().remove(K_SEEN).apply();
     }
 
     // ---------------------------------------------------------------- nhật ký

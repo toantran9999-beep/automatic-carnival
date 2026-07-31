@@ -32,6 +32,21 @@ public final class Bridge {
     private static final String K_QUEUE = "queue";
     private static final String K_LOG = "log";
     private static final String K_SEEN = "seenPkgs";
+    private static final String K_KEYWORDS = "keywords";
+    private static final String K_DROPPED = "droppedCount";
+
+    /**
+     * MẶC ĐỊNH ĐỂ TRỐNG = nhận mọi thông báo của app đang theo dõi.
+     *
+     * Cố ý không đặt sẵn từ khoá: app theo dõi là app NGÂN HÀNG, mọi thông báo
+     * của nó đều là việc tiền nong. Đặt sẵn "Số dư TK" mà ngân hàng lại viết câu
+     * khác là bộ lọc lặng lẽ chặn đúng thứ mình cần bắt — hỏng kiểu không ai
+     * biết vì sao.
+     *
+     * Chỉ nên điền từ khoá khi theo dõi một app NHẮN TIN (Zalo…), vì khi đó lọc
+     * theo tên gói sẽ kéo theo cả tin nhắn riêng tư.
+     */
+    private static final String DEFAULT_KEYWORDS = "";
 
     private static final int JOB_ID = 8801;
     /** Chặn hàng đợi phình vô hạn khi máy chủ chết dài ngày. */
@@ -225,6 +240,50 @@ public final class Bridge {
             js.schedule(job);
         } catch (Exception ignored) {
         }
+    }
+
+    // ------------------------------------------------------------- lọc nội dung
+
+    /** Bỏ dấu + thường hoá để so từ khoá không phụ thuộc cách gõ. */
+    private static String flatten(String s) {
+        if (s == null) return "";
+        String n = java.text.Normalizer.normalize(s, java.text.Normalizer.Form.NFD)
+                .replaceAll("\\p{M}", "");
+        return n.replace('đ', 'd').replace('Đ', 'D').toLowerCase();
+    }
+
+    public static String keywords(Context ctx) {
+        return prefs(ctx).getString(K_KEYWORDS, DEFAULT_KEYWORDS);
+    }
+
+    public static void setKeywords(Context ctx, String csv) {
+        prefs(ctx).edit().putString(K_KEYWORDS, csv == null ? "" : csv.trim()).apply();
+    }
+
+    /**
+     * Thông báo có phải tin báo biến động số dư không.
+     *
+     * Đây là hàng rào riêng tư QUAN TRỌNG NHẤT khi ngân hàng báo qua Zalo: lọc
+     * theo tên gói là cả tin nhắn cá nhân cũng lọt lên máy chủ. Để trống danh
+     * sách từ khoá = nhận hết, chỉ nên làm khi app theo dõi đúng là app ngân hàng.
+     */
+    public static boolean matchesKeywords(Context ctx, String text) {
+        String raw = keywords(ctx);
+        if (raw == null || raw.trim().isEmpty()) return true;
+        String flat = flatten(text);
+        for (String kw : raw.split(",")) {
+            String k = flatten(kw.trim());
+            if (!k.isEmpty() && flat.contains(k)) return true;
+        }
+        return false;
+    }
+
+    public static void noteDropped(Context ctx) {
+        prefs(ctx).edit().putInt(K_DROPPED, prefs(ctx).getInt(K_DROPPED, 0) + 1).apply();
+    }
+
+    public static int droppedCount(Context ctx) {
+        return prefs(ctx).getInt(K_DROPPED, 0);
     }
 
     // ------------------------------------------------- app đã thấy nhưng bỏ qua

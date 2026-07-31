@@ -35,21 +35,38 @@ public class BankNotificationListener extends NotificationListenerService {
             Bundle extras = sbn.getNotification().extras;
             if (extras == null) return;
 
+            String title = str(extras.getCharSequence(Notification.EXTRA_TITLE));
+            String text = str(extras.getCharSequence(Notification.EXTRA_TEXT));
+            // bigText hay chứa BẢN ĐẦY ĐỦ trong khi `text` chỉ là dòng rút gọn
+            // hiện ngoài màn khoá — thiếu nó là mất luôn mã TODA-…
+            String bigText = str(extras.getCharSequence(Notification.EXTRA_BIG_TEXT));
+
+            JSONArray lineArr = new JSONArray();
+            CharSequence[] lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
+            if (lines != null) {
+                for (CharSequence line : lines) lineArr.put(str(line));
+            }
+
+            String all = title + " " + text + " " + bigText + " " + lineArr.toString();
+
+            /*
+             * Hàng rào riêng tư quan trọng nhất. Ngân hàng báo qua Zalo nên app
+             * theo dõi là Zalo — nếu chỉ lọc theo tên gói thì MỌI tin nhắn riêng
+             * tư cũng bị đẩy lên máy chủ. Không khớp từ khoá là dừng ngay tại
+             * đây, không ghi nội dung đi đâu cả.
+             */
+            if (!Bridge.matchesKeywords(this, all)) {
+                Bridge.noteDropped(this);
+                return;
+            }
+
             JSONObject item = new JSONObject();
             item.put("packageName", pkg);
             item.put("postedAt", sbn.getPostTime());
-            item.put("title", str(extras.getCharSequence(Notification.EXTRA_TITLE)));
-            item.put("text", str(extras.getCharSequence(Notification.EXTRA_TEXT)));
-            // bigText hay chứa BẢN ĐẦY ĐỦ trong khi `text` chỉ là dòng rút gọn
-            // hiện ngoài màn khoá — thiếu nó là mất luôn mã TODA-…
-            item.put("bigText", str(extras.getCharSequence(Notification.EXTRA_BIG_TEXT)));
-
-            CharSequence[] lines = extras.getCharSequenceArray(Notification.EXTRA_TEXT_LINES);
-            if (lines != null) {
-                JSONArray arr = new JSONArray();
-                for (CharSequence line : lines) arr.put(str(line));
-                item.put("textLines", arr);
-            }
+            item.put("title", title);
+            item.put("text", text);
+            item.put("bigText", bigText);
+            if (lineArr.length() > 0) item.put("textLines", lineArr);
 
             Bridge.enqueue(this, item);
             new Thread(() -> Bridge.flush(getApplicationContext())).start();

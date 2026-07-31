@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, desc, gte, lte, gt, sql, sum } from "drizzle-orm";
+import { eq, and, or, inArray, desc, gte, lte, gt, sql, sum } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import { createPaymentRequestSchema, createPaymentSchema, idParamSchema } from "@restai/validators";
 import { authMiddleware } from "../middleware/auth.js";
@@ -107,8 +107,36 @@ function buildTransferPayload(branch: any, paymentCode: string, amount: number) 
   };
 }
 
+/**
+ * Mọi mã TODA-… có thể có trong nội dung chuyển khoản.
+ *
+ * ⚠️ Đã đối chiếu với giao dịch THẬT ngày 31/07 — mỗi kênh chuyển tiền viết mã
+ * một kiểu, và bản cũ (`/\bTODA-[A-Z0-9-]+\b/`) trượt 2 trong 4:
+ *
+ * | Nội dung thật                          | Bản cũ | Vì sao |
+ * |----------------------------------------|--------|--------|
+ * | `Ref MBVCB.…​.TODA-131-EDYSRQ.CT`       | ✅     |        |
+ * | `Ref QR - TODA-67-LGDEM6#SP#…`          | ✅     |        |
+ * | `…140012163644-0795436369_TODA-92-LX604S` | ❌  | `\b` đòi ranh giới từ, mà `_` LÀ ký tự từ |
+ * | `Ref TODA512039P0#SP#…`                 | ❌     | kênh này XOÁ SẠCH gạch nối: `TODA-51-2039P0` → `TODA512039P0` |
+ *
+ * Nên: thay `\b` bằng lookbehind "không phải chữ/số" (cho phép `_`, `.`, `-`,
+ * khoảng trắng, đầu chuỗi), và bỏ luôn yêu cầu phải có gạch nối ngay sau TODA.
+ * Đòi ít nhất 2 ký tự phía sau để "HKD TODA CAFE" trong mọi thông báo không bị
+ * nhận nhầm thành mã.
+ */
+function extractPaymentCodes(content: string): string[] {
+  const found = content.toUpperCase().match(/(?<![A-Z0-9])TODA[-A-Z0-9]{2,}/g) || [];
+  return Array.from(new Set(found));
+}
+
 function extractPaymentCode(content: string) {
-  return content.match(/\bTODA-[A-Z0-9-]+\b/i)?.[0]?.toUpperCase() || "";
+  return extractPaymentCodes(content)[0] || "";
+}
+
+/** Bỏ gạch nối để so được mã đã bị kênh chuyển tiền làm phẳng. */
+function stripCodeSeparators(code: string) {
+  return code.replace(/-/g, "");
 }
 
 function webhookTransactionId(body: any) {
@@ -517,11 +545,23 @@ async function finalizePaidRequest(request: any, args: {
  * chuyện hiếm, nhưng `.limit(1)` không kèm sắp xếp thì đúng lúc trùng sẽ vớ đại
  * một phiếu cũ đã đóng — tiền khách vào mà đơn đang mở thì không bao giờ chốt.
  */
-async function findPaymentRequestByCode(paymentCode: string) {
+async function findPaymentRequestByCodes(candidates: string[]) {
+  const codes = Array.from(new Set(candidates.map((c) => c.trim().toUpperCase()).filter(Boolean)));
+  if (codes.length === 0) return undefined;
+  const flattened = Array.from(new Set(codes.map(stripCodeSeparators).filter(Boolean)));
+
   const [request] = await db
     .select()
     .from(schema.paymentRequests)
-    .where(eq(schema.paymentRequests.payment_code, paymentCode))
+    .where(
+      or(
+        inArray(schema.paymentRequests.payment_code, codes),
+        // Kênh DIRECT_DEBITS và một số QR liên ngân hàng XOÁ SẠCH gạch nối trong
+        // nội dung. Không so thêm bản đã làm phẳng thì những giao dịch đó không
+        // bao giờ khớp — khách trả tiền mà bàn treo mãi.
+        inArray(sql`REPLACE(${schema.paymentRequests.payment_code}, '-', '')`, flattened),
+      ),
+    )
     .orderBy(
       sql`CASE WHEN payment_requests.status = 'pending' THEN 0 ELSE 1 END`,
       desc(schema.paymentRequests.created_at),
@@ -543,7 +583,6 @@ async function settleMatchedRequest(request: any, args: {
   providerTransactionId: string;
   amountCents: number;
   content: string;
-  paymentCode: string;
   payload: unknown;
 }) {
   const base = {
@@ -613,7 +652,9 @@ async function settleMatchedRequest(request: any, args: {
     providerTransactionId: args.providerTransactionId,
     paidAmountCents: args.amountCents,
     providerPayload: args.payload,
-    reference: args.paymentCode,
+    // Ghi mã ĐÃ LƯU chứ không phải mã bóc từ thông báo: kênh chuyển tiền có thể
+    // đã xoá gạch nối, sổ sách phải mang mã gốc để đối chiếu với phiếu đã in.
+    reference: request.payment_code,
   });
 
   const reason = args.amountCents > request.amount ? "overpaid" : "paid";
@@ -636,8 +677,9 @@ payments.post("/webhooks/sepay", async (c) => {
   const amount = webhookAmountCents(body);
   const content = webhookContent(body);
   // SePay tự bóc mã đơn ra trường `code` theo cấu hình tiền tố bên nó. Ưu tiên
-  // dùng nếu có, không thì tự tìm "TODA-..." trong nội dung chuyển khoản.
-  const paymentCode = normalizeText(body.code).toUpperCase() || extractPaymentCode(content);
+  // dùng nếu có, rồi mới tới các mã "TODA…" tìm được trong nội dung.
+  const codeCandidates = [normalizeText(body.code).toUpperCase(), ...extractPaymentCodes(content)].filter(Boolean);
+  const paymentCode = codeCandidates[0] || "";
   const transferType = normalizeText(body.transferType || body.transfer_type).toLowerCase();
 
   if (transferType && transferType !== "in") {
@@ -650,7 +692,7 @@ payments.post("/webhooks/sepay", async (c) => {
     return c.json({ success: true });
   }
 
-  const request = await findPaymentRequestByCode(paymentCode);
+  const request = await findPaymentRequestByCodes(codeCandidates);
 
   if (!request) {
     await logWebhookEvent({ provider: "sepay", providerTransactionId, amount, content, matched: false, reason: "payment_request_not_found", payload: body });
@@ -734,7 +776,6 @@ payments.post("/webhooks/sepay", async (c) => {
     providerTransactionId,
     amountCents: amount,
     content,
-    paymentCode,
     payload: body,
   });
 
@@ -854,7 +895,7 @@ payments.post("/webhooks/bank-push", async (c) => {
   const providerTransactionId = createHash("sha256").update(content).digest("hex").slice(0, 32);
   const { amountVnd, direction } = parseBankNotificationAmount(content);
   const amount = amountVnd * 100; // thông báo ghi VNĐ, DB lưu XU
-  const paymentCode = extractPaymentCode(content);
+  const codeCandidates = extractPaymentCodes(content);
 
   const logBase = {
     provider: "bank_push",
@@ -900,12 +941,12 @@ payments.post("/webhooks/bank-push", async (c) => {
     return c.json({ success: true, matched: false, reason: "not_credit" });
   }
 
-  if (!paymentCode) {
+  if (codeCandidates.length === 0) {
     await logWebhookEvent({ ...logBase, matched: false, reason: "missing_payment_code" });
     return c.json({ success: true, matched: false, reason: "missing_payment_code" });
   }
 
-  const request = await findPaymentRequestByCode(paymentCode);
+  const request = await findPaymentRequestByCodes(codeCandidates);
   if (!request) {
     await logWebhookEvent({ ...logBase, matched: false, reason: "payment_request_not_found" });
     return c.json({ success: true, matched: false, reason: "payment_request_not_found" });
@@ -927,7 +968,6 @@ payments.post("/webhooks/bank-push", async (c) => {
     providerTransactionId,
     amountCents: amount,
     content,
-    paymentCode,
     payload: body,
   });
 

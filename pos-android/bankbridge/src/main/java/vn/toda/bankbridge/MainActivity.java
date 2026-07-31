@@ -27,6 +27,7 @@ public class MainActivity extends Activity {
 
     private EditText configInput;
     private EditText packagesInput;
+    private EditText keywordsInput;
     private TextView statusView;
     private TextView ignoredView;
     private TextView logView;
@@ -88,8 +89,26 @@ public class MainActivity extends Activity {
         packagesInput.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
         root.addView(packagesInput);
 
-        root.addView(button("Lưu app theo dõi", v -> {
+        TextView kwLabel = new TextView(this);
+        kwLabel.setText("Từ khoá bắt buộc (để TRỐNG là nhận hết)");
+        kwLabel.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        kwLabel.setPadding(0, dp(10), 0, 0);
+        root.addView(kwLabel);
+
+        TextView kwHint = new TextView(this);
+        kwHint.setText("Chỉ điền khi theo dõi app nhắn tin (Zalo…), để tin nhắn riêng tư không bị "
+                + "gửi đi. Theo dõi app ngân hàng thì cứ để trống.");
+        kwHint.setTextSize(TypedValue.COMPLEX_UNIT_SP, 11);
+        root.addView(kwHint);
+
+        keywordsInput = new EditText(this);
+        keywordsInput.setTextSize(TypedValue.COMPLEX_UNIT_SP, 13);
+        keywordsInput.setHint("ví dụ: Số dư TK");
+        root.addView(keywordsInput);
+
+        root.addView(button("Lưu app theo dõi + từ khoá", v -> {
             Bridge.setAllowedPackages(this, packagesInput.getText().toString());
+            Bridge.setKeywords(this, keywordsInput.getText().toString());
             Bridge.log(this, "Đổi app theo dõi: " + packagesInput.getText());
             toast("Đã lưu");
             refresh();
@@ -188,12 +207,20 @@ public class MainActivity extends Activity {
         sb.append("\n");
         sb.append("Đang chờ gửi: ").append(queued);
         sb.append("\nApp theo dõi: ").append(TextUtils.join(", ", Bridge.allowedPackages(this)));
+        int dropped = Bridge.droppedCount(this);
+        if (dropped > 0) {
+            // Con số này tăng mà đơn không chốt = từ khoá đang chặn nhầm.
+            sb.append("\nBị từ khoá chặn: ").append(dropped);
+        }
 
         statusView.setText(sb.toString());
         statusView.setTextColor(configured && access ? Color.parseColor("#1B7F3B") : Color.parseColor("#B3261E"));
         // Chỉ nạp lại ô app theo dõi khi người dùng chưa gõ dở, kẻo đang sửa thì bị nuốt mất.
         if (!packagesInput.hasFocus()) {
             packagesInput.setText(TextUtils.join(", ", Bridge.allowedPackages(this)));
+        }
+        if (!keywordsInput.hasFocus()) {
+            keywordsInput.setText(Bridge.keywords(this));
         }
         ignoredView.setText(Bridge.ignoredPackagesText(this));
         logView.setText(Bridge.logText(this));

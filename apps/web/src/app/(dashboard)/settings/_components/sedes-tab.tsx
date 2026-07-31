@@ -21,7 +21,7 @@ import {
   SelectValue,
 } from "@restai/ui/components/select";
 import { Switch } from "@restai/ui/components/switch";
-import { Plus, Pencil, Store } from "lucide-react";
+import { Plus, Pencil, Store, Copy, RefreshCw } from "lucide-react";
 import { VN_BANKS, resolveBankBin } from "@restai/config";
 import { useBranches, useCreateBranch, useUpdateBranchById } from "@/hooks/use-settings";
 import { toast } from "sonner";
@@ -29,6 +29,18 @@ import { useTranslation } from "@/stores/lang-store";
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={`animate-pulse bg-muted rounded ${className ?? ""}`} />;
+}
+
+/**
+ * Khóa cho app "TODA Bank Bridge" trên điện thoại.
+ *
+ * Dùng crypto của trình duyệt chứ KHÔNG dùng Math.random(): khóa này là thứ duy
+ * nhất chặn người lạ gọi thẳng webhook để báo khống "đã thanh toán".
+ */
+function randomBridgeKey() {
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
+  return Array.from(bytes, (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 function slugify(text: string) {
@@ -67,6 +79,10 @@ export function SedesTab() {
     /** Máy chủ đã có khóa rồi → ô để trống nghĩa là "giữ nguyên", không phải "xoá". */
     momoSecretKeySet: false,
     sepaySecretSet: false,
+    bankPushEnabled: false,
+    bankPushSecret: "",
+    bankPushSecretSet: false,
+    bankPushPackages: "com.VCB",
   });
   const [slugManuallyEdited, setSlugManuallyEdited] = useState(false);
 
@@ -88,6 +104,10 @@ export function SedesTab() {
       momoSecretKey: "",
       momoSecretKeySet: false,
       sepaySecretSet: false,
+      bankPushEnabled: false,
+      bankPushSecret: "",
+      bankPushSecretSet: false,
+      bankPushPackages: "com.VCB",
     });
     setSlugManuallyEdited(false);
     setBranchDialogOpen(true);
@@ -96,6 +116,7 @@ export function SedesTab() {
   const openEditBranchDialog = (branch: any) => {
     const sepay = branch.settings?.payment?.sepay || branch.settings?.sepay || {};
     const momo = branch.settings?.payment?.momo || {};
+    const bankPush = branch.settings?.payment?.bank_push || {};
     setEditingBranch(branch);
     setBranchDialogForm({
       name: branch.name || "",
@@ -114,9 +135,36 @@ export function SedesTab() {
       momoSecretKey: "",
       momoSecretKeySet: Boolean(momo.secret_key_set),
       sepaySecretSet: Boolean(sepay.webhook_secret_set),
+      bankPushEnabled: Boolean(bankPush.enabled),
+      bankPushSecret: "",
+      bankPushSecretSet: Boolean(bankPush.secret_set),
+      bankPushPackages: Array.isArray(bankPush.package_names)
+        ? bankPush.package_names.join(", ")
+        : "com.VCB",
     });
     setSlugManuallyEdited(true);
     setBranchDialogOpen(true);
+  };
+
+  /**
+   * Chuỗi một-lần dán sang app TODA Bank Bridge.
+   *
+   * Chỉ dựng được NGAY LÚC vừa nhập khóa: sau khi lưu, máy chủ che khóa đi nên
+   * không thể hiện lại. Muốn cấu hình máy khác thì tạo khóa mới.
+   */
+  const bridgeConfigBlob = () => {
+    if (!editingBranch?.id || !branchDialogForm.bankPushSecret.trim()) return "";
+    return btoa(
+      JSON.stringify({
+        api: (process.env.NEXT_PUBLIC_API_URL || "").replace(/\/+$/, ""),
+        branchId: editingBranch.id,
+        key: branchDialogForm.bankPushSecret.trim(),
+        pkgs: branchDialogForm.bankPushPackages
+          .split(",")
+          .map((s) => s.trim())
+          .filter(Boolean),
+      }),
+    );
   };
 
   const handleBranchDialogSave = async () => {
@@ -140,6 +188,15 @@ export function SedesTab() {
           partner_code: branchDialogForm.momoPartnerCode.trim(),
           access_key: branchDialogForm.momoAccessKey.trim(),
           secret_key: branchDialogForm.momoSecretKey.trim(),
+        },
+        bank_push: {
+          enabled: branchDialogForm.bankPushEnabled,
+          // Để trống = giữ khóa cũ (mergeBranchSecrets lo phần ghép).
+          secret: branchDialogForm.bankPushSecret.trim(),
+          package_names: branchDialogForm.bankPushPackages
+            .split(",")
+            .map((s) => s.trim())
+            .filter(Boolean),
         },
       };
       const settings = {
@@ -438,6 +495,102 @@ export function SedesTab() {
                       /api/payments/webhooks/momo
                     </code>
                   </p>
+                </>
+              )}
+            </div>
+
+            <div className="rounded-lg border p-3 space-y-3">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold">Cầu thông báo ngân hàng (miễn phí)</p>
+                  <p className="text-xs text-muted-foreground">
+                    Điện thoại đọc thông báo app ngân hàng → đơn tự chốt, bàn tự dọn.
+                    Không tốn phí cổng thanh toán, không tốn phí SMS.
+                  </p>
+                </div>
+                <Switch
+                  checked={branchDialogForm.bankPushEnabled}
+                  onCheckedChange={(v) => setBranchDialogForm({ ...branchDialogForm, bankPushEnabled: v })}
+                />
+              </div>
+
+              {branchDialogForm.bankPushEnabled && (
+                <>
+                  <div className="space-y-2">
+                    <Label htmlFor="dialogBankPushSecret">Khóa cầu nối</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        id="dialogBankPushSecret"
+                        type="password"
+                        placeholder={
+                          branchDialogForm.bankPushSecretSet
+                            ? "Đã có khóa — để trống nếu giữ nguyên"
+                            : "Bấm Tạo khóa"
+                        }
+                        value={branchDialogForm.bankPushSecret}
+                        onChange={(e) =>
+                          setBranchDialogForm({ ...branchDialogForm, bankPushSecret: e.target.value })
+                        }
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={() =>
+                          setBranchDialogForm({ ...branchDialogForm, bankPushSecret: randomBridgeKey() })
+                        }
+                      >
+                        <RefreshCw className="h-4 w-4 mr-1" />
+                        Tạo khóa
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Vì bảo mật, khóa đã lưu không hiện lại. Tạo khóa mới là điện thoại phải
+                      dán lại chuỗi cấu hình.
+                    </p>
+                  </div>
+
+                  <div className="space-y-2">
+                    <Label htmlFor="dialogBankPushPackages">Tên gói app ngân hàng</Label>
+                    <Input
+                      id="dialogBankPushPackages"
+                      placeholder="com.VCB"
+                      value={branchDialogForm.bankPushPackages}
+                      onChange={(e) =>
+                        setBranchDialogForm({ ...branchDialogForm, bankPushPackages: e.target.value })
+                      }
+                    />
+                    <p className="text-xs text-muted-foreground">
+                      Chỉ thông báo từ đúng app này mới được gửi đi — tin nhắn riêng tư trên
+                      máy không bị đụng tới. Nhiều app thì ngăn cách bằng dấu phẩy.
+                    </p>
+                  </div>
+
+                  {/* Chuỗi cấu hình chỉ dựng được NGAY LÚC vừa nhập khóa: sau khi lưu,
+                      máy chủ không trả khóa về nữa nên không thể hiện lại. */}
+                  {editingBranch?.id && branchDialogForm.bankPushSecret.trim() ? (
+                    <div className="space-y-2">
+                      <Label>Chuỗi cấu hình cho điện thoại</Label>
+                      <div className="flex gap-2">
+                        <Input readOnly className="font-mono text-xs" value={bridgeConfigBlob()} />
+                        <Button
+                          type="button"
+                          variant="outline"
+                          size="sm"
+                          onClick={() => {
+                            navigator.clipboard.writeText(bridgeConfigBlob());
+                            toast.success("Đã chép chuỗi cấu hình");
+                          }}
+                        >
+                          <Copy className="h-4 w-4" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">
+                        Bấm <b>Lưu</b> trước, rồi chép chuỗi này dán vào app TODA Bank Bridge.
+                        Đóng hộp thoại là chuỗi không hiện lại được nữa.
+                      </p>
+                    </div>
+                  ) : null}
                 </>
               )}
             </div>

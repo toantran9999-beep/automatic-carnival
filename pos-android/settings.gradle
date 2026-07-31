@@ -14,3 +14,6 @@ dependencyResolutionManagement {
 }
 rootProject.name = "TodaPos"
 include ':app'
+// Cầu thông báo ngân hàng — APK RIÊNG, cài trên điện thoại chủ quán.
+// Cố ý tách khỏi ':app': máy quầy dùng chung, không nên có quyền đọc thông báo.
+include ':bankbridge'

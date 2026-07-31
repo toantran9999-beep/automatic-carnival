@@ -21,7 +21,7 @@ import {
   type MomoCredentials,
 } from "../lib/momo.js";
 import { logger } from "../lib/logger.js";
-import { createHmac, timingSafeEqual } from "node:crypto";
+import { createHash, createHmac, timingSafeEqual } from "node:crypto";
 
 const payments = new Hono<AppEnv>();
 const PAYMENT_REQUEST_TTL_MS = 60 * 60 * 1000;
@@ -510,6 +510,117 @@ async function finalizePaidRequest(request: any, args: {
   return result;
 }
 
+/**
+ * Tìm phiếu theo mã in trên hoá đơn (TODA-…).
+ *
+ * Ưu tiên phiếu CÒN CHỜ và mới nhất. Mã có 6 ký tự ngẫu nhiên nên trùng là
+ * chuyện hiếm, nhưng `.limit(1)` không kèm sắp xếp thì đúng lúc trùng sẽ vớ đại
+ * một phiếu cũ đã đóng — tiền khách vào mà đơn đang mở thì không bao giờ chốt.
+ */
+async function findPaymentRequestByCode(paymentCode: string) {
+  const [request] = await db
+    .select()
+    .from(schema.paymentRequests)
+    .where(eq(schema.paymentRequests.payment_code, paymentCode))
+    .orderBy(
+      sql`CASE WHEN payment_requests.status = 'pending' THEN 0 ELSE 1 END`,
+      desc(schema.paymentRequests.created_at),
+    )
+    .limit(1);
+  return request;
+}
+
+/**
+ * Chặng chung sau khi đã tìm ra phiếu và đã xác thực xong nguồn tiền: kiểm
+ * trạng thái → kiểm tổng đơn có đổi không → kiểm thiếu tiền → chốt.
+ *
+ * Tách ra vì đúng lời cảnh báo ngay trên `finalizePaidRequest`: mỗi nguồn tiền
+ * tự chép lại chuỗi kiểm tra này là các đường lệch nhau. Nguồn mới chỉ phải lo
+ * phần XÁC THỰC của riêng nó rồi gọi vào đây.
+ */
+async function settleMatchedRequest(request: any, args: {
+  provider: string;
+  providerTransactionId: string;
+  amountCents: number;
+  content: string;
+  paymentCode: string;
+  payload: unknown;
+}) {
+  const base = {
+    provider: args.provider,
+    providerTransactionId: args.providerTransactionId,
+    paymentRequestId: request.id,
+    branchId: request.branch_id,
+    amount: args.amountCents,
+    content: args.content,
+    payload: args.payload,
+  };
+
+  if (request.status === "paid") {
+    await logWebhookEvent({ ...base, matched: true, reason: "already_paid" });
+    return { matched: true, reason: "already_paid" };
+  }
+
+  const now = new Date();
+  if (request.status !== "pending" || now > request.expires_at) {
+    if (request.status === "pending") {
+      await db
+        .update(schema.paymentRequests)
+        .set({ status: "expired", updated_at: now })
+        .where(eq(schema.paymentRequests.id, request.id));
+    }
+    await logWebhookEvent({ ...base, matched: false, reason: "expired_or_cancelled" });
+    return { matched: false, reason: "expired_or_cancelled" };
+  }
+
+  const currentDue = await currentDueForRequest(request);
+
+  if (currentDue === null || currentDue !== request.amount) {
+    await db
+      .update(schema.paymentRequests)
+      .set({ status: "cancelled", cancelled_at: now, updated_at: now })
+      .where(eq(schema.paymentRequests.id, request.id));
+    await logWebhookEvent({ ...base, matched: false, reason: "stale_order_amount" });
+    return { matched: false, reason: "stale_order_amount" };
+  }
+
+  if (args.amountCents < request.amount) {
+    await db
+      .update(schema.paymentRequests)
+      .set({
+        paid_amount: args.amountCents,
+        provider_transaction_id: args.providerTransactionId || null,
+        provider_payload: args.payload as any,
+        updated_at: now,
+      })
+      .where(eq(schema.paymentRequests.id, request.id));
+    await logWebhookEvent({ ...base, matched: false, reason: "underpaid" });
+    await wsManager.publish(`branch:${request.branch_id}`, {
+      type: "payment:underpaid",
+      payload: {
+        paymentRequestId: request.id,
+        orderId: request.order_id,
+        amount: args.amountCents,
+        expectedAmount: request.amount,
+      },
+      timestamp: Date.now(),
+    });
+    return { matched: false, reason: "underpaid" };
+  }
+
+  await finalizePaidRequest(request, {
+    provider: args.provider,
+    providerTransactionId: args.providerTransactionId,
+    paidAmountCents: args.amountCents,
+    providerPayload: args.payload,
+    reference: args.paymentCode,
+  });
+
+  const reason = args.amountCents > request.amount ? "overpaid" : "paid";
+  await logWebhookEvent({ ...base, matched: true, reason });
+  return { matched: true, reason };
+}
+
 // Public SePay webhook. This must stay before auth middleware.
 payments.post("/webhooks/sepay", async (c) => {
   // Giữ NGUYÊN chuỗi body thô để verify HMAC — SePay ký trên đúng byte đã gửi,
@@ -539,11 +650,7 @@ payments.post("/webhooks/sepay", async (c) => {
     return c.json({ success: true });
   }
 
-  const [request] = await db
-    .select()
-    .from(schema.paymentRequests)
-    .where(eq(schema.paymentRequests.payment_code, paymentCode))
-    .limit(1);
+  const request = await findPaymentRequestByCode(paymentCode);
 
   if (!request) {
     await logWebhookEvent({ provider: "sepay", providerTransactionId, amount, content, matched: false, reason: "payment_request_not_found", payload: body });
@@ -622,114 +729,211 @@ payments.post("/webhooks/sepay", async (c) => {
     return c.json({ success: false, error: "invalid secret" }, 401);
   }
 
-  if (request.status === "paid") {
-    await logWebhookEvent({
-      provider: "sepay",
-      providerTransactionId,
-      paymentRequestId: request.id,
-      branchId: request.branch_id,
-      amount,
-      content,
-      matched: true,
-      reason: "already_paid",
-      payload: body,
-    });
-    return c.json({ success: true });
-  }
-
-  const now = new Date();
-  if (request.status !== "pending" || now > request.expires_at) {
-    if (request.status === "pending") {
-      await db
-        .update(schema.paymentRequests)
-        .set({ status: "expired", updated_at: now })
-        .where(eq(schema.paymentRequests.id, request.id));
-    }
-    await logWebhookEvent({
-      provider: "sepay",
-      providerTransactionId,
-      paymentRequestId: request.id,
-      branchId: request.branch_id,
-      amount,
-      content,
-      matched: false,
-      reason: "expired_or_cancelled",
-      payload: body,
-    });
-    return c.json({ success: true });
-  }
-
-  const currentDue = await currentDueForRequest(request);
-
-  if (currentDue === null || currentDue !== request.amount) {
-    await db
-      .update(schema.paymentRequests)
-      .set({ status: "cancelled", cancelled_at: now, updated_at: now })
-      .where(eq(schema.paymentRequests.id, request.id));
-    await logWebhookEvent({
-      provider: "sepay",
-      providerTransactionId,
-      paymentRequestId: request.id,
-      branchId: request.branch_id,
-      amount,
-      content,
-      matched: false,
-      reason: "stale_order_amount",
-      payload: body,
-    });
-    return c.json({ success: true });
-  }
-
-  if (amount < request.amount) {
-    await db
-      .update(schema.paymentRequests)
-      .set({
-        paid_amount: amount,
-        provider_transaction_id: providerTransactionId || null,
-        provider_payload: body,
-        updated_at: now,
-      })
-      .where(eq(schema.paymentRequests.id, request.id));
-    await logWebhookEvent({
-      provider: "sepay",
-      providerTransactionId,
-      paymentRequestId: request.id,
-      branchId: request.branch_id,
-      amount,
-      content,
-      matched: false,
-      reason: "underpaid",
-      payload: body,
-    });
-    await wsManager.publish(`branch:${request.branch_id}`, {
-      type: "payment:underpaid",
-      payload: { paymentRequestId: request.id, orderId: request.order_id, amount, expectedAmount: request.amount },
-      timestamp: Date.now(),
-    });
-    return c.json({ success: true });
-  }
-
-  await finalizePaidRequest(request, {
+  await settleMatchedRequest(request, {
     provider: "sepay",
     providerTransactionId,
-    paidAmountCents: amount,
-    providerPayload: body,
-    reference: paymentCode,
-  });
-
-  await logWebhookEvent({
-    provider: "sepay",
-    providerTransactionId,
-    paymentRequestId: request.id,
-    branchId: request.branch_id,
-    amount,
+    amountCents: amount,
     content,
-    matched: true,
-    reason: amount > request.amount ? "overpaid" : "paid",
+    paymentCode,
     payload: body,
   });
 
   return c.json({ success: true });
+});
+
+/** Bỏ dấu tiếng Việt để bắt từ khoá không phụ thuộc máy gõ có dấu hay không. */
+function stripDiacritics(value: string) {
+  // Lọc theo MÃ ký tự thay vì regex: dải dấu tổ hợp U+0300..U+036F là các ký tự
+  // vô hình, dán thẳng vào regex thì nhìn như ô trống và vỡ khi đổi mã hoá file.
+  const withoutMarks = value
+    .normalize("NFD")
+    .split("")
+    .filter((ch) => {
+      const code = ch.charCodeAt(0);
+      return code < 0x0300 || code > 0x036f;
+    })
+    .join("");
+  // "đ" không phải chữ có dấu tổ hợp nên NFD không tách ra, phải thay riêng.
+  return withoutMarks.replace(/\u0111/g, "d").replace(/\u0110/g, "D");
+}
+
+/**
+ * Bóc số tiền và HƯỚNG tiền từ thông báo đẩy của app ngân hàng.
+ *
+ * Trả `direction: "unknown"` khi không chắc, và nơi gọi phải từ chối — tuyệt
+ * đối đừng đoán bừa là tiền vào. Thông báo TRỪ tiền cũng mang đủ số tài khoản
+ * lẫn nội dung chuyển khoản; đọc nhầm hướng là lúc quán chuyển tiền đi thì POS
+ * tự chốt đơn của khách.
+ */
+function parseBankNotificationAmount(text: string): {
+  amountVnd: number;
+  direction: "in" | "out" | "unknown";
+} {
+  const flat = stripDiacritics(text).toLowerCase();
+  const toVnd = (raw: string) => {
+    const parsed = Number(raw.replace(/[.,\s]/g, ""));
+    return Number.isFinite(parsed) ? parsed : 0;
+  };
+
+  // Dạng có dấu, hay gặp nhất: "+18,000 VND" / "-50.000đ"
+  const signed = flat.match(/([+\-])\s*(\d[\d.,\s]*?)\s*(?:vnd|d)\b/);
+  if (signed) {
+    return { amountVnd: toVnd(signed[2]), direction: signed[1] === "-" ? "out" : "in" };
+  }
+
+  // Dạng viết chữ: "tăng 18,000 VND", "ghi có 18.000đ", "giảm 50.000 VND"
+  const worded = flat.match(/(tang|ghi co|nhan|giam|ghi no|tru)\s*[:\s]*(\d[\d.,\s]*?)\s*(?:vnd|d)\b/);
+  if (worded) {
+    const debit = ["giam", "ghi no", "tru"].includes(worded[1]);
+    return { amountVnd: toVnd(worded[2]), direction: debit ? "out" : "in" };
+  }
+
+  return { amountVnd: 0, direction: "unknown" };
+}
+
+/**
+ * Cầu thông báo ngân hàng — app "TODA Bank Bridge" trên điện thoại chủ quán đọc
+ * thông báo đẩy của app VCB rồi chuyển NGUYÊN VĂN vào đây.
+ *
+ * Vì sao gửi nguyên văn chứ không bóc sẵn dưới điện thoại: ngân hàng đổi câu chữ
+ * thì chỉ phải sửa regex rồi deploy, khỏi build lại APK và cài tay lên máy chủ
+ * quán. Điện thoại chỉ lo mỗi việc chuyển tiếp và thử lại khi mất mạng.
+ *
+ * Phải nằm TRƯỚC authMiddleware: điện thoại không có token đăng nhập, nó tự xác
+ * thực bằng khóa riêng của chi nhánh.
+ */
+payments.post("/webhooks/bank-push", async (c) => {
+  const rawBody = await c.req.text();
+  let body: any = {};
+  try {
+    body = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    body = {};
+  }
+
+  const branchId = normalizeText(c.req.header("x-toda-branch") || body.branchId);
+  const providedKey = normalizeText(c.req.header("x-toda-bridge-key"));
+
+  if (!branchId) return c.json({ success: false, error: "missing branch" }, 401);
+
+  const [branch] = await db
+    .select()
+    .from(schema.branches)
+    .where(eq(schema.branches.id, branchId))
+    .limit(1);
+
+  const cfg = ((branch?.settings || {}) as Record<string, any>).payment?.bank_push || {};
+  const expectedKey = normalizeText(cfg.secret);
+
+  // Chưa bật hoặc chưa đặt khóa thì từ chối thẳng — cùng lối với SePay. Thiếu
+  // bước này thì ai đoán ra branchId là bấm được nút "đã thanh toán" cho cả quán.
+  if (!branch || !cfg.enabled || !expectedKey) {
+    return c.json({ success: false, error: "bank push not configured" }, 401);
+  }
+
+  const keyMatches =
+    providedKey.length === expectedKey.length &&
+    timingSafeEqual(Buffer.from(providedKey), Buffer.from(expectedKey));
+  if (!keyMatches) return c.json({ success: false, error: "invalid key" }, 401);
+
+  // Gộp mọi mảnh chữ của thông báo: phần đầy đủ hay nằm ở bigText/textLines chứ
+  // không phải dòng ngắn hiện ngoài màn khoá.
+  const parts = [
+    body.title,
+    body.text,
+    body.bigText,
+    ...(Array.isArray(body.textLines) ? body.textLines : []),
+  ];
+  const content = parts.map((p) => normalizeText(p)).filter(Boolean).join(" | ");
+
+  if (!content) return c.json({ success: true, matched: false, reason: "empty_notification" });
+
+  // Băm nguyên văn để chống trùng: Android hay đẩy lại/cập nhật cùng một thông
+  // báo, và app cũng gửi lại khi mất mạng — băm ra y hệt nên unique
+  // (provider, provider_transaction_id) tự chặn.
+  const providerTransactionId = createHash("sha256").update(content).digest("hex").slice(0, 32);
+  const { amountVnd, direction } = parseBankNotificationAmount(content);
+  const amount = amountVnd * 100; // thông báo ghi VNĐ, DB lưu XU
+  const paymentCode = extractPaymentCode(content);
+
+  const logBase = {
+    provider: "bank_push",
+    providerTransactionId,
+    branchId,
+    amount,
+    content,
+    payload: body,
+  };
+
+  /**
+   * Hàng rào thứ hai: chỉ app ngân hàng đã khai mới được chốt đơn.
+   *
+   * Điện thoại đã lọc một lần rồi, nhưng ai cầm được khóa vẫn gọi thẳng vào đây
+   * được — mà đã lọc ở nơi mình không kiểm soát thì coi như chưa lọc. Trả 200 để
+   * nút "Gửi thử" của app (dùng tên gói riêng của nó) vẫn xác nhận được đường
+   * truyền và khóa là đúng.
+   */
+  const allowedPackages: string[] = Array.isArray(cfg.package_names) ? cfg.package_names : [];
+  const notifPackage = normalizeText(body.packageName);
+  if (allowedPackages.length > 0 && !allowedPackages.some((p) => normalizeText(p).toLowerCase() === notifPackage.toLowerCase())) {
+    await logWebhookEvent({
+      provider: "bank_push",
+      providerTransactionId,
+      branchId,
+      amount,
+      content,
+      matched: false,
+      reason: "package_not_allowed",
+      payload: body,
+    });
+    return c.json({ success: true, matched: false, reason: "package_not_allowed" });
+  }
+
+  // Không chắc là tiền vào thì bỏ qua, nhưng VẪN ghi log — đó chính là dữ liệu
+  // để biết VCB đang viết thông báo theo mẫu nào mà chỉnh lại regex.
+  if (direction !== "in" || amount <= 0) {
+    await logWebhookEvent({
+      ...logBase,
+      matched: false,
+      reason: direction === "out" ? "ignored_debit" : "unparsed_amount",
+    });
+    return c.json({ success: true, matched: false, reason: "not_credit" });
+  }
+
+  if (!paymentCode) {
+    await logWebhookEvent({ ...logBase, matched: false, reason: "missing_payment_code" });
+    return c.json({ success: true, matched: false, reason: "missing_payment_code" });
+  }
+
+  const request = await findPaymentRequestByCode(paymentCode);
+  if (!request) {
+    await logWebhookEvent({ ...logBase, matched: false, reason: "payment_request_not_found" });
+    return c.json({ success: true, matched: false, reason: "payment_request_not_found" });
+  }
+
+  // Khóa của một chi nhánh chỉ được chốt đơn của chính chi nhánh đó.
+  if (request.branch_id !== branchId) {
+    await logWebhookEvent({
+      ...logBase,
+      paymentRequestId: request.id,
+      matched: false,
+      reason: "branch_mismatch",
+    });
+    return c.json({ success: true, matched: false, reason: "branch_mismatch" });
+  }
+
+  const result = await settleMatchedRequest(request, {
+    provider: "bank_push",
+    providerTransactionId,
+    amountCents: amount,
+    content,
+    paymentCode,
+    payload: body,
+  });
+
+  // Luôn trả 200: báo lỗi thì điện thoại cứ thử lại vô ích mãi cho một thông báo
+  // không bao giờ khớp được.
+  return c.json({ success: true, ...result });
 });
 
 /**

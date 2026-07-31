@@ -13,6 +13,7 @@
 const MASKED_KEYS = [
   ["sepay", "webhook_secret"],
   ["momo", "secret_key"],
+  ["bank_push", "secret"],
 ] as const;
 
 function cloneSettings(settings: unknown): Record<string, any> {

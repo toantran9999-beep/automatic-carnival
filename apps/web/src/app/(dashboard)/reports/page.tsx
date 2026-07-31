@@ -323,6 +323,8 @@ export default function ReportsPage() {
         avgOrder={avgOrder}
         totalTax={totalTax}
         isLoading={isLoading}
+        legacyRevenue={salesData?.legacyRevenue ?? 0}
+        legacyOrders={salesData?.legacyOrders ?? 0}
       />
 
       {effectiveAll && (salesData?.branches?.length ?? 0) > 0 && (
@@ -364,6 +366,10 @@ export default function ReportsPage() {
           // Chỉ ghi chú khi khoảng chọn lấn sang phần nhập từ POS cũ (không có hình
           // thức thanh toán); khoảng toàn dữ liệu mới thì không thêm chữ vô ích.
           noteFrom={hasLegacyInRange ? salesData?.liveDataFrom : null}
+          // ⚠️ liveRevenue chứ KHÔNG phải totalRevenue: tổng đó có cả số POS cũ, so
+          // với bảng thanh toán (chỉ đơn thật) là so nhầm khoảng — đúng cái đã làm
+          // chủ quán tưởng hệ thống sai dữ liệu.
+          liveRevenue={salesData?.liveRevenue}
         />
       </div>
 

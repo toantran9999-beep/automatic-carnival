@@ -22,6 +22,14 @@ interface PaymentMethodsChartProps {
    * — nếu không người xem sẽ tưởng tỉ lệ tiền mặt/chuyển khoản là của cả kỳ.
    */
   noteFrom?: string | null;
+  /**
+   * Doanh thu của phần đơn thật — mốc để bảng này TỰ đối chiếu.
+   *
+   * ⚠️ KHÔNG truyền `totalRevenue` vào đây: tổng đó có cả 359 ngày nhập từ POS cũ,
+   * so với bảng thanh toán (chỉ có đơn thật) là so nhầm khoảng, đúng cái đã làm chủ
+   * quán tưởng hệ thống sai.
+   */
+  liveRevenue?: number;
 }
 
 /**
@@ -38,19 +46,32 @@ export function PaymentMethodsChart({
   paymentMethods,
   isLoading,
   noteFrom,
+  liveRevenue,
 }: PaymentMethodsChartProps) {
   const { t, lang } = useTranslation();
 
   const total = paymentMethods.reduce((s, p) => s + (p.amount ?? 0), 0);
   const chartData = paymentMethods.map((p) => ({ name: p.name, value: p.amount ?? 0 }));
 
+  // ⚠️ So BẰNG TUYỆT ĐỐI, không đặt sai số cho phép: tiền lưu theo xu (số nguyên) nên
+  // lệch 1 đồng cũng là có chuyện thật — đơn đã đóng mà chưa ghi lần thu tiền nào.
+  const hasCheck = typeof liveRevenue === "number";
+  const gap = hasCheck ? liveRevenue - total : 0;
+  const matches = hasCheck && gap === 0;
+  const fromLabel = noteFrom ? formatDayMonthYear(noteFrom, lang) : "";
+
   return (
     <Card>
       <CardHeader className="gap-1">
         <CardTitle>{t("reports.paymentShare")}</CardTitle>
         {noteFrom && (
-          <p className="text-xs text-muted-foreground">
-            {t("reports.onlyFrom")} {formatDayMonthYear(noteFrom, lang)}
+          // Nói đủ LÝ DO, không chỉ "chỉ tính từ ngày X": người xem cần biết phần
+          // trước đó không phải bị bỏ sót mà là số cũ vốn không ghi hình thức trả.
+          <p className="text-xs leading-snug text-muted-foreground">
+            {t("reports.onlyFrom")} {fromLabel}
+            {lang === "vi"
+              ? " — trước đó là số nhập từ POS cũ, bản xuất không ghi hình thức trả."
+              : " — earlier data was imported from the old POS, which did not record payment methods."}
           </p>
         )}
       </CardHeader>
@@ -58,6 +79,7 @@ export function PaymentMethodsChart({
         {isLoading ? (
           <Skeleton className="h-[300px] w-full" />
         ) : total > 0 ? (
+          <>
           <div className="flex flex-col items-center gap-5 sm:flex-row sm:gap-6">
             <div className="h-[180px] w-[180px] shrink-0">
               <ResponsiveContainer width="100%" height="100%">
@@ -120,13 +142,64 @@ export function PaymentMethodsChart({
                 <span className="shrink-0 font-bold tabular-nums">{formatCurrency(total)}</span>
                 <span className="w-10 shrink-0" aria-hidden="true" />
               </li>
+
+              {/* Dòng tự đối chiếu: hai con số này PHẢI bằng nhau. Có nó thì bảng tự
+                  chứng minh mình đúng, khỏi phải tin vào dòng chú thích. */}
+              {hasCheck && (
+                <li className="flex items-center gap-2 text-sm">
+                  <span className="min-w-0 flex-1 leading-snug text-muted-foreground">
+                    {lang === "vi" ? "Doanh thu từ" : "Revenue since"} {fromLabel || "—"}
+                  </span>
+                  <span className="shrink-0 tabular-nums text-muted-foreground">
+                    {formatCurrency(liveRevenue!)}
+                  </span>
+                  <span
+                    className={`w-10 shrink-0 text-right text-xs ${
+                      matches ? "text-emerald-600 dark:text-emerald-500" : "text-destructive"
+                    }`}
+                  >
+                    {matches ? "✓" : "≠"}
+                  </span>
+                </li>
+              )}
             </ul>
           </div>
+
+          {/* Lệch là chuyện thật, không phải chuyện trình bày — nói rõ nguyên nhân
+              để chủ quán biết đi tìm ở đâu, chứ đừng chỉ ném ra con số chênh. */}
+          {hasCheck && !matches && (
+            <div className="mt-4 rounded-lg border border-destructive/40 bg-destructive/5 p-3 text-sm">
+              <div className="flex items-center justify-between gap-3">
+                <span className="min-w-0 flex-1 font-medium text-destructive">
+                  {lang === "vi" ? "Chênh" : "Gap"}
+                </span>
+                <span className="shrink-0 font-bold tabular-nums text-destructive">
+                  {formatCurrency(Math.abs(gap))}
+                </span>
+              </div>
+              <p className="mt-1 text-xs leading-snug text-muted-foreground">
+                {gap > 0
+                  ? lang === "vi"
+                    ? "Có đơn đã đóng mà chưa ghi lần thu tiền nào — kiểm lại ở trang Đơn hàng."
+                    : "Some closed orders have no payment recorded — check the Orders page."
+                  : lang === "vi"
+                    ? "Tiền đã thu nhiều hơn doanh thu đơn — có thể do thu thừa hoặc ghi trùng lần thu."
+                    : "Payments exceed order revenue — possible overpayment or duplicate entry."}
+              </p>
+            </div>
+          )}
+          </>
         ) : (
-          <div className="flex h-[180px] items-center justify-center text-sm text-muted-foreground">
+          // Khoảng ngày nằm trọn trong dữ liệu POS cũ thì rỗng là ĐÚNG, không phải
+          // hỏng — phải nói ra, kẻo lại tưởng mất dữ liệu.
+          <div className="flex h-[180px] items-center justify-center px-4 text-center text-sm leading-snug text-muted-foreground">
             {lang === "vi"
-              ? "Không có dữ liệu phương thức thanh toán"
-              : "No payment method data available"}
+              ? noteFrom
+                ? `Khoảng ngày đang chọn nằm trước ${fromLabel} — số nhập từ POS cũ không ghi hình thức thanh toán.`
+                : "Không có dữ liệu phương thức thanh toán"
+              : noteFrom
+                ? `The selected range ends before ${fromLabel} — data imported from the old POS has no payment method.`
+                : "No payment method data available"}
           </div>
         )}
       </CardContent>

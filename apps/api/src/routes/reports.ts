@@ -535,6 +535,18 @@ reports.get(
       // Thuế/giảm giá chỉ có ở đơn thật; bản xuất cũ không lưu (và thực tế luôn bằng 0).
       totalTax: n(liveTotals[0]?.tax),
       totalDiscount: n(liveTotals[0]?.discount),
+
+      // Tách riêng hai nguồn thay vì chỉ trả tổng đã gộp.
+      //
+      // ⚠️ Không có mấy số này thì trang Báo cáo không cách nào giải thích được vì sao
+      // "Tổng doanh thu 937tr" mà bảng thanh toán cộng lại chỉ 20tr — người xem tin
+      // con số chứ không tin dòng chú thích nhỏ. `liveRevenue` là mốc để bảng thanh
+      // toán TỰ đối chiếu: hai số đó phải bằng nhau, lệch là có đơn đã đóng mà chưa
+      // ghi lần thu tiền nào.
+      liveRevenue: n(liveTotals[0]?.revenue),
+      liveOrders: n(liveTotals[0]?.orders),
+      legacyRevenue: n(legacyTotals[0]?.revenue),
+      legacyOrders: n(legacyTotals[0]?.orders),
     };
 
     // Hai nguồn không chồng ngày nên chỉ cần nối rồi sắp lại, không phải cộng dồn.

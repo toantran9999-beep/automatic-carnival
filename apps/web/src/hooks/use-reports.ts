@@ -40,6 +40,16 @@ export interface SalesReportData {
   totalRevenue: number;
   totalTax: number;
   totalDiscount: number;
+  /**
+   * Doanh thu CHỈ của phần đơn thật (từ `liveDataFrom` trở đi).
+   * ⚠️ Đây là mốc để đối chiếu với bảng Cơ cấu phương thức thanh toán — bảng đó chỉ
+   * dựng từ đơn thật, so với `totalRevenue` (có cả số POS cũ) là so nhầm khoảng.
+   */
+  liveRevenue: number;
+  liveOrders: number;
+  /** Phần nhập từ POS cũ — để thẻ KPI ghi rõ "gồm … từ POS cũ". */
+  legacyRevenue: number;
+  legacyOrders: number;
   /** 'month' khi khoảng dài hơn 92 ngày — lúc đó `days[].date` là 'YYYY-MM'. */
   granularity: "day" | "month";
   days: SalesReportDay[];

@@ -410,6 +410,53 @@ reports.get("/overview", requirePermission("reports:read"), async (c) => {
   });
 });
 
+/**
+ * GET /revenue-by-hour - Doanh thu CỘNG DỒN theo từng giờ trong ngày (0-23h giờ VN),
+ * tính trên một khoảng ngày tuỳ ý (khác /overview chỉ tính hôm nay).
+ * Dùng để trả lời "khung giờ nào đông/vắng" trên nhiều ngày — phục vụ quyết định
+ * xếp ca/khuyến mãi/giờ mở cửa, không phải câu hỏi doanh thu đơn thuần.
+ * Không gộp dữ liệu hệ cũ (sales_history_*) — dữ liệu export cũ không có chi tiết theo giờ.
+ */
+reports.get(
+  "/revenue-by-hour",
+  requirePermission("reports:read"),
+  zValidator("query", reportQuerySchema),
+  async (c) => {
+    const { startDate, endDate } = c.req.valid("query");
+    const scope = resolveReportScope(c);
+    if (!scope.ok) return scope.response;
+    const { ordersCondition } = scope;
+
+    const hourExpr = sql<string>`to_char(${schema.orders.created_at} + interval '7 hours', 'HH24')`;
+
+    const rows = await db
+      .select({ hour: hourExpr, orders: count(), revenue: sum(schema.orders.total) })
+      .from(schema.orders)
+      .where(
+        and(
+          ordersCondition,
+          eq(schema.orders.status, "completed"),
+          ordersInVnRange(startDate, endDate),
+        ),
+      )
+      .groupBy(hourExpr)
+      .orderBy(hourExpr);
+
+    const days = daysBetween(startDate, endDate);
+    const hourly = rows.map((h) => {
+      const revenue = Number(h.revenue || 0);
+      return {
+        hour: Number(h.hour),
+        orders: Number(h.orders || 0),
+        revenue,
+        avgRevenuePerDay: days > 0 ? Math.round(revenue / days) : 0,
+      };
+    });
+
+    return c.json({ success: true, data: { startDate, endDate, days, hourly } });
+  },
+);
+
 // GET /sales - Sales summary with daily breakdown and payment methods
 reports.get(
   "/sales",

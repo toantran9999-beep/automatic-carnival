@@ -75,6 +75,14 @@ momo key/
 momo-key/
 *momokey*
 *momo-key*
+# Khóa ký APK. Chỗ ở chính thức là ../keys-apk/ (NGOÀI repo) + GitHub secret.
+# *.b64 và *-password.txt phải liệt kê riêng vì các mẫu *.p12/*.pem ở trên
+# không bắt được chúng — đúng bài học từ vụ momokey.txt.
+*.b64
+*.jks
+*.keystore
+*-password.txt
+keys-apk/
 
 # Dữ liệu xuất từ POS cũ (~80MB xlsx). Chỉ dùng một lần để nhập lịch sử qua
 # scripts/extract-legacy-sales.py — đã nằm trong DB rồi thì không cần trong repo.

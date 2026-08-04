@@ -1,0 +1,62 @@
+/*
+ * Khoá ký CỐ ĐỊNH cho APK, lấy từ biến môi trường.
+ *
+ * VÌ SAO CÓ FILE NÀY
+ * ------------------
+ * CI chạy `gradle assembleDebug` trên máy ảo sạch, không có
+ * ~/.android/debug.keystore, nên Gradle TỰ SINH MỘT KHOÁ MỚI MỖI LẦN CHẠY.
+ * Hai bản cùng applicationId nhưng khác chữ ký thì Android từ chối cài đè:
+ *
+ *     "Chưa cài đặt được ứng dụng do gói xung đột với một gói hiện có."
+ *
+ * Hậu quả với app cầu nối: mỗi lần cập nhật phải gỡ hẳn → mất khoá cầu nối,
+ * mất danh sách app theo dõi, mất quyền đọc thông báo, phải dựng lại cấu hình
+ * từ đầu.
+ *
+ * CÁCH DÙNG
+ * ---------
+ * Module nào cần ký ổn định thì thêm vào build.gradle:
+ *
+ *     apply from: "$rootDir/signing.gradle"
+ *
+ * Hiện chỉ `:bankbridge` dùng. `:app` (máy quầy) CỐ Ý chưa dùng — đổi chữ ký là
+ * phải gỡ cài lại, kéo theo mất quyền USB máy in và cờ Trạm quầy, việc đó phải
+ * chọn giờ đóng cửa. Khi nào cần thì thêm đúng một dòng trên.
+ *
+ * GHI ĐÈ `debug` CHỨ KHÔNG THÊM `release`
+ * ---------------------------------------
+ * Để giữ nguyên `assembleDebug` cùng tên file và đường dẫn artifact — khỏi phải
+ * sửa thêm chỗ nào trong CI hay README.
+ *
+ * Không có biến môi trường (build ở máy cá nhân) thì rơi về khoá debug mặc định
+ * như cũ, không ai phải cấu hình gì thêm.
+ *
+ * KEYSTORE LÀ PKCS12
+ * ------------------
+ * Sinh bằng OpenSSL chứ không phải keytool — máy anh Toàn không có Java. JDK 17
+ * đọc PKCS12 do OpenSSL 3 tạo ra bình thường. Xem lệnh cụ thể trong
+ * bankbridge/README.md.
+ *
+ * ⚠️ Khoá KHÔNG nằm trong repo (repo công khai). Nó là GitHub secret, CI giải mã
+ * ra $RUNNER_TEMP — ngoài thư mục làm việc nên không bao giờ lọt vào artifact.
+ */
+android {
+    signingConfigs {
+        debug {
+            def ksPath = System.getenv("TODA_KEYSTORE_PATH")
+            def ksPass = System.getenv("TODA_KEYSTORE_PASSWORD")
+
+            if (ksPath && ksPass && file(ksPath).exists()) {
+                storeFile file(ksPath)
+                storeType "PKCS12"
+                storePassword ksPass
+                keyAlias "toda"
+                // PKCS12 dùng chung một mật khẩu cho cả kho lẫn khoá.
+                keyPassword ksPass
+                println "[signing] Ky bang khoa co dinh: ${ksPath}"
+            } else {
+                println "[signing] Khong co TODA_KEYSTORE_* -> dung khoa debug mac dinh"
+            }
+        }
+    }
+}

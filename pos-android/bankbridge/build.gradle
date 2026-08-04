@@ -2,6 +2,10 @@ plugins {
     id 'com.android.application'
 }
 
+// Ký bằng khoá cố định để CÀI ĐÈ được, khỏi phải gỡ app rồi dựng lại cấu hình
+// mỗi lần cập nhật. Xem lý do đầy đủ trong signing.gradle.
+apply from: "$rootDir/signing.gradle"
+
 android {
     namespace 'vn.toda.bankbridge'
     compileSdk 34

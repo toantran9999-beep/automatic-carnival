@@ -30,9 +30,44 @@ jobs:
         with:
           gradle-version: '8.7'
 
+      # Khoá ký cố định cho APK cầu nối, để CÀI ĐÈ được thay vì phải gỡ app rồi
+      # dựng lại toàn bộ cấu hình mỗi lần cập nhật. Xem pos-android/signing.gradle.
+      #
+      # Giải mã ra $RUNNER_TEMP — NGOÀI thư mục checkout, nên không đường nào lọt
+      # vào artifact hay release.
+      #
+      # Chưa thêm secret thì bỏ qua và build như cũ: CI không được gãy chỉ vì
+      # thiếu một thứ chưa kịp cấu hình.
+      - name: Giai ma keystore (bo qua neu chua co secret)
+        env:
+          KS_B64: ${{ secrets.TODA_KEYSTORE_BASE64 }}
+        run: |
+          if [ -z "$KS_B64" ]; then
+            echo "Chua co secret TODA_KEYSTORE_BASE64 -> dung khoa debug ngau nhien nhu truoc"
+            exit 0
+          fi
+          printf '%s' "$KS_B64" | base64 -d > "$RUNNER_TEMP/toda.p12"
+          echo "TODA_KEYSTORE_PATH=$RUNNER_TEMP/toda.p12" >> "$GITHUB_ENV"
+          echo "Da giai ma keystore"
+
       - name: Build debug APK
         working-directory: pos-android
+        env:
+          TODA_KEYSTORE_PASSWORD: ${{ secrets.TODA_KEYSTORE_PASSWORD }}
         run: gradle assembleDebug --no-daemon --stacktrace
+
+      # Vân tay chứng chỉ là thông tin CÔNG KHAI, in ra an toàn — và đây là cách
+      # duy nhất để đối chiếu hai lần build có cùng khoá hay không. Hai lần chạy
+      # ra vân tay khác nhau = vẫn đang ký bằng khoá ngẫu nhiên, cài đè sẽ hỏng.
+      - name: In van tay chung chi APK cau noi
+        run: |
+          APK=pos-android/bankbridge/build/outputs/apk/debug/bankbridge-debug.apk
+          APKSIGNER=$(find "$ANDROID_HOME/build-tools" -name apksigner -type f 2>/dev/null | sort | tail -1)
+          if [ -n "$APKSIGNER" ]; then
+            "$APKSIGNER" verify --print-certs "$APK" | grep -i 'SHA-256' || true
+          else
+            keytool -printcert -jarfile "$APK" | grep -i 'SHA256' || true
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4

@@ -5,7 +5,22 @@
 # Logo gốc: logo/logoden.png — hình cây trong vòng tròn, nền trong suốt, màu than chì.
 # Logo đổi thì chạy lại lệnh trên, không phải sửa tay file nào.
 #
+# Xuất RIÊNG một file logo nhũ vàng nền trong suốt (để in ấn, mạng xã hội, ghép ảnh):
+#
+#   powershell -ExecutionPolicy Bypass -File scripts\build-brand-assets.ps1 `
+#       -ExportMark logo\toda-logo-gold.png -ExportSize 1024
+#
+# ⚠️ Chế độ xuất dùng CHUNG hàm Get-MetallicMark với bộ icon — cố ý không viết hàm
+# riêng, để màu nhũ trên file xuất không bao giờ lệch màu nhũ của icon app.
+#
 # Dùng System.Drawing (có sẵn trên Windows) — không cần cài thêm gì.
+
+param(
+  # Đường dẫn file PNG cần xuất. Để trống = chạy như cũ, sinh đủ bộ icon.
+  [string]$ExportMark = "",
+  # Cạnh ảnh xuất. Logo gốc chỉ 352px nên trên ~1024 là phóng to chứ không thêm chi tiết.
+  [int]$ExportSize = 1024
+)
 
 $ErrorActionPreference = "Stop"
 Add-Type -AssemblyName System.Drawing
@@ -87,6 +102,30 @@ function Get-MetallicMark {
   return $out
 }
 
+# Phóng to/thu nhỏ ảnh giữ nguyên kênh trong suốt.
+# TileFlipXY: không có nó thì ảnh nền trong suốt bị viền mờ quanh mép khi đổi cỡ.
+function Resize-Bitmap {
+  param([System.Drawing.Bitmap]$Source, [int]$Size)
+
+  $bmp = New-Object System.Drawing.Bitmap($Size, $Size, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $g = [System.Drawing.Graphics]::FromImage($bmp)
+  try {
+    $g.SmoothingMode      = [System.Drawing.Drawing2D.SmoothingMode]::AntiAlias
+    $g.InterpolationMode  = [System.Drawing.Drawing2D.InterpolationMode]::HighQualityBicubic
+    $g.PixelOffsetMode    = [System.Drawing.Drawing2D.PixelOffsetMode]::HighQuality
+    $g.CompositingQuality = [System.Drawing.Drawing2D.CompositingQuality]::HighQuality
+    $g.Clear([System.Drawing.Color]::Transparent)
+
+    $dest = New-Object System.Drawing.Rectangle(0, 0, $Size, $Size)
+    $attr = New-Object System.Drawing.Imaging.ImageAttributes
+    try {
+      $attr.SetWrapMode([System.Drawing.Drawing2D.WrapMode]::TileFlipXY)
+      $g.DrawImage($Source, $dest, 0, 0, $Source.Width, $Source.Height, [System.Drawing.GraphicsUnit]::Pixel, $attr)
+    } finally { $attr.Dispose() }
+  } finally { $g.Dispose() }
+  return $bmp
+}
+
 function New-RoundedPath {
   param([single]$Size, [single]$Radius)
 
@@ -151,6 +190,25 @@ function New-Icon {
 $src = [System.Drawing.Bitmap]::FromFile($srcPath)
 $markLight = $null
 try {
+  # --- Chế độ xuất một file: logo nhũ vàng, NỀN TRONG SUỐT, không bo góc, không nền nâu ---
+  if ($ExportMark) {
+    # Phóng to TRƯỚC rồi mới tô nhũ: làm ngược lại (tô ở 352px rồi phóng to) là dải
+    # chuyển sắc bị kéo giãn, mất độ mịn của ánh kim.
+    $big = Resize-Bitmap -Source $src -Size $ExportSize
+    $gold = $null
+    try {
+      $gold = Get-MetallicMark -Source $big -Stops $MARK_STOPS -Positions $MARK_POSITIONS
+      $outPath = if ([System.IO.Path]::IsPathRooted($ExportMark)) { $ExportMark } else { Join-Path $root $ExportMark }
+      New-Dir (Split-Path -Parent $outPath)
+      $gold.Save($outPath, [System.Drawing.Imaging.ImageFormat]::Png)
+      Write-Host ("`nDa xuat: {0}  ({1}x{1}, nen trong suot)" -f $outPath, $ExportSize)
+      if ($ExportSize -gt ($src.Width * 3)) {
+        Write-Host ("  Luu y: logo goc chi {0}px, co nay la phong to chu khong them chi tiet." -f $src.Width)
+      }
+    } finally { if ($gold) { $gold.Dispose() }; $big.Dispose() }
+    return
+  }
+
   $markLight = Get-MetallicMark -Source $src -Stops $MARK_STOPS -Positions $MARK_POSITIONS
 
   Write-Host "`n== Web / PWA =="

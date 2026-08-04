@@ -30,9 +30,65 @@ không nên bắt máy quầy đăng nhập ngân hàng.
 - **Hàng đợi ghi xuống đĩa.** Mỗi mục là một lần khách đã trả tiền; mất mạng hay
   bị Android giết tiến trình cũng phải đẩy được sau đó.
 
+## Khoá ký — làm một lần, để về sau cài đè được
+
+Không có khoá cố định thì **mỗi lần cập nhật phải gỡ hẳn app**, kéo theo mất khoá
+cầu nối, mất danh sách app theo dõi, mất quyền đọc thông báo. Android báo:
+
+> *"Chưa cài đặt được ứng dụng do gói xung đột với một gói hiện có."*
+
+Đó là do CI tự sinh khoá debug mới mỗi lần chạy. Cách chữa:
+
+### 1. Sinh keystore (chạy trong Git Bash, một lần duy nhất)
+
+Máy không cần Java — dùng OpenSSL, JDK 17 đọc PKCS12 bình thường.
+
+```bash
+# Đổi MAT_KHAU_CUA_ANH thành mật khẩu tự chọn
+PASS='MAT_KHAU_CUA_ANH'
+
+openssl req -x509 -newkey rsa:2048 -sha256 -days 10000 -nodes \
+  -keyout toda-key.pem -out toda-cert.pem \
+  -subj "/CN=TODA CAFE/O=TODA/C=VN"
+
+openssl pkcs12 -export -inkey toda-key.pem -in toda-cert.pem \
+  -name toda -out toda-bankbridge.p12 -passout pass:"$PASS"
+
+base64 -w0 toda-bankbridge.p12 > toda-bankbridge.p12.b64
+
+rm -f toda-key.pem toda-cert.pem   # dọn file trung gian
+```
+
+⚠️ **Cất `toda-bankbridge.p12` ở chỗ an toàn và ĐỪNG bỏ vào repo** (repo công
+khai). Mất khoá là vĩnh viễn không cài đè được nữa, phải gỡ cài lại lần nữa.
+
+### 2. Thêm 2 secret trên GitHub
+
+Repo → **Settings → Secrets and variables → Actions → New repository secret**:
+
+| Tên secret | Giá trị |
+|---|---|
+| `TODA_KEYSTORE_BASE64` | toàn bộ nội dung `toda-bankbridge.p12.b64` |
+| `TODA_KEYSTORE_PASSWORD` | mật khẩu vừa đặt |
+
+Chưa thêm secret thì CI vẫn chạy bình thường, chỉ là chữ ký vẫn ngẫu nhiên như cũ.
+
+### 3. Kiểm
+
+Chạy workflow hai lần, xem bước **"In van tay chung chi APK cau noi"** trong log.
+Hai lần phải ra **cùng một SHA-256**. Khác nhau là khoá chưa ăn.
+
+> ⚠️ **Vẫn phải gỡ cài đặt MỘT lần cuối.** Bản đầu ký bằng khoá mới vẫn khác chữ
+> ký bản đang chạy. Từ bản **thứ hai** trở đi mới cài đè được.
+
+*(APK máy quầy cố ý CHƯA dùng khoá này — đổi chữ ký là mất quyền USB máy in và cờ
+Trạm quầy, phải chọn giờ đóng cửa. Khi cần, thêm `apply from: "$rootDir/signing.gradle"`
+vào `app/build.gradle`.)*
+
 ## Cài đặt
 
-1. **Build**: GitHub Actions → workflow *Build POS Android APK* → tải artifact
+1. **Build**: GitHub Actions → workflow *Build POS Android APK*
+   (`.github/workflows/build-apk.yml`) → tải artifact
    **`toda-bank-bridge-apk`** (`bankbridge-debug.apk`).
 2. **Lấy chuỗi cấu hình**: POS → **Cài đặt → Chi nhánh** → sửa chi nhánh → bật
    **Cầu thông báo ngân hàng** → bấm **Tạo khóa** → **Lưu** → chép chuỗi cấu hình.

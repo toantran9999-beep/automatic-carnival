@@ -1559,8 +1559,24 @@ payments.get("/bridge-status", requirePermission("payments:read"), async (c) => 
     .where(eq(schema.bridgeHeartbeats.branch_id, tenant.branchId))
     .limit(1);
 
-  // Một thông báo ngân hàng THẬT cũng là bằng chứng còn sống — và bản APK cũ
-  // chưa biết gửi nhịp thở thì đây là dấu hiệu duy nhất có được.
+  /*
+   * Chưa từng nhận nhịp thở nào = điện thoại đang chạy bản APK CŨ (trước 1.1),
+   * bản đó không biết gửi nhịp thở.
+   *
+   * Trường hợp này KHÔNG được báo đỏ: bản cũ vẫn chuyển tiền về bình thường, mà
+   * cứ vắng khách 15 phút là POS kêu thì nhân viên sẽ thôi không nhìn nữa — lúc
+   * hỏng thật cũng chẳng ai tin. Có được nhịp đầu tiên rồi thì bản ghi nằm đó
+   * vĩnh viễn, từ đó mới bắt đầu canh.
+   */
+  if (!beat) {
+    return c.json({
+      success: true,
+      data: { enabled: true, healthy: true, awaitingFirstBeat: true },
+    });
+  }
+
+  // Một thông báo ngân hàng THẬT cũng là bằng chứng còn sống — thường tới sớm
+  // hơn nhịp thở kế tiếp nên lấy mốc nào mới hơn.
   const [lastEvent] = await db
     .select({ created_at: schema.paymentWebhookEvents.created_at })
     .from(schema.paymentWebhookEvents)

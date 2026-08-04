@@ -614,13 +614,22 @@ export function SedesTab() {
                           : "bg-destructive/10 text-destructive"
                       }`}
                     >
-                      {bridge.healthy ? "✓ Cầu nối đang sống" : "⚠️ Cầu nối mất tín hiệu"}
-                      {typeof bridge.minutesSince === "number"
-                        ? ` · nghe thấy ${bridge.minutesSince} phút trước`
-                        : " · chưa từng nghe thấy"}
-                      {bridge.appVersion ? ` · bản ${bridge.appVersion}` : ""}
-                      {bridge.queueSize > 0 ? ` · ${bridge.queueSize} tin đang kẹt` : ""}
-                      {bridge.listenerOk === false ? " · ĐÃ TẮT quyền đọc thông báo" : ""}
+                      {bridge.awaitingFirstBeat ? (
+                        <>
+                          Chưa nhận được nhịp thở nào — điện thoại đang chạy bản APK cũ.
+                          Cài bản <b>1.1</b> trở lên thì mới cảnh báo được lúc cầu nối chết.
+                        </>
+                      ) : (
+                        <>
+                          {bridge.healthy ? "✓ Cầu nối đang sống" : "⚠️ Cầu nối mất tín hiệu"}
+                          {typeof bridge.minutesSince === "number"
+                            ? ` · nghe thấy ${bridge.minutesSince} phút trước`
+                            : " · chưa từng nghe thấy"}
+                          {bridge.appVersion ? ` · bản ${bridge.appVersion}` : ""}
+                          {bridge.queueSize > 0 ? ` · ${bridge.queueSize} tin đang kẹt` : ""}
+                          {bridge.listenerOk === false ? " · ĐÃ TẮT quyền đọc thông báo" : ""}
+                        </>
+                      )}
                     </div>
                   ) : null}
                 </>

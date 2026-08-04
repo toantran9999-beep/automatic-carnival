@@ -3,8 +3,8 @@
 import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { WsMessage } from "@restai/types";
+import { toast } from "sonner";
 import { Printer, CheckCircle2, Loader2, Banknote, CreditCard, Landmark, Clock3, Wallet } from "lucide-react";
-import { QRCodeSVG } from "qrcode.react";
 import { Input } from "@restai/ui/components/input";
 import { Label } from "@restai/ui/components/label";
 import { Button } from "@restai/ui/components/button";
@@ -22,7 +22,7 @@ import {
   useActivePaymentRequestByOrder,
 } from "@/hooks/use-payments";
 import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
-import { usePrintReceipt, usePrintTemporaryTransferBill } from "@/components/print-ticket";
+import { usePrintReceipt } from "@/components/print-ticket";
 import { formatCurrency } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
 import { useWebSocket } from "@/hooks/use-websocket";
@@ -78,7 +78,6 @@ export function PosPaymentDialog({
   const createPaymentRequest = useCreatePaymentRequest();
   const { data: paymentRequest } = usePaymentRequest(paymentRequestId);
   const printReceipt = usePrintReceipt();
-  const printTemporaryTransferBill = usePrintTemporaryTransferBill();
 
   const currency = (branchSettings as any)?.currency || "VND";
 
@@ -203,7 +202,13 @@ export function PosPaymentDialog({
   });
 
   /**
-   * Dựng yêu cầu thanh toán QR rồi in phiếu tạm tính cho khách quét.
+   * Dựng yêu cầu thanh toán QR — rồi TRẠM QUẦY in phiếu, không phải máy này.
+   *
+   * ⚠️ Trước đây chính máy bấm đơn vừa dựng mã QR vừa gọi lệnh in. Trên điện thoại
+   * nhân viên thì "lệnh in" là hộp thoại in của trình duyệt, nên thực tế mã QR chỉ
+   * nằm trên màn hình điện thoại. Chủ quán chốt: mọi mã phải in ở quầy rồi bưng ra.
+   * Nay máy chủ phát WS `print:transfer` và StationProvider ở quầy in — gọi lại hàm
+   * này chính là nút "In lại phiếu" (dùng lại yêu cầu cũ, KHÔNG sinh mã mới).
    *
    * Dùng chung cho cả chuyển khoản ngân hàng lẫn MoMo — chỉ khác `provider`, còn
    * việc chờ tiền về và tự đóng đơn thì máy chủ lo giống hệt nhau.
@@ -218,29 +223,7 @@ export function PosPaymentDialog({
         provider,
       }) as any;
       setPaymentRequestId(request.id);
-
-      const org = orgSettings as any;
-      const branch = branchSettings as any;
-      printTemporaryTransferBill({
-        businessName: org?.name || "TODA POS",
-        address: branch?.address || undefined,
-        orderNumber,
-        tableNumber,
-        customerName,
-        createdAt: new Date().toISOString(),
-        expiresAt: request.expires_at,
-        items: mappedItems,
-        subtotal: totalAmount - taxAmount,
-        tax: taxAmount,
-        total: totalAmount,
-        paymentCode: request.payment_code,
-        qrUrl: request.qr_url,
-        // KHÔNG rơi về payment_code: QR chứa "TODA-..." thì app quét ra chuỗi vô
-        // nghĩa và báo mã không hợp lệ. Thiếu payload thì thà đừng in QR.
-        qrPayload: request.qr_payload,
-        provider,
-        bank: request.bank,
-      });
+      toast.success("Đã gửi phiếu QR ra trạm quầy");
     } catch {
       // Lỗi đã có toast từ mutateAsync (VD: chưa cấu hình MoMo, MoMo không phản hồi).
     } finally {
@@ -583,35 +566,34 @@ export function PosPaymentDialog({
                     {transferRequest.status === "expired" || isExpired ? "In phiếu mới" : "In lại phiếu"}
                   </Button>
                 </div>
-                <div className="flex items-center gap-3">
-                  {/* Chỉ hiện QR khi có chuỗi VietQR thật — trước đây rơi về payment_code
-                      nên khách quét ra "Mã thanh toán không hợp lệ". */}
-                  {transferRequest.qr_payload ? (
-                    <div className="rounded-lg bg-white p-2">
-                      <QRCodeSVG value={transferRequest.qr_payload} size={96} level="M" />
-                    </div>
-                  ) : (
-                    <div className="w-[112px] shrink-0 rounded-lg border border-dashed p-2 text-center text-[11px] text-muted-foreground">
-                      Chưa cấu hình tài khoản ngân hàng
-                    </div>
-                  )}
-                  <div className="min-w-0 text-xs space-y-1">
-                    {/* Nói rõ mở app nào — QR MoMo và QR ngân hàng khác nhau, quét
-                        nhầm app là máy báo lỗi rồi nhân viên phải giải thích. */}
-                    <div className="font-semibold text-foreground">
-                      {method === "momo" ? "Khách quét bằng app MoMo" : "Khách quét bằng app ngân hàng"}
-                    </div>
-                    {method !== "momo" && (
-                      <div>Mã: <span className="font-mono font-bold">{transferRequest.payment_code}</span></div>
-                    )}
-                    <div>
-                      Hết hạn: {expiresAt ? expiresAt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "-"}
-                    </div>
-                    <div>Số tiền: {formatCurrency(transferRequest.amount)}</div>
-                    {transferRequest.paid_amount > 0 && transferRequest.paid_amount < transferRequest.amount && (
-                      <div className="text-destructive">Đã nhận: {formatCurrency(transferRequest.paid_amount)}</div>
-                    )}
+                {/* ⚠️ KHÔNG vẽ mã QR ở đây, ở bất kỳ máy nào.
+                    Trước đây máy bấm đơn tự dựng QR rồi hiện lên màn hình, nên
+                    điện thoại nhân viên thành ra một cái QR chuyển khoản di động.
+                    Chủ quán chốt: mọi mã phải do TRẠM QUẦY in ra giấy rồi bưng cho
+                    khách. Máy chủ gửi thẳng lệnh in qua WS `print:transfer`; màn
+                    hình này chỉ còn là chỗ theo dõi và xác nhận đã nhận tiền. */}
+                <div className="rounded-lg border border-dashed bg-background/60 p-3 text-xs leading-snug">
+                  <div className="font-semibold text-foreground">
+                    Đã gửi phiếu QR ra trạm quầy — lấy phiếu đem cho khách
                   </div>
+                  <div className="mt-0.5 text-muted-foreground">
+                    {method === "momo"
+                      ? "Trên phiếu ghi rõ khách quét bằng app MoMo."
+                      : "Trên phiếu ghi rõ khách quét bằng app ngân hàng."}{" "}
+                    Không thấy phiếu ra thì bấm “In lại phiếu”.
+                  </div>
+                </div>
+                <div className="space-y-1 text-xs">
+                  {method !== "momo" && (
+                    <div>Mã: <span className="font-mono font-bold">{transferRequest.payment_code}</span></div>
+                  )}
+                  <div>
+                    Hết hạn: {expiresAt ? expiresAt.toLocaleTimeString("vi-VN", { hour: "2-digit", minute: "2-digit" }) : "-"}
+                  </div>
+                  <div>Số tiền: {formatCurrency(transferRequest.amount)}</div>
+                  {transferRequest.paid_amount > 0 && transferRequest.paid_amount < transferRequest.amount && (
+                    <div className="text-destructive">Đã nhận: {formatCurrency(transferRequest.paid_amount)}</div>
+                  )}
                 </div>
               </div>
             )}

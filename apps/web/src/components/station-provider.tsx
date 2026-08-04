@@ -2,11 +2,20 @@
 
 import { useCallback, useEffect, useRef } from "react";
 import { toast } from "sonner";
-import type { WsMessage, WsOrderPayload, WsPaymentConfirmedPayload } from "@restai/types";
+import type {
+  WsMessage,
+  WsOrderPayload,
+  WsPaymentConfirmedPayload,
+  WsPrintTransferPayload,
+} from "@restai/types";
 import { useAuthStore } from "@/stores/auth-store";
 import { useStationStore } from "@/stores/station-store";
 import { useWebSocket } from "@/hooks/use-websocket";
-import { usePrintKitchenTicket, usePrintReceipt } from "@/components/print-ticket";
+import {
+  usePrintKitchenTicket,
+  usePrintReceipt,
+  usePrintTemporaryTransferBill,
+} from "@/components/print-ticket";
 import { useBranchSettings, useOrgSettings } from "@/hooks/use-settings";
 import { useTranslation } from "@/stores/lang-store";
 import { beep } from "@/lib/beep";
@@ -23,6 +32,7 @@ export function StationProvider() {
   const { data: orgSettings } = useOrgSettings();
   const printKitchenTicket = usePrintKitchenTicket();
   const printReceipt = usePrintReceipt();
+  const printTransferBill = usePrintTemporaryTransferBill();
   const { lang } = useTranslation();
   const printedRef = useRef<Set<string>>(new Set());
   /** Khóa riêng cho hóa đơn thanh toán — không dùng chung với printedRef của
@@ -101,8 +111,69 @@ export function StationProvider() {
     [branchSettings, orgSettings, printReceipt, lang]
   );
 
+  /**
+   * Máy bấm đơn xin in phiếu QR chuyển khoản → trạm quầy in, nhân viên bưng ra bàn.
+   *
+   * ⚠️ CỐ Ý KHÔNG chống in trùng ở đây, khác hẳn hai nhánh dưới. Nút "In lại phiếu"
+   * trên máy bấm đơn phát lại đúng `paymentRequestId` cũ (in thêm một tờ giống hệt,
+   * không sinh mã mới) — có bộ chống trùng là bấm In lại chẳng ra tờ nào.
+   */
+  const handlePrintTransfer = useCallback(
+    (p: WsPrintTransferPayload) => {
+      const station = useStationStore.getState();
+      if (!station.isStation) return;
+      if (!p?.orderNumber || !p.items?.length) return;
+
+      const org = orgSettings as any;
+      const branch = branchSettings as any;
+      printTransferBill({
+        businessName: org?.name || "TODA POS",
+        address: branch?.address || undefined,
+        orderNumber: p.orderNumber,
+        tableNumber: p.tableNumber ?? undefined,
+        customerName: p.customerName || undefined,
+        createdAt: new Date().toISOString(),
+        expiresAt: p.expiresAt || "",
+        items: (p.items ?? []).map((i) => ({
+          name: i.name,
+          quantity: i.quantity,
+          unit_price: i.unit_price,
+          total: i.total,
+          notes: i.notes ?? undefined,
+          unit: i.unit ?? undefined,
+          modifiers: i.modifiers ?? [],
+        })),
+        subtotal: p.subtotal,
+        tax: p.tax,
+        total: p.total,
+        paymentCode: p.paymentCode,
+        qrUrl: p.qrUrl ?? null,
+        qrPayload: p.qrPayload ?? null,
+        provider: p.provider === "momo" ? "momo" : "sepay",
+        bank: p.bank ?? undefined,
+      }).catch((e: any) => {
+        // Phải kêu lên: khách đang đứng chờ tờ phiếu để quét, im lặng là kẹt luôn.
+        toast.error(
+          (lang === "vi" ? "Lỗi in phiếu QR: " : "QR bill print error: ") + (e?.message || ""),
+        );
+      });
+
+      if (station.soundEnabled) beep();
+      toast.info(
+        lang === "vi"
+          ? `Phiếu QR #${p.orderNumber} — đem ra cho khách`
+          : `QR bill #${p.orderNumber} — hand it to the guest`,
+      );
+    },
+    [branchSettings, orgSettings, printTransferBill, lang],
+  );
+
   const handleWsMessage = useCallback(
     (msg: WsMessage) => {
+      if (msg.type === "print:transfer") {
+        handlePrintTransfer(msg.payload as WsPrintTransferPayload);
+        return;
+      }
       if (msg.type === "payment:confirmed") {
         handlePaymentConfirmed(msg.payload as WsPaymentConfirmedPayload);
         return;
@@ -165,7 +236,7 @@ export function StationProvider() {
         : lang === "vi" ? "Đơn mới" : "New order";
       toast.info(`${kind} #${p.orderNumber} · ${where}`);
     },
-    [branchSettings, printKitchenTicket, lang]
+    [branchSettings, printKitchenTicket, lang, handlePaymentConfirmed, handlePrintTransfer]
   );
 
   useWebSocket(

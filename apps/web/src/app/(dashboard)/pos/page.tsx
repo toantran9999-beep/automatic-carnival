@@ -14,16 +14,13 @@ import { formatCurrency } from "@/lib/utils";
 import { useCategories, useMenuItems, useBestSellers } from "@/hooks/use-menu";
 import { useCreateOrder, useAddOrderItems } from "@/hooks/use-orders";
 import { useCreatePaymentRequest } from "@/hooks/use-payments";
-import { useTables } from "@/hooks/use-tables";
 import { toast } from "sonner";
 import { useTranslation } from "@/stores/lang-store";
 import { ProductGrid } from "./_components/product-grid";
 import { CartSidebar } from "./_components/cart-sidebar";
 import { ModifierDialog, type CartModifier } from "./_components/modifier-dialog";
 import { CustomItemDialog } from "./_components/custom-item-dialog";
-import { SuccessDialog } from "./_components/success-dialog";
 import { useBranchSettings } from "@/hooks/use-settings";
-import { usePrintTemporaryTransferBill } from "@/components/print-ticket";
 import { PosPaymentDialog } from "./_components/pos-payment-dialog";
 import { ShiftClosedBlocker } from "./_components/shift-controls";
 import { useTableActiveSession } from "@/hooks/use-tables";
@@ -65,8 +62,6 @@ export default function PosPage() {
   const [customerName, setCustomerName] = useState("");
   const [orderNotes, setOrderNotes] = useState("");
   const [orderType, setOrderType] = useState<"dine_in" | "takeout">("dine_in");
-  const [successDialog, setSuccessDialog] = useState(false);
-  const [lastOrderNumber, setLastOrderNumber] = useState("");
   const [cartSheetOpen, setCartSheetOpen] = useState(false);
   const { t, lang } = useTranslation();
   const router = useRouter();
@@ -84,33 +79,50 @@ export default function PosPage() {
   /** Có = đang thêm món vào đơn mang về này, không phải tạo đơn mới. */
   const [addToOrderId, setAddToOrderId] = useState<string | null>(null);
 
-  // Parse table parameters from URL
+  /**
+   * Lối vào QUYẾT ĐỊNH loại đơn — và là cửa duy nhất vào màn bán hàng.
+   *
+   * ⚠️ Quy tắc "không chọn bàn thì không vào được màn bán hàng" trước đây chỉ là ẩn
+   * mục menu (`hide_pos_nav`) + làm mờ nút Gửi, nên lách được: vào `/pos?takeout=1`
+   * rồi gạt nút "Ăn tại bàn" ngay trong giỏ và chọn bàn từ ô sổ xuống. Nay nút gạt
+   * và ô chọn bàn đã bỏ khỏi giỏ, còn đây là chốt cửa: vào `/pos` trần → đá về
+   * sơ đồ bàn.
+   *
+   * ⚠️ Chốt PHẢI nằm trong chính effect này, sau khi đọc xong tham số. Tách ra một
+   * effect riêng là nó chạy trước lúc state kịp gán → đá văng cả người vào đúng đường.
+   */
   useEffect(() => {
-    if (typeof window !== "undefined") {
-      const params = new URLSearchParams(window.location.search);
-      const tId = params.get("tableId");
-      const tNum = params.get("tableNumber");
-      if (tId) {
-        setTableId(tId);
-        setOrderType("dine_in");
-      }
-      if (tNum) {
-        setTableNumber(tNum);
-      }
-      if (params.get("pay") === "1") {
-        setAutoPay(true);
-      }
-      if (params.get("takeout") === "1") {
-        setOrderType("takeout");
-      }
-      // Thêm món vào đơn mang về đang mở (khách quay lại mua thêm)
-      const addId = params.get("addToOrderId");
-      if (addId) {
-        setAddToOrderId(addId);
-        setOrderType("takeout");
-      }
+    if (typeof window === "undefined") return;
+    const params = new URLSearchParams(window.location.search);
+    const tId = params.get("tableId");
+    const tNum = params.get("tableNumber");
+    const isTakeout = params.get("takeout") === "1";
+    // Thêm món vào đơn mang về đang mở (khách quay lại mua thêm)
+    const addId = params.get("addToOrderId");
+
+    if (!tId && !isTakeout && !addId) {
+      router.replace("/tables");
+      return;
     }
-  }, []);
+
+    if (tId) {
+      setTableId(tId);
+      setOrderType("dine_in");
+    }
+    if (tNum) {
+      setTableNumber(tNum);
+    }
+    if (params.get("pay") === "1") {
+      setAutoPay(true);
+    }
+    if (isTakeout) {
+      setOrderType("takeout");
+    }
+    if (addId) {
+      setAddToOrderId(addId);
+      setOrderType("takeout");
+    }
+  }, [router]);
 
   // Modifier dialog state
   const [modDialogItem, setModDialogItem] = useState<any>(null);
@@ -129,13 +141,11 @@ export default function PosPage() {
       setSelectedCategory(categories[0].id);
     }
   }, [categories, selectedCategory]);
-  const { data: tablesData } = useTables();
   const createOrder = useCreateOrder();
   const addOrderItems = useAddOrderItems();
   const createPaymentRequest = useCreatePaymentRequest();
 
   const { data: branchSettings } = useBranchSettings();
-  const printTemporaryTransferBill = usePrintTemporaryTransferBill();
   const qc = useQueryClient();
 
   const { data: activeSessionData } = useTableActiveSession(tableId);
@@ -151,7 +161,6 @@ export default function PosPage() {
   const [paymentCart, setPaymentCart] = useState<PosCartItem[]>([]);
 
   const allItems: any[] = menuItems ?? [];
-  const tables: any[] = tablesData?.tables ?? [];
 
   const handleItemClick = useCallback((item: any) => {
     setModDialogItem(item);
@@ -248,60 +257,25 @@ export default function PosPage() {
   };
 
   /**
-   * ⚠️ Giữ đúng quy ước tiền của print-ticket: `unit_price` là giá GỐC chưa gồm tùy
-   * chọn, `total` mới là tiền cả dòng đã gồm. Trước đây hàm này cộng phụ trội vào
-   * `unit_price` và nhét tên tùy chọn vào tên món — làm vậy nữa là phiếu vừa in
-   * "Bạc xỉu (Nhẹ)" vừa in thêm dòng "- Nhẹ", và tính phụ trội hai lần.
+   * Xin phiếu tạm tính (có QR chuyển khoản) — TRẠM QUẦY in, không phải máy này.
+   *
+   * ⚠️ Trước đây hàm này tự gọi lệnh in ngay tại máy bấm đơn, mà máy bấm đơn thường
+   * là điện thoại không có máy in → mã QR chỉ hiện trên màn hình điện thoại. Chủ
+   * quán chốt: mọi mã QR phải in ở quầy rồi bưng ra cho khách. Máy chủ nhận yêu cầu
+   * xong sẽ phát WS `print:transfer`, StationProvider ở quầy lo phần in.
+   *
+   * Cũng nhờ vậy mà bỏ được `qrPayload: … || payment_code` ở bản cũ — cái fallback
+   * đó in ra "TODA-…" nên app ngân hàng báo "Mã thanh toán không hợp lệ".
    */
-  const mapTicketItems = (items: PosCartItem[]) =>
-    items.map((i) => {
-      const modTotal = i.modifiers.reduce((sum, m) => sum + m.price, 0);
-      return {
-        name: i.name,
-        quantity: i.quantity,
-        unit_price: i.unitPrice,
-        total: (i.unitPrice + modTotal) * i.quantity,
-        notes: i.notes,
-        unit: i.unit,
-        modifiers: i.modifiers.map((m) => ({ name: m.name, price: m.price })),
-      };
-    });
-
-  const printTemporaryBill = async (args: {
-    orderId: string;
-    orderNumber: string;
-    total: number;
-    tax: number;
-    items: PosCartItem[];
-  }) => {
-    const request = await createPaymentRequest.mutateAsync({
+  const printTemporaryBill = async (args: { orderId: string; total: number }) => {
+    await createPaymentRequest.mutateAsync({
       orderId: args.orderId,
       amount: args.total,
-    }) as any;
-
-    printTemporaryTransferBill({
-      businessName: (branchSettings as any)?.name || "TODA POS",
-      address: (branchSettings as any)?.address || undefined,
-      orderNumber: args.orderNumber,
-      tableNumber,
-      customerName: customerName || undefined,
-      createdAt: new Date().toISOString(),
-      expiresAt: request.expires_at,
-      items: mapTicketItems(args.items),
-      subtotal: args.total - args.tax,
-      tax: args.tax,
-      total: args.total,
-      paymentCode: request.payment_code,
-      qrUrl: request.qr_url,
-      qrPayload: request.qr_payload || request.payment_code,
-      bank: request.bank,
     });
   };
 
   const handlePrintTemporaryBill = async () => {
     try {
-      const taxRate = branchSettings?.tax_rate ?? 1000;
-
       if (cart.length > 0) {
         if (orderType === "dine_in" && !tableId) {
           toast.error(lang === "vi" ? "Vui lòng chọn bàn cho đơn ăn tại bàn" : "Please select a table for dine-in");
@@ -319,22 +293,16 @@ export default function PosPage() {
           const modTotal = item.modifiers.reduce((ms, m) => ms + m.price, 0);
           return sum + (item.unitPrice + modTotal) * item.quantity;
         }, 0);
-        const taxAmount = Math.round(subtotal - subtotal / (1 + taxRate / 10000));
 
-        await printTemporaryBill({
-          orderId: result.id,
-          orderNumber: result.order_number || result.orderNumber || "",
-          total: subtotal,
-          tax: taxAmount,
-          items: cart,
-        });
+        // Tiền thuế do máy chủ tự tính khi dựng phiếu — ở đây chỉ cần tổng tiền.
+        await printTemporaryBill({ orderId: result.id, total: subtotal });
 
         setCart([]);
         setCustomerName("");
         setOrderNotes("");
         qc.invalidateQueries({ queryKey: ["tables"] });
         qc.invalidateQueries({ queryKey: ["sessions"] });
-        toast.success("Đã in phiếu tạm tính");
+        toast.success("Đã gửi phiếu tạm tính ra trạm quầy");
         return;
       }
 
@@ -344,32 +312,14 @@ export default function PosPage() {
       if (unpaidOrders.length === 0) return;
 
       const unpaidTotal = unpaidOrders.reduce((sum: number, o: any) => sum + o.total, 0);
-      const unpaidTax = Math.round(unpaidTotal - unpaidTotal / (1 + taxRate / 10000));
-      const targetOrder = unpaidOrders[0];
-      const allOrderedItems: PosCartItem[] = unpaidOrders.flatMap((order: any) =>
-        order.items.map((item: any) => ({
-          lineId: item.id,
-          menuItemId: item.menu_item_id,
-          name: item.name,
-          imageUrl: item.image_url || null,
-          unitPrice: item.unit_price,
-          quantity: item.quantity,
-          notes: item.notes || undefined,
-          unit: item.unit || undefined,
-          modifiers: item.modifiers || [],
-        })),
-      );
-
-      await printTemporaryBill({
-        orderId: targetOrder.id,
-        orderNumber: targetOrder.order_number,
-        total: unpaidTotal,
-        tax: unpaidTax,
-        items: allOrderedItems,
-      });
-      toast.success("Đã in phiếu tạm tính");
+      // Gửi đơn đầu + tổng tiền cả phiên: máy chủ tự gom các đơn mà số tiền này
+      // trả tới (giống hệt cách nó rải tiền khi khách chuyển xong), rồi in một
+      // phiếu duy nhất. Trước đây phần gom món làm ở đây nên phiếu và tiền có thể
+      // lệch nhau nếu khách gọi thêm giữa chừng.
+      await printTemporaryBill({ orderId: unpaidOrders[0].id, total: unpaidTotal });
+      toast.success("Đã gửi phiếu tạm tính ra trạm quầy");
     } catch (err: any) {
-      toast.error(err.message || "Không in được phiếu tạm tính");
+      toast.error(err.message || "Không gửi được phiếu tạm tính");
     }
   };
 
@@ -415,8 +365,6 @@ export default function PosPage() {
       }, 0);
       const taxAmount = Math.round(subtotal - (subtotal / (1 + (taxRate / 10000))));
 
-      setLastOrderNumber(oNumber);
-
       if (payImmediately) {
         setPaymentOrderId(oId);
         setPaymentOrderNumber(oNumber);
@@ -431,19 +379,22 @@ export default function PosPage() {
         // bằng điện thoại (không có máy in) vẫn đẩy được phiếu về quầy.
         // Xem StationProvider + StationToggle.
 
-        // Clear state and cart
+        // Về thẳng sơ đồ bàn, KHÔNG hiện bảng "Đặt hàng thành công".
+        //
+        // Bảng đó chỉ có mỗi nút "Đơn hàng mới" mà việc duy nhất của nó là tự đóng
+        // lại — giờ cao điểm là hai thao tác thừa mỗi đơn (bấm đóng, rồi tự bấm về
+        // Bàn ăn). Số phiếu đưa vào toast nên không mất thông tin nào.
+        //
+        // Không cần dọn state ở đây: rời trang là POS unmount, state đi theo.
         setCart([]);
-        setCustomerName("");
-        setOrderNotes("");
-        setTableId(null);
-        setTableNumber(null);
-        if (typeof window !== "undefined") {
-          window.history.replaceState({}, "", window.location.pathname);
-        }
         qc.invalidateQueries({ queryKey: ["tables"] });
         qc.invalidateQueries({ queryKey: ["sessions"] });
-        setSuccessDialog(true);
-        toast.success(t("pos.orderCreated"));
+        toast.success(
+          oNumber
+            ? (lang === "vi" ? `Đã gửi phiếu #${oNumber}` : `Order #${oNumber} sent`)
+            : t("pos.orderCreated"),
+        );
+        router.push("/tables");
       }
     } catch (err: any) {
       toast.error(err.message || t("pos.orderCreateError"));
@@ -493,25 +444,13 @@ export default function PosPage() {
     }
   }, [autoPay, activeSession]); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Thu tiền xong cũng về sơ đồ bàn, cùng lý do với luồng đặt món: đứng lại ở màn
+  // bán hàng trống là thu ngân phải tự bấm về, thêm một thao tác mỗi lượt khách.
   const handlePaymentSuccess = () => {
     setCart([]);
-    setCustomerName("");
-    setOrderNotes("");
-    setTableId(null);
-    setTableNumber(null);
-    if (typeof window !== "undefined") {
-      window.history.replaceState({}, "", window.location.pathname);
-    }
     qc.invalidateQueries({ queryKey: ["tables"] });
     qc.invalidateQueries({ queryKey: ["sessions"] });
-  };
-
-  const handleTableClear = () => {
-    setTableId(null);
-    setTableNumber(null);
-    if (typeof window !== "undefined") {
-      window.history.replaceState({}, "", window.location.pathname);
-    }
+    router.push("/tables");
   };
 
   // Floating-bar summary (mobile)
@@ -534,15 +473,7 @@ export default function PosPage() {
     customerName,
     orderNotes,
     isPending: createOrder.isPending,
-    tableId,
     tableNumber,
-    tables,
-    onTableSelect: (id: string, num: number) => {
-      setTableId(id);
-      setTableNumber(String(num));
-    },
-    onTableClear: handleTableClear,
-    onOrderTypeChange: setOrderType,
     onCustomerNameChange: setCustomerName,
     onOrderNotesChange: setOrderNotes,
     onUpdateQty: updateCartQty,
@@ -676,12 +607,6 @@ export default function PosPage() {
           />
         </SheetContent>
       </Sheet>
-
-      <SuccessDialog
-        open={successDialog}
-        onOpenChange={setSuccessDialog}
-        orderNumber={lastOrderNumber}
-      />
 
       <ModifierDialog
         item={modDialogItem}

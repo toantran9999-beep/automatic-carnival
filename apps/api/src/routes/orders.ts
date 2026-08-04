@@ -106,6 +106,28 @@ orders.post(
     const tenant = c.get("tenant") as any;
     const user = c.get("user") as any;
 
+    /**
+     * Đơn ăn tại bàn thì BẮT BUỘC có bàn.
+     *
+     * ⚠️ Chặn ở đây chứ KHÔNG sửa `createOrderSchema` trong @restai/validators:
+     * khách tự quét QR gọi món cũng gửi `type: "dine_in"` mà KHÔNG kèm tableId —
+     * bàn suy ra từ phiên của khách ở ngay dưới. Thêm ràng buộc vào schema dùng
+     * chung là chặn luôn cả khách gọi món.
+     *
+     * Trước đây máy chủ nhận tuốt: `table_session_id` nullable và chẳng ai đối
+     * chiếu với `type`, nên đơn "ăn tại bàn" mà không có bàn vẫn vào sổ — bàn đó
+     * không hiện đang có khách, tới lúc thu tiền mới lòi ra.
+     */
+    if (user.role !== "customer" && body.type === "dine_in" && !body.tableId && !body.tableSessionId) {
+      return c.json(
+        {
+          success: false,
+          error: { code: "TABLE_REQUIRED", message: "Đơn ăn tại bàn phải chọn bàn. Vào lại từ màn Bàn ăn." },
+        },
+        400,
+      );
+    }
+
     // Phải có ca đang mở mới được tạo đơn (mở ca mới xài được chức năng).
     const [openShift] = await db
       .select({ id: schema.registerShifts.id })

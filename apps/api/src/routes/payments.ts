@@ -10,6 +10,7 @@ import { requirePermission, blockLiveOps } from "../middleware/rbac.js";
 import { peruStartOfDay, peruEndOfDay } from "../lib/timezone.js";
 import { buildVietQrPayload, resolveBankBin, bankDisplayName } from "@restai/config";
 import { t } from "../lib/i18n.js";
+import type { WsPrintTransferPayload } from "@restai/types";
 import { wsManager } from "../ws/manager.js";
 import { handleOrderCompletion, loadItemModifiers } from "../services/order.service.js";
 import {
@@ -459,6 +460,155 @@ async function buildPaidOrderPayload(orderId: string) {
     };
   } catch {
     return null;
+  }
+}
+
+/**
+ * Món + tiền cho phiếu QR, gom đúng NHỮNG ĐƠN mà số tiền này sẽ trả.
+ *
+ * ⚠️ Không dùng thẳng `buildPaidOrderPayload` (chỉ một đơn). Bàn gọi thêm lượt hai
+ * là thành hai đơn trong cùng phiên, và `completePaymentForOrder` rải tiền lần lượt
+ * đơn đích trước rồi tới các đơn còn lại của phiên. Phiếu in ra phải liệt kê đúng
+ * các đơn đó, nếu không khách cầm tờ giấy ghi 45.000đ mà QR đòi 82.000đ.
+ *
+ * Đi đúng thứ tự của `completePaymentForOrder` và dừng khi hết tiền — nhờ vậy
+ * phiếu luôn khớp với chỗ tiền thực sự chảy vào.
+ *
+ * Nuốt lỗi, trả null: đây chỉ là phần trang trí cho gói tin, yêu cầu thanh toán đã
+ * ghi vào DB xong rồi.
+ */
+async function buildTransferBillPayload(orderId: string, amount: number) {
+  try {
+    const [target] = await db
+      .select()
+      .from(schema.orders)
+      .where(eq(schema.orders.id, orderId))
+      .limit(1);
+    if (!target) return null;
+
+    let covered = [target];
+    if (target.table_session_id) {
+      const sessionOrders = await db
+        .select()
+        .from(schema.orders)
+        .where(
+          and(
+            eq(schema.orders.table_session_id, target.table_session_id),
+            sql`orders.status NOT IN ('completed', 'cancelled')`,
+          ),
+        )
+        .orderBy(schema.orders.created_at);
+
+      let budget = amount;
+      covered = [];
+      for (const o of [target, ...sessionOrders.filter((s) => s.id !== target.id)]) {
+        if (budget <= 0) break;
+        covered.push(o);
+        budget -= o.total;
+      }
+    }
+
+    const rawItems = await db
+      .select({
+        id: schema.orderItems.id,
+        name: schema.orderItems.name,
+        quantity: schema.orderItems.quantity,
+        unit_price: schema.orderItems.unit_price,
+        total: schema.orderItems.total,
+        notes: schema.orderItems.notes,
+        unit: schema.orderItems.unit,
+      })
+      .from(schema.orderItems)
+      .where(inArray(schema.orderItems.order_id, covered.map((o) => o.id)));
+
+    // Tên/giá tùy chọn đọc từ SNAPSHOT trong order_item_modifiers, không join bảng
+    // modifiers sống — sửa giá topping hôm nay không được đổi phiếu của đơn cũ.
+    const modMap = await loadItemModifiers(rawItems.map((i) => i.id));
+    const items = rawItems.map((i) => ({ ...i, modifiers: modMap.get(i.id) ?? [] }));
+
+    let tableNumber: number | null = null;
+    if (target.table_session_id) {
+      const [row] = await db
+        .select({ number: schema.tables.number })
+        .from(schema.tableSessions)
+        .innerJoin(schema.tables, eq(schema.tables.id, schema.tableSessions.table_id))
+        .where(eq(schema.tableSessions.id, target.table_session_id))
+        .limit(1);
+      tableNumber = row?.number ?? null;
+    }
+
+    return {
+      orderNumber: target.order_number,
+      customerName: target.customer_name,
+      tableNumber,
+      subtotal: covered.reduce((s, o) => s + o.subtotal, 0),
+      tax: covered.reduce((s, o) => s + o.tax, 0),
+      // Tổng = ĐÚNG số tiền trên mã QR, không phải tổng các đơn. Trả một phần thì
+      // hai số lệch nhau, mà con số khách phải chuyển mới là con số cần in to.
+      total: amount,
+      items,
+    };
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Nhờ Trạm quầy in phiếu QR chuyển khoản.
+ *
+ * ⚠️ Đây là đường DUY NHẤT mã QR đi tới khách. Máy bấm đơn (điện thoại nhân viên)
+ * không còn hiện QR lên màn hình nữa: chủ quán yêu cầu mọi mã phải do trạm in
+ * sinh ra rồi bưng phiếu ra bàn. Đừng thêm đường nào trả `qr_payload` về cho
+ * giao diện rồi vẽ tại chỗ.
+ *
+ * Nuốt lỗi: yêu cầu thanh toán đã ghi xong vào DB trước khi hàm này chạy. In hỏng
+ * thì thu ngân bấm "In lại phiếu", chứ không được làm hỏng cả lượt tạo yêu cầu.
+ */
+async function broadcastTransferPrint(args: {
+  branchId: string;
+  orderId: string;
+  request: any;
+  provider: string;
+  bank: WsPrintTransferPayload["bank"];
+}) {
+  try {
+    const info = await buildTransferBillPayload(args.orderId, args.request.amount);
+    if (!info) return;
+
+    const payload: WsPrintTransferPayload = {
+      paymentRequestId: args.request.id,
+      orderId: args.orderId,
+      orderNumber: info.orderNumber,
+      tableNumber: info.tableNumber,
+      customerName: info.customerName,
+      expiresAt:
+        args.request.expires_at instanceof Date
+          ? args.request.expires_at.toISOString()
+          : (args.request.expires_at ?? null),
+      paymentCode: args.request.payment_code,
+      provider: args.provider,
+      // Thiếu cấu hình ngân hàng → null, phiếu in ra không có QR. KHÔNG rơi về
+      // payment_code: quét ra "TODA-…" là app ngân hàng báo mã không hợp lệ.
+      qrPayload: args.request.qr_payload ?? null,
+      qrUrl: args.request.qr_url ?? null,
+      subtotal: info.subtotal,
+      tax: info.tax,
+      total: info.total,
+      items: info.items as WsPrintTransferPayload["items"],
+      bank: args.bank ?? null,
+    };
+
+    await wsManager.publish(`branch:${args.branchId}`, {
+      type: "print:transfer",
+      payload,
+      timestamp: Date.now(),
+    });
+  } catch (err: any) {
+    logger.error("Không gửi được lệnh in phiếu QR ra trạm quầy", {
+      orderId: args.orderId,
+      branchId: args.branchId,
+      err: err?.message,
+    });
   }
 }
 
@@ -1410,6 +1560,16 @@ payments.post(
       // Dùng lại nguyên chuỗi QR đã lưu. TUYỆT ĐỐI không gọi lại MoMo: MoMo đòi
       // orderId duy nhất, mà orderId ở đây chính là payment_code đang giữ nguyên
       // → lần gọi thứ hai sẽ bị từ chối vì trùng đơn.
+      //
+      // Gọi lại lượt hai chính là nút "In lại phiếu" — in thêm một tờ giống hệt,
+      // KHÔNG sinh mã mới, nên hai tờ cùng payment_code và tiền về vẫn khớp đơn.
+      await broadcastTransferPrint({
+        branchId: tenant.branchId,
+        orderId: order.id,
+        request: active,
+        provider,
+        bank: null,
+      });
       return c.json({
         success: true,
         data: { ...active, reused: true, bank: null },
@@ -1426,6 +1586,22 @@ payments.post(
           .set({ qr_payload: transfer.qrPayload, qr_url: transfer.qrUrl })
           .where(eq(schema.paymentRequests.id, active.id));
       }
+      const reusedBank = {
+        bankCode: transfer.bankCode,
+        accountNumber: transfer.accountNumber,
+        accountName: transfer.accountName,
+        amountVnd: transfer.amountVnd,
+        addInfo: transfer.addInfo,
+      };
+      await broadcastTransferPrint({
+        branchId: tenant.branchId,
+        orderId: order.id,
+        // Gửi payload vừa tính lại, không phải chuỗi cũ trong DB — yêu cầu tạo
+        // trước bản vá còn giữ link ảnh, in ra là quét báo mã không hợp lệ.
+        request: { ...active, qr_payload: transfer.qrPayload, qr_url: transfer.qrUrl },
+        provider,
+        bank: reusedBank,
+      });
       return c.json({
         success: true,
         data: {
@@ -1522,6 +1698,14 @@ payments.post(
         })
         .returning();
 
+      await broadcastTransferPrint({
+        branchId: tenant.branchId,
+        orderId: order.id,
+        request: createdMomo,
+        provider,
+        bank: null,
+      });
+
       return c.json({ success: true, data: { ...createdMomo, reused: false, bank: null } }, 201);
     }
 
@@ -1543,20 +1727,23 @@ payments.post(
       })
       .returning();
 
-    return c.json({
-      success: true,
-      data: {
-        ...created,
-        reused: false,
-        bank: {
-          bankCode: transfer.bankCode,
-          accountNumber: transfer.accountNumber,
-          accountName: transfer.accountName,
-          amountVnd: transfer.amountVnd,
-          addInfo: transfer.addInfo,
-        },
-      },
-    }, 201);
+    const bank = {
+      bankCode: transfer.bankCode,
+      accountNumber: transfer.accountNumber,
+      accountName: transfer.accountName,
+      amountVnd: transfer.amountVnd,
+      addInfo: transfer.addInfo,
+    };
+
+    await broadcastTransferPrint({
+      branchId: tenant.branchId,
+      orderId: order.id,
+      request: created,
+      provider,
+      bank,
+    });
+
+    return c.json({ success: true, data: { ...created, reused: false, bank } }, 201);
   },
 );
 

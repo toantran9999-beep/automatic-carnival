@@ -5,13 +5,6 @@ import { Button } from "@restai/ui/components/button";
 import { Badge } from "@restai/ui/components/badge";
 import { toThumbUrl } from "@/lib/image-thumb";
 import {
-  Select,
-  SelectTrigger,
-  SelectContent,
-  SelectItem,
-  SelectValue,
-} from "@restai/ui/components/select";
-import {
   ShoppingCart,
   User,
   Plus,
@@ -33,12 +26,7 @@ export function CartSidebar({
   customerName,
   orderNotes,
   isPending,
-  tableId,
   tableNumber,
-  tables = [],
-  onTableSelect,
-  onTableClear,
-  onOrderTypeChange,
   onCustomerNameChange,
   onOrderNotesChange,
   onUpdateQty,
@@ -56,12 +44,7 @@ export function CartSidebar({
   customerName: string;
   orderNotes: string;
   isPending: boolean;
-  tableId: string | null;
   tableNumber: string | null;
-  tables?: any[];
-  onTableSelect?: (id: string, number: number) => void;
-  onTableClear?: () => void;
-  onOrderTypeChange: (type: "dine_in" | "takeout") => void;
   onCustomerNameChange: (name: string) => void;
   onOrderNotesChange: (notes: string) => void;
   onUpdateQty: (lineId: string, qty: number) => void;
@@ -129,68 +112,29 @@ export function CartSidebar({
         )}
       </div>
 
-      <div className="mb-2 grid grid-cols-2 gap-1.5 rounded-lg bg-muted p-1">
-        <Button
-          variant={orderType === "dine_in" ? "default" : "ghost"}
-          size="sm"
-          className="h-10 text-sm font-semibold"
-          onClick={() => onOrderTypeChange("dine_in")}
-        >
-          {t("pos.dineIn")}
-        </Button>
-        <Button
-          variant={orderType === "takeout" ? "default" : "ghost"}
-          size="sm"
-          className="h-10 text-sm font-semibold"
-          onClick={() => onOrderTypeChange("takeout")}
-        >
-          {t("pos.takeaway")}
-        </Button>
+      {/* CHỈ ĐỂ ĐỌC — cố ý không cho đổi ở đây.
+          Trước đây chỗ này là nút gạt "Ăn tại bàn / Mang về" cộng ô sổ xuống liệt kê
+          TOÀN BỘ bàn, nên vào `/pos?takeout=1` rồi gạt một cái là có màn bán hàng
+          dine-in đầy đủ mà chưa hề đi qua sơ đồ bàn — đúng đường lách chủ quán báo.
+          Nay loại đơn do LỐI VÀO quyết định; muốn đổi thì quay ra màn Bàn ăn. */}
+      <div
+        className={`mb-2 flex items-center gap-1.5 rounded-lg border p-2 text-xs font-semibold ${
+          orderType === "dine_in"
+            ? "border-emerald-200 bg-emerald-50 text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/20 dark:text-emerald-300"
+            : "border-amber-200 bg-amber-50 text-amber-800 dark:border-amber-800/50 dark:bg-amber-950/20 dark:text-amber-300"
+        }`}
+      >
+        <span
+          className={`h-2 w-2 rounded-full ${
+            orderType === "dine_in" ? "bg-emerald-500" : "bg-amber-500"
+          }`}
+        />
+        {orderType === "dine_in"
+          ? tableNumber
+            ? t("orders.tableNum").replace("{num}", tableNumber)
+            : t("pos.dineIn")
+          : t("pos.takeaway")}
       </div>
-
-      {orderType === "dine_in" && (
-        <>
-          {tableNumber ? (
-            <div className="mb-2 flex items-center justify-between rounded-lg border border-emerald-200 bg-emerald-50 p-2 text-xs text-emerald-800 dark:border-emerald-800/50 dark:bg-emerald-950/20 dark:text-emerald-300">
-              <span className="flex items-center gap-1.5 font-semibold">
-                <span className="h-2 w-2 rounded-full bg-emerald-500" />
-                {t("orders.tableNum").replace("{num}", tableNumber)}
-              </span>
-              <button
-                type="button"
-                onClick={onTableClear}
-                className="-m-2 p-2 text-sm font-medium text-muted-foreground underline hover:text-foreground"
-              >
-                {t("common.cancel")}
-              </button>
-            </div>
-          ) : (
-            tables.length > 0 && (
-              <div className="mb-2">
-                <Select
-                  value={tableId || ""}
-                  onValueChange={(val) => {
-                    const matched = tables.find((tb: any) => tb.id === val);
-                    if (matched && onTableSelect) onTableSelect(matched.id, matched.number);
-                  }}
-                >
-                  <SelectTrigger className="h-11 border bg-white/50 text-sm shadow-none dark:bg-white/5">
-                    <SelectValue placeholder={t("tables.selectTablePlaceholder")} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {tables.map((tb: any) => (
-                      <SelectItem key={tb.id} value={tb.id}>
-                        {t("orders.tableNum").replace("{num}", String(tb.number))}{" "}
-                        ({t(`tables.${tb.status === "available" ? "free" : tb.status}`)})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-            )
-          )}
-        </>
-      )}
 
       <div className="mb-2">
         <div className="relative">

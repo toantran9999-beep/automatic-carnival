@@ -18,6 +18,8 @@ export type WsMessageType =
   | "shift:closed"
   | "payment:confirmed"
   | "payment:underpaid"
+  /** Máy bấm đơn xin Trạm quầy in phiếu QR chuyển khoản (xem WsPrintTransferPayload). */
+  | "print:transfer"
   /** Thực đơn/cài đặt chi nhánh vừa đổi → máy khác xoá cache thực đơn ngay. */
   | "menu:updated"
   | "ping"
@@ -99,10 +101,60 @@ export interface WsPaymentConfirmedPayload {
 export interface WsPaymentItemPayload {
   name: string;
   quantity: number;
+  /** ⚠️ Giá GỐC, CHƯA gồm tùy chọn. Chỉ `total` mới là tiền cả dòng đã gồm. */
   unit_price: number;
   total: number;
   notes?: string | null;
   unit?: string | null;
+  /**
+   * Tùy chọn/topping, mỗi cái một dòng phụ trên phiếu ("- Nhẹ  -2.000đ").
+   * Thiếu là phiếu in giá gốc mà tổng lại đã cộng/trừ tùy chọn → hai số vênh nhau.
+   */
+  modifiers?: Array<{ name: string; price: number }>;
+}
+
+/**
+ * Xin Trạm quầy in phiếu QR chuyển khoản (`print:transfer`).
+ *
+ * ⚠️ Mã QR CHỈ được phép ra giấy, không bao giờ hiện lên màn hình máy bấm đơn.
+ * Điện thoại nhân viên trước đây tự dựng QR rồi hiện luôn tại chỗ; chủ quán yêu
+ * cầu mọi mã phải do trạm in sinh ra rồi bưng phiếu cho khách. Vì vậy máy bấm
+ * đơn không còn nhận/hiện `qrPayload` nữa — nó đi đường này tới thẳng máy in.
+ *
+ * Mang sẵn đủ dữ liệu để in ngay, cùng lý do `order:new` nhúng sẵn danh sách món:
+ * máy in không nên phải gọi API vòng hai rồi mới in.
+ */
+export interface WsPrintTransferPayload {
+  paymentRequestId: string;
+  orderId: string;
+  orderNumber: string;
+  tableNumber?: number | null;
+  customerName?: string | null;
+  /** ISO time phiếu hết hạn (60 phút). */
+  expiresAt?: string | null;
+  /** Mã nội dung chuyển khoản ("TODA-…"). */
+  paymentCode: string;
+  /** "sepay" (chuyển khoản ngân hàng) | "momo". */
+  provider: string;
+  /**
+   * Chuỗi VietQR CHUẨN để vẽ QR.
+   * ⚠️ null = chi nhánh chưa cấu hình ngân hàng → in phiếu KHÔNG có QR, tuyệt đối
+   * đừng rơi về `paymentCode` (in ra "TODA-…" thì app ngân hàng báo mã không hợp lệ).
+   */
+  qrPayload?: string | null;
+  /** Ảnh QR dựng sẵn của vietqr.io — chỉ dùng cho đường in bằng trình duyệt. */
+  qrUrl?: string | null;
+  subtotal: number;
+  tax: number;
+  total: number;
+  items: WsPaymentItemPayload[];
+  bank?: {
+    bankCode: string;
+    accountNumber: string;
+    accountName: string;
+    amountVnd: number;
+    addInfo: string;
+  } | null;
 }
 
 /** Khách chuyển thiếu so với số tiền trên QR — thu ngân phải xử tay. */

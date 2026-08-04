@@ -20,6 +20,7 @@ import {
   useCreatePaymentRequest,
   usePaymentRequest,
   useActivePaymentRequestByOrder,
+  useBridgeStatus,
 } from "@/hooks/use-payments";
 import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
 import { usePrintReceipt } from "@/components/print-ticket";
@@ -89,6 +90,13 @@ export function PosPaymentDialog({
 
   /** cash/card đi đường thu tay; transfer/momo đều là "in phiếu QR rồi chờ tiền về". */
   const isQrMethod = method === "transfer" || method === "momo";
+
+  // Chỉ hỏi khi đang thực sự chờ tiền chuyển khoản về. Tiền mặt thì cầu nối
+  // sống hay chết cũng không đổi việc gì.
+  const { data: bridgeResp } = useBridgeStatus(open && isQrMethod);
+  const bridge = (bridgeResp as any)?.data;
+  /** Cầu nối đã bật nhưng đang mất tín hiệu → đơn sẽ KHÔNG tự chốt. */
+  const bridgeDown = Boolean(bridge?.enabled && !bridge?.healthy);
 
   // Pre-fill amount tendered with exact total
   useEffect(() => {
@@ -566,6 +574,19 @@ export function PosPaymentDialog({
                     {transferRequest.status === "expired" || isExpired ? "In phiếu mới" : "In lại phiếu"}
                   </Button>
                 </div>
+                {/* Cầu nối ngân hàng chết thì đơn KHÔNG tự chốt, mà nó chết rất
+                    âm thầm — 04/08/2026 im 9 tiếng liền, hai lượt chuyển khoản
+                    phải bấm tay mà không ai biết là hỏng. Dòng này để thu ngân
+                    thấy ngay lúc đang chờ tiền, chứ không phải phát hiện ra vào
+                    cuối ngày khi đối sổ. */}
+                {bridgeDown && (
+                  <p className="rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+                    ⚠️ Cầu nối ngân hàng mất tín hiệu
+                    {typeof bridge?.minutesSince === "number" ? ` ${bridge.minutesSince} phút` : ""} — đơn
+                    này sẽ <strong>KHÔNG tự chốt</strong>. Khách chuyển xong thì bấm nút xanh bên dưới.
+                    {bridge?.listenerOk === false && " (Điện thoại đã tắt quyền đọc thông báo.)"}
+                  </p>
+                )}
                 {/* ⚠️ KHÔNG vẽ mã QR ở đây, ở bất kỳ máy nào.
                     Trước đây máy bấm đơn tự dựng QR rồi hiện lên màn hình, nên
                     điện thoại nhân viên thành ra một cái QR chuyển khoản di động.

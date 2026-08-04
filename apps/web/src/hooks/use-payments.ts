@@ -64,6 +64,25 @@ export function useActivePaymentRequestByOrder(orderId?: string, enabled = true)
   });
 }
 
+/**
+ * Cầu nối thông báo ngân hàng còn sống không.
+ *
+ * Chỉ hỏi khi hộp thoại thanh toán đang MỞ và đang chờ chuyển khoản — đó là lúc
+ * duy nhất câu trả lời đổi được việc thu ngân làm. Hỏi mỗi phút là đủ: ngưỡng
+ * báo đỏ tận 15 phút nên không cần nhanh hơn.
+ */
+export function useBridgeStatus(enabled = false) {
+  return useQuery({
+    queryKey: ["payments", "bridge-status"],
+    queryFn: () => apiFetch("/api/payments/bridge-status"),
+    enabled,
+    refetchInterval: enabled ? 60000 : false,
+    // Cầu nối chết là chuyện của cả quán, không phải của riêng hộp thoại này —
+    // mở hộp thoại khác trong vòng 1 phút thì dùng lại kết quả cũ.
+    staleTime: 30000,
+  });
+}
+
 export function usePaymentSummary() {
   return useQuery({
     queryKey: ["payments", "summary"],

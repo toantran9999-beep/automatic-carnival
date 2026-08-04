@@ -75,6 +75,9 @@ public class MainActivity extends Activity {
             }
             configInput.setText("");
             Bridge.log(this, "Đã lưu cấu hình: " + api);
+            // Có cấu hình rồi mới bật được dịch vụ nổi — trước đó nó không biết
+            // gửi nhịp thở về đâu.
+            BridgeService.start(this);
             toast("Đã lưu");
             refresh();
         }));
@@ -192,6 +195,10 @@ public class MainActivity extends Activity {
     @Override
     protected void onResume() {
         super.onResume();
+        askNotificationPermission();
+        // Mở app là một dịp dựng lại dịch vụ nổi nếu nó đã bị giết. Gọi nhiều lần
+        // vô hại: dịch vụ đang chạy thì lệnh này không tạo thêm gì.
+        if (Bridge.isConfigured(this)) BridgeService.start(this);
         refresh();
         // Mở app cũng là một dịp đẩy hàng đợi: bộ hẹn giờ của Android trên máy
         // Xiaomi có thể không bao giờ chạy, nên đừng chỉ trông vào nó.
@@ -215,6 +222,7 @@ public class MainActivity extends Activity {
         sb.append("\n");
         sb.append("Đang chờ gửi: ").append(queued);
         sb.append("\nApp theo dõi: ").append(TextUtils.join(", ", Bridge.allowedPackages(this)));
+        sb.append("\nPhiên bản: ").append(Bridge.appVersion(this));
         int dropped = Bridge.droppedCount(this);
         if (dropped > 0) {
             // Con số này tăng mà đơn không chốt = từ khoá đang chặn nhầm.
@@ -234,17 +242,24 @@ public class MainActivity extends Activity {
         logView.setText(Bridge.logText(this));
     }
 
-    /**
-     * Có quyền đọc thông báo chưa. Phải tự đọc danh sách của hệ thống vì Android
-     * không cho hỏi quyền này bằng hộp thoại như quyền thường.
-     */
     private boolean hasNotificationAccess() {
+        return Bridge.hasNotificationAccess(this);
+    }
+
+    /**
+     * Android 13+ đòi xin quyền mới được HIỆN thông báo.
+     *
+     * Từ chối thì dịch vụ nổi vẫn chạy, chỉ là không thấy thông báo thường trực —
+     * mà thiếu nó thì một số máy lại giết tiến trình. Nên hỏi, nhưng không chặn.
+     */
+    private void askNotificationPermission() {
+        if (android.os.Build.VERSION.SDK_INT < 33) return;
         try {
-            String enabled = Settings.Secure.getString(
-                    getContentResolver(), "enabled_notification_listeners");
-            return enabled != null && enabled.contains(getPackageName());
-        } catch (Exception e) {
-            return false;
+            if (checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS)
+                    != android.content.pm.PackageManager.PERMISSION_GRANTED) {
+                requestPermissions(new String[]{android.Manifest.permission.POST_NOTIFICATIONS}, 1);
+            }
+        } catch (Exception ignored) {
         }
     }
 

@@ -5,6 +5,14 @@
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
 
+    <!--
+        Dịch vụ nổi: thứ duy nhất giữ cho tiến trình không bị MIUI đóng băng.
+        POST_NOTIFICATIONS cho thông báo thường trực (Android 13+ mới đòi).
+    -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+
     <!-- allowBackup=false: máy này giữ khóa cầu nối, đừng để lọt vào bản sao lưu đám mây. -->
     <application
         android:allowBackup="false"
@@ -32,6 +40,22 @@
             <intent-filter>
                 <action android:name="android.service.notification.NotificationListenerService" />
             </intent-filter>
+        </service>
+
+        <!--
+            targetSdk 34 nên BẮT BUỘC phải khai kiểu dịch vụ nổi.
+
+            Chọn "specialUse" chứ KHÔNG "dataSync": Android 15 chặn dataSync 6
+            tiếng/ngày, mà cầu nối phải sống suốt giờ mở cửa. App cài tay, không
+            qua kiểm duyệt Play, nên specialUse dùng được thoải mái.
+        -->
+        <service
+            android:name=".BridgeService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Theo doi thong bao ngan hang de tu chot don thanh toan" />
         </service>
 
         <service

@@ -48,6 +48,9 @@ public final class Bridge {
      */
     private static final String DEFAULT_KEYWORDS = "";
 
+    private static final String PATH_BANK_PUSH = "/api/payments/webhooks/bank-push";
+    private static final String PATH_PING = "/api/payments/webhooks/bridge-ping";
+
     private static final int JOB_ID = 8801;
     /** Chặn hàng đợi phình vô hạn khi máy chủ chết dài ngày. */
     private static final int MAX_QUEUE = 200;
@@ -223,7 +226,7 @@ public final class Bridge {
                     break;
                 }
             }
-            code = post(ctx, item);
+            code = post(ctx, PATH_BANK_PUSH, item);
             if (code >= 200 && code < 300) return code;
             // Sai khóa thì thử lại bao nhiêu lần cũng vậy — để dành cho lượt sau,
             // sau khi người dùng sửa cấu hình.
@@ -233,11 +236,11 @@ public final class Bridge {
     }
 
     /** @return mã HTTP, hoặc 0 nếu không nối được. */
-    private static int post(Context ctx, JSONObject item) {
+    private static int post(Context ctx, String path, JSONObject item) {
         SharedPreferences p = prefs(ctx);
         HttpURLConnection conn = null;
         try {
-            URL url = new URL(p.getString(K_API, "") + "/api/payments/webhooks/bank-push");
+            URL url = new URL(p.getString(K_API, "") + path);
             conn = (HttpURLConnection) url.openConnection();
             conn.setRequestMethod("POST");
             conn.setConnectTimeout(15000);
@@ -255,6 +258,61 @@ public final class Bridge {
             return 0;
         } finally {
             if (conn != null) conn.disconnect();
+        }
+    }
+
+    // ---------------------------------------------------------------- nhịp thở
+
+    /**
+     * Báo về máy chủ "tôi còn sống".
+     *
+     * ⚠️ Vì sao phải có: cầu nối chỉ lên tiếng khi có tiền vào, nên **im vì chết**
+     * và **im vì vắng khách** nhìn y hệt nhau. Ngày 04/08/2026 nó im 9 tiếng liền
+     * (12:51 → 21:38), hai lượt chuyển khoản lúc 20:40 phải bấm tay mà không ai
+     * biết là app đã hỏng.
+     *
+     * Cố ý KHÔNG thử lại: nhịp sau cách đây 5 phút, đó chính là lần thử lại. Nằm
+     * đợi 17 giây trong `postWithRetry` chỉ để báo còn sống là tốn pin vô ích.
+     *
+     * Cũng cố ý KHÔNG ghi nhật ký khi thành công — mỗi 5 phút một dòng thì vòng
+     * nhật ký 20 dòng sẽ đẩy trôi hết mọi thứ đáng đọc.
+     */
+    public static boolean sendHeartbeat(Context ctx) {
+        if (!isConfigured(ctx)) return false;
+        try {
+            JSONObject beat = new JSONObject();
+            beat.put("appVersion", appVersion(ctx));
+            beat.put("queueSize", queueSize(ctx));
+            beat.put("listenerOk", hasNotificationAccess(ctx));
+            int code = post(ctx, PATH_PING, beat);
+            if (code == 401) log(ctx, "Nhịp thở bị từ chối: sai khóa cầu nối");
+            return code >= 200 && code < 300;
+        } catch (Exception e) {
+            return false;
+        }
+    }
+
+    public static String appVersion(Context ctx) {
+        try {
+            return ctx.getPackageManager().getPackageInfo(ctx.getPackageName(), 0).versionName;
+        } catch (Exception e) {
+            return "?";
+        }
+    }
+
+    /**
+     * Có quyền đọc thông báo chưa.
+     *
+     * Phải tự đọc danh sách của hệ thống vì Android không cho hỏi quyền này bằng
+     * hộp thoại như quyền thường.
+     */
+    public static boolean hasNotificationAccess(Context ctx) {
+        try {
+            String enabled = android.provider.Settings.Secure.getString(
+                    ctx.getContentResolver(), "enabled_notification_listeners");
+            return enabled != null && enabled.contains(ctx.getPackageName());
+        } catch (Exception e) {
+            return false;
         }
     }
 

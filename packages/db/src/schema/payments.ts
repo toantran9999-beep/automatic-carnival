@@ -91,6 +91,25 @@ export const paymentWebhookEvents = pgTable("payment_webhook_events", {
   index("idx_payment_webhook_branch").on(table.branch_id),
 ]);
 
+/**
+ * Nhịp thở của cầu nối thông báo ngân hàng (APK vn.toda.bankbridge).
+ *
+ * Cầu nối chỉ lên tiếng khi có tiền vào, nên "im vì chết" và "im vì vắng khách"
+ * nhìn y hệt nhau. Bảng này để máy chủ phân biệt được và POS báo đỏ cho thu ngân
+ * biết mà bấm tay. Xem migration 0013_bridge_heartbeat.sql.
+ */
+export const bridgeHeartbeats = pgTable("bridge_heartbeats", {
+  // Một chi nhánh một điện thoại cầu nối, nên branch_id làm luôn khoá chính.
+  branch_id: uuid("branch_id")
+    .primaryKey()
+    .references(() => branches.id, { onDelete: "cascade" }),
+  last_seen_at: timestamp("last_seen_at", { withTimezone: true }).defaultNow().notNull(),
+  app_version: varchar("app_version", { length: 30 }),
+  queue_size: integer("queue_size").default(0).notNull(),
+  listener_ok: boolean("listener_ok").default(true).notNull(),
+  updated_at: timestamp("updated_at", { withTimezone: true }).defaultNow().notNull(),
+});
+
 export const invoices = pgTable("invoices", {
   id: uuid("id").primaryKey().defaultRandom(),
   order_id: uuid("order_id")

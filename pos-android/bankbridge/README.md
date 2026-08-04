@@ -126,17 +126,48 @@ Mấy dòng này diệt tiến trình nền rất mạnh. Làm thêm:
 Không làm mấy bước này thì app chạy vài tiếng rồi im, và **không báo lỗi gì cả**
 — chỉ đơn giản là không đơn nào tự chốt nữa.
 
+## Nhịp thở — chỗ chữa lỗi "chết câm"
+
+Cầu nối chỉ lên tiếng khi có tiền vào, nên **im vì chết** và **im vì vắng khách**
+nhìn y hệt nhau. Ngày **04/08/2026 nó im đúng 9 tiếng** (12:51 → 21:38): MIUI đóng
+băng tiến trình, hai lượt chuyển khoản lúc 20:40 phải bấm tay, và **không có lỗi
+nào được ghi ở đâu cả**.
+
+Ba lớp chữa, đi kèm nhau:
+
+| Lớp | Làm gì |
+|---|---|
+| `BridgeService` — **dịch vụ nổi** | Neo tiến trình lại để Android không đóng băng. Cái giá là một thông báo thường trực; đổi lại nó cũng là chỗ liếc nhanh xem cầu nối ra sao. |
+| **Nhịp thở 5 phút** | Gọi `POST /api/payments/webhooks/bridge-ping` kèm phiên bản APK, số tin đang kẹt, còn quyền đọc thông báo hay không. |
+| **Tự nối lại trình nghe** | Mỗi nhịp, nếu còn quyền mà trình nghe chưa nối thì `requestRebind()`. `onListenerDisconnected()` không đủ: Android giết cả tiến trình thì hàm đó **không bao giờ chạy** — đúng lỗ hổng đã làm im 9 tiếng. |
+
+Máy chủ coi là chết sau **15 phút** — tức phải **hụt ba nhịp liền**, để một lần
+chập 4G không làm POS báo đỏ oan. Khi đỏ, hộp thoại thanh toán trên POS hiện dòng
+cảnh báo để thu ngân biết mà bấm tay.
+
+⚠️ Kiểu dịch vụ nổi là **`specialUse`**, KHÔNG phải `dataSync` — Android 15 chặn
+`dataSync` **6 tiếng/ngày**, mà cầu nối phải sống suốt giờ mở cửa. App cài tay,
+không qua kiểm duyệt Play, nên `specialUse` dùng được thoải mái.
+
+⚠️ **`versionCode`/`versionName` phải tăng mỗi lần sửa APK.** Điện thoại khai số
+này về và nó hiện ở **Cài đặt → Chi nhánh** — quên tăng là mất luôn cách duy nhất
+biết máy đang chạy bản nào.
+
 ## Tự kiểm
 
-Hai dòng đầu trên màn hình phải xanh:
+Các dòng đầu trên màn hình phải xanh:
 
 ```
 ✓ Đã cấu hình: https://api...
 ✓ Đã có quyền đọc thông báo
 Đang chờ gửi: 0
+Phiên bản: 1.1
 ```
 
 `Đang chờ gửi` cứ tăng mà không về 0 nghĩa là không gửi được — xem nhật ký.
+
+Trên POS: **Cài đặt → Chi nhánh → Cầu thông báo ngân hàng** hiện *"✓ Cầu nối đang
+sống · nghe thấy 3 phút trước · bản 1.1"*. Đây là chỗ chẩn đoán chính thức.
 
 ## Ghi chú kỹ thuật
 
@@ -149,5 +180,12 @@ Hai dòng đầu trên màn hình phải xanh:
   mục và 20 dòng nhật ký.
 - Thử lại bằng `JobScheduler` (chờ có mạng) và `BOOT_COMPLETED`.
 - `allowBackup=false` — máy giữ khóa cầu nối, đừng để lọt vào sao lưu đám mây.
-- Máy chủ nhận ở `POST /api/payments/webhooks/bank-push`, xác thực bằng hai
-  header `X-Toda-Branch` + `X-Toda-Bridge-Key`.
+- Máy chủ nhận ở `POST /api/payments/webhooks/bank-push` (tiền vào) và
+  `POST /api/payments/webhooks/bridge-ping` (nhịp thở). Cả hai xác thực bằng cùng
+  hai header `X-Toda-Branch` + `X-Toda-Bridge-Key`, qua chung một hàm
+  `authenticateBridgeCall()` — đừng chép lại chuỗi kiểm tra cho endpoint thứ ba.
+- POS đọc trạng thái ở `GET /api/payments/bridge-status` (quyền `payments:read`,
+  vì **thu ngân** mới là người cần biết).
+- Nhịp thở lưu ở bảng `bridge_heartbeats` (migration `0013`). Cố ý không nhét vào
+  `branches.settings`: đó là JSONB người dùng sửa qua giao diện, ghi đè mỗi 5 phút
+  là đua nhau với nút Lưu.

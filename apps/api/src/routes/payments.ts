@@ -140,6 +140,21 @@ function stripCodeSeparators(code: string) {
   return code.replace(/-/g, "");
 }
 
+/**
+ * Độ dài tối thiểu (sau khi bỏ gạch nối) để một mã được phép khớp bằng PHẦN ĐẦU.
+ * Mã thật là TODA + số phiếu + 6 ký tự ngẫu nhiên nên ngắn nhất cũng 11 ký tự.
+ */
+const MIN_PREFIX_CODE_LEN = 10;
+
+/**
+ * Bao lâu không nghe thấy cầu nối thì coi là chết.
+ *
+ * Điện thoại gửi nhịp thở 5 phút một lần, nên 15 phút nghĩa là HỤT BA NHỊP LIỀN.
+ * Đặt sát hơn thì một lần chập 4G đủ làm POS báo đỏ oan, mà báo đỏ oan vài lần
+ * là nhân viên thôi không nhìn nữa.
+ */
+const BRIDGE_STALE_MINUTES = 15;
+
 function webhookTransactionId(body: any) {
   return normalizeText(
     body.id ||
@@ -700,20 +715,47 @@ async function findPaymentRequestByCodes(candidates: string[]) {
   if (codes.length === 0) return undefined;
   const flattened = Array.from(new Set(codes.map(stripCodeSeparators).filter(Boolean)));
 
+  // So bằng đúng: mã nguyên văn, hoặc mã đã bỏ gạch nối.
+  //
+  // Kênh DIRECT_DEBITS và một số QR liên ngân hàng XOÁ SẠCH gạch nối trong nội
+  // dung. Không so thêm bản đã làm phẳng thì những giao dịch đó không bao giờ
+  // khớp — khách trả tiền mà bàn treo mãi.
+  const exactMatch = or(
+    inArray(schema.paymentRequests.payment_code, codes),
+    inArray(sql`REPLACE(${schema.paymentRequests.payment_code}, '-', '')`, flattened),
+  )!;
+
+  /**
+   * Khớp phần ĐẦU: mã đã lưu là khúc mở đầu của chuỗi bóc được.
+   *
+   * Kênh ACB dán thêm ngày vào cuối nội dung — `TODA-44-L2YMNY-010826` trong khi
+   * phiếu lưu `TODA-44-L2YMNY`. So bằng đúng là trượt, và ngày 01/08 đã mất 2 lượt
+   * vì chuyện này.
+   *
+   * Đòi mã lưu dài từ MIN_PREFIX_CODE_LEN ký tự để không có mã cụt nào vô tình
+   * thành đầu của mã dài hơn: dạng thật là TODA + số phiếu + 6 ký tự ngẫu nhiên,
+   * ngắn nhất cũng 11 ký tự sau khi bỏ gạch nối.
+   */
+  const prefixMatch = flattened.map(
+    (flat) => sql`(
+      ${flat} LIKE REPLACE(${schema.paymentRequests.payment_code}, '-', '') || '%'
+      AND length(REPLACE(${schema.paymentRequests.payment_code}, '-', '')) >= ${MIN_PREFIX_CODE_LEN}
+    )`,
+  );
+
   const [request] = await db
     .select()
     .from(schema.paymentRequests)
-    .where(
-      or(
-        inArray(schema.paymentRequests.payment_code, codes),
-        // Kênh DIRECT_DEBITS và một số QR liên ngân hàng XOÁ SẠCH gạch nối trong
-        // nội dung. Không so thêm bản đã làm phẳng thì những giao dịch đó không
-        // bao giờ khớp — khách trả tiền mà bàn treo mãi.
-        inArray(sql`REPLACE(${schema.paymentRequests.payment_code}, '-', '')`, flattened),
-      ),
-    )
+    .where(or(exactMatch, ...prefixMatch))
     .orderBy(
+      // Bằng đúng luôn thắng khớp đầu — khớp đầu chỉ là đường cứu vớt.
+      sql`CASE WHEN ${exactMatch} THEN 0 ELSE 1 END`,
+      // Ưu tiên phiếu CÒN CHỜ: tiền khách vào mà đơn đang mở thì phải chốt đơn đó,
+      // không phải một phiếu cũ đã đóng.
       sql`CASE WHEN payment_requests.status = 'pending' THEN 0 ELSE 1 END`,
+      // Trong nhóm khớp đầu, mã DÀI hơn thắng: nó ăn khớp nhiều ký tự hơn nên
+      // chắc chắn hơn.
+      sql`length(payment_requests.payment_code) DESC`,
       desc(schema.paymentRequests.created_at),
     )
     .limit(1);
@@ -993,19 +1035,23 @@ function parseBankNotificationAmount(text: string): {
  * Phải nằm TRƯỚC authMiddleware: điện thoại không có token đăng nhập, nó tự xác
  * thực bằng khóa riêng của chi nhánh.
  */
-payments.post("/webhooks/bank-push", async (c) => {
-  const rawBody = await c.req.text();
-  let body: any = {};
-  try {
-    body = rawBody ? JSON.parse(rawBody) : {};
-  } catch {
-    body = {};
-  }
-
+/**
+ * Xác thực một lời gọi đến từ điện thoại cầu nối.
+ *
+ * Dùng chung cho cả `bank-push` (báo tiền vào) lẫn `bridge-ping` (báo còn sống).
+ * Chép lại chuỗi kiểm tra này cho endpoint thứ hai là hai đường lệch nhau, mà
+ * đường lệch ở khâu XÁC THỰC thì hỏng theo kiểu im lặng và nguy hiểm.
+ *
+ * Trả về `{ ok: false, response }` để chỗ gọi `return` thẳng, hoặc
+ * `{ ok: true, branch, cfg }` khi qua cửa.
+ */
+async function authenticateBridgeCall(c: any, body: any) {
   const branchId = normalizeText(c.req.header("x-toda-branch") || body.branchId);
   const providedKey = normalizeText(c.req.header("x-toda-bridge-key"));
 
-  if (!branchId) return c.json({ success: false, error: "missing branch" }, 401);
+  if (!branchId) {
+    return { ok: false as const, branchId: "", response: c.json({ success: false, error: "missing branch" }, 401) };
+  }
 
   const [branch] = await db
     .select()
@@ -1019,13 +1065,80 @@ payments.post("/webhooks/bank-push", async (c) => {
   // Chưa bật hoặc chưa đặt khóa thì từ chối thẳng — cùng lối với SePay. Thiếu
   // bước này thì ai đoán ra branchId là bấm được nút "đã thanh toán" cho cả quán.
   if (!branch || !cfg.enabled || !expectedKey) {
-    return c.json({ success: false, error: "bank push not configured" }, 401);
+    return { ok: false as const, branchId, response: c.json({ success: false, error: "bank push not configured" }, 401) };
   }
 
   const keyMatches =
     providedKey.length === expectedKey.length &&
     timingSafeEqual(Buffer.from(providedKey), Buffer.from(expectedKey));
-  if (!keyMatches) return c.json({ success: false, error: "invalid key" }, 401);
+  if (!keyMatches) {
+    return { ok: false as const, branchId, response: c.json({ success: false, error: "invalid key" }, 401) };
+  }
+
+  return { ok: true as const, branchId, branch, cfg };
+}
+
+/**
+ * Nhịp thở: điện thoại cầu nối gọi về mỗi vài phút để nói "tôi còn sống".
+ *
+ * Vì sao cần: cầu nối chỉ lên tiếng khi có tiền vào, nên im vì chết và im vì
+ * vắng khách nhìn y hệt nhau. Ngày 04/08/2026 nó im 9 tiếng, hai lượt chuyển
+ * khoản phải bấm tay mà không ai biết là hỏng.
+ */
+payments.post("/webhooks/bridge-ping", async (c) => {
+  const rawBody = await c.req.text();
+  let body: any = {};
+  try {
+    body = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    body = {};
+  }
+
+  const auth = await authenticateBridgeCall(c, body);
+  if (!auth.ok) return auth.response;
+
+  const now = new Date();
+  const queueSize = Number.isFinite(Number(body.queueSize)) ? Math.max(0, Math.round(Number(body.queueSize))) : 0;
+  // Chỉ coi là mù khi điện thoại BÁO RÕ là false. Bản APK cũ chưa biết gửi
+  // trường này — thiếu mà mặc định false thì POS báo đỏ oan suốt.
+  const listenerOk = body.listenerOk !== false;
+
+  await db
+    .insert(schema.bridgeHeartbeats)
+    .values({
+      branch_id: auth.branchId,
+      last_seen_at: now,
+      app_version: normalizeText(body.appVersion).slice(0, 30) || null,
+      queue_size: queueSize,
+      listener_ok: listenerOk,
+      updated_at: now,
+    })
+    .onConflictDoUpdate({
+      target: schema.bridgeHeartbeats.branch_id,
+      set: {
+        last_seen_at: now,
+        app_version: normalizeText(body.appVersion).slice(0, 30) || null,
+        queue_size: queueSize,
+        listener_ok: listenerOk,
+        updated_at: now,
+      },
+    });
+
+  return c.json({ success: true });
+});
+
+payments.post("/webhooks/bank-push", async (c) => {
+  const rawBody = await c.req.text();
+  let body: any = {};
+  try {
+    body = rawBody ? JSON.parse(rawBody) : {};
+  } catch {
+    body = {};
+  }
+
+  const auth = await authenticateBridgeCall(c, body);
+  if (!auth.ok) return auth.response;
+  const { branchId, cfg } = auth;
 
   // Gộp mọi mảnh chữ của thông báo: phần đầy đủ hay nằm ở bigText/textLines chứ
   // không phải dòng ngắn hiện ngoài màn khoá.
@@ -1414,6 +1527,73 @@ payments.get("/summary", requirePermission("reports:read"), async (c) => {
       grandTotal: Number(totals?.grand_total || 0),
       tipTotal: Number(totals?.tip_total || 0),
       totalCount: totals?.count || 0,
+    },
+  });
+});
+
+/**
+ * GET /bridge-status — cầu nối thông báo ngân hàng còn sống không?
+ *
+ * `payments:read` chứ không phải quyền quản lý: THU NGÂN mới là người cần biết.
+ * Không có gì nhạy cảm ở đây — chỉ là "còn sống hay không" và bao lâu rồi.
+ */
+payments.get("/bridge-status", requirePermission("payments:read"), async (c) => {
+  const tenant = c.get("tenant") as any;
+
+  const [branch] = await db
+    .select({ settings: schema.branches.settings })
+    .from(schema.branches)
+    .where(eq(schema.branches.id, tenant.branchId))
+    .limit(1);
+
+  const cfg = ((branch?.settings || {}) as Record<string, any>).payment?.bank_push || {};
+  const enabled = Boolean(cfg.enabled);
+
+  if (!enabled) {
+    return c.json({ success: true, data: { enabled: false, healthy: true } });
+  }
+
+  const [beat] = await db
+    .select()
+    .from(schema.bridgeHeartbeats)
+    .where(eq(schema.bridgeHeartbeats.branch_id, tenant.branchId))
+    .limit(1);
+
+  // Một thông báo ngân hàng THẬT cũng là bằng chứng còn sống — và bản APK cũ
+  // chưa biết gửi nhịp thở thì đây là dấu hiệu duy nhất có được.
+  const [lastEvent] = await db
+    .select({ created_at: schema.paymentWebhookEvents.created_at })
+    .from(schema.paymentWebhookEvents)
+    .where(
+      and(
+        eq(schema.paymentWebhookEvents.provider, "bank_push"),
+        eq(schema.paymentWebhookEvents.branch_id, tenant.branchId),
+      ),
+    )
+    .orderBy(desc(schema.paymentWebhookEvents.created_at))
+    .limit(1);
+
+  const candidates = [beat?.last_seen_at, lastEvent?.created_at]
+    .filter(Boolean)
+    .map((d) => new Date(d as any).getTime());
+  const lastSeenMs = candidates.length ? Math.max(...candidates) : null;
+  const minutesSince = lastSeenMs === null ? null : Math.floor((Date.now() - lastSeenMs) / 60000);
+
+  // Nhịp thở 5 phút một lần, ngưỡng 15 phút — phải HỤT BA NHỊP LIỀN mới báo đỏ,
+  // để một lần chập 4G không làm POS kêu oan.
+  const healthy =
+    minutesSince !== null && minutesSince <= BRIDGE_STALE_MINUTES && beat?.listener_ok !== false;
+
+  return c.json({
+    success: true,
+    data: {
+      enabled: true,
+      healthy,
+      lastSeenAt: lastSeenMs === null ? null : new Date(lastSeenMs).toISOString(),
+      minutesSince,
+      queueSize: beat?.queue_size ?? 0,
+      listenerOk: beat?.listener_ok !== false,
+      appVersion: beat?.app_version || null,
     },
   });
 });

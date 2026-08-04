@@ -91,6 +91,9 @@ public class BankNotificationListener extends NotificationListenerService {
     @Override
     public void onListenerConnected() {
         Bridge.log(this, "Trình nghe thông báo đã sẵn sàng");
+        // Android dựng lại trình nghe cũng là dịp dựng lại dịch vụ nổi: hai thứ
+        // này giữ nhau, mất một cái là cái kia kéo về.
+        if (Bridge.isConfigured(this)) BridgeService.start(this);
         new Thread(() -> Bridge.flush(getApplicationContext())).start();
     }
 

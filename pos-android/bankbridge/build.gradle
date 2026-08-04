@@ -14,8 +14,11 @@ android {
         applicationId "vn.toda.bankbridge"
         minSdk 21
         targetSdk 34
-        versionCode 1
-        versionName "1.0"
+        // ⚠️ TĂNG mỗi lần sửa APK. Điện thoại khai số này về máy chủ qua nhịp thở
+        // và nó hiện ở Cài đặt → Chi nhánh — quên tăng là mất luôn cách duy nhất
+        // biết máy đang chạy bản nào.
+        versionCode 2
+        versionName "1.1"
     }
 
     buildTypes {

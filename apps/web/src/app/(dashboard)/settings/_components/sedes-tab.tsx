@@ -24,6 +24,8 @@ import { Switch } from "@restai/ui/components/switch";
 import { Plus, Pencil, Store, Copy, RefreshCw } from "lucide-react";
 import { VN_BANKS, resolveBankBin } from "@restai/config";
 import { useBranches, useCreateBranch, useUpdateBranchById } from "@/hooks/use-settings";
+import { useBridgeStatus } from "@/hooks/use-payments";
+import { useAuthStore } from "@/stores/auth-store";
 import { toast } from "sonner";
 import { useTranslation } from "@/stores/lang-store";
 
@@ -59,9 +61,18 @@ export function SedesTab() {
   const createBranch = useCreateBranch();
   const updateBranchById = useUpdateBranchById();
   const { t } = useTranslation();
+  const { selectedBranchId } = useAuthStore();
 
   const [branchDialogOpen, setBranchDialogOpen] = useState(false);
   const [editingBranch, setEditingBranch] = useState<any>(null);
+
+  // Nhịp thở chỉ hỏi được cho chi nhánh ĐANG đăng nhập (máy chủ lấy theo phiên),
+  // nên chỉ hỏi khi đang sửa đúng chi nhánh đó — chi nhánh khác thì con số hiện
+  // ra sẽ là của nơi khác, sai mà nhìn như đúng.
+  const bridgeStatusOwn = branchDialogOpen && Boolean(editingBranch?.id) && editingBranch?.id === selectedBranchId;
+  const { data: bridgeResp } = useBridgeStatus(bridgeStatusOwn);
+  const bridge = (bridgeResp as any)?.data;
+
   const [branchDialogForm, setBranchDialogForm] = useState({
     name: "",
     slug: "",
@@ -589,6 +600,27 @@ export function SedesTab() {
                         Bấm <b>Lưu</b> trước, rồi chép chuỗi này dán vào app TODA Bank Bridge.
                         Đóng hộp thoại là chuỗi không hiện lại được nữa.
                       </p>
+                    </div>
+                  ) : null}
+
+                  {/* Chỗ chẩn đoán khi nghi cầu nối hỏng. Cũng là chỗ duy nhất
+                      trả lời được "điện thoại đang chạy bản APK nào" mà không
+                      phải cầm máy lên xem. */}
+                  {bridgeStatusOwn && bridge?.enabled ? (
+                    <div
+                      className={`rounded-md px-2 py-1.5 text-xs ${
+                        bridge.healthy
+                          ? "bg-muted text-muted-foreground"
+                          : "bg-destructive/10 text-destructive"
+                      }`}
+                    >
+                      {bridge.healthy ? "✓ Cầu nối đang sống" : "⚠️ Cầu nối mất tín hiệu"}
+                      {typeof bridge.minutesSince === "number"
+                        ? ` · nghe thấy ${bridge.minutesSince} phút trước`
+                        : " · chưa từng nghe thấy"}
+                      {bridge.appVersion ? ` · bản ${bridge.appVersion}` : ""}
+                      {bridge.queueSize > 0 ? ` · ${bridge.queueSize} tin đang kẹt` : ""}
+                      {bridge.listenerOk === false ? " · ĐÃ TẮT quyền đọc thông báo" : ""}
                     </div>
                   ) : null}
                 </>

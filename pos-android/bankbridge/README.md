@@ -44,10 +44,13 @@ cầu nối, mất danh sách app theo dõi, mất quyền đọc thông báo. A
 Máy không cần Java — dùng OpenSSL, JDK 17 đọc PKCS12 bình thường.
 
 ```bash
-# Đổi MAT_KHAU_CUA_ANH thành mật khẩu tự chọn
+# Đổi MAT_KHAU_CUA_ANH thành mật khẩu tự chọn (đừng dùng dấu nháy đơn trong đó)
 PASS='MAT_KHAU_CUA_ANH'
 
-openssl req -x509 -newkey rsa:2048 -sha256 -days 10000 -nodes \
+# ⚠️ MSYS_NO_PATHCONV=1 là BẮT BUỘC trên Git Bash/Windows.
+# Thiếu nó, Git Bash tưởng "/CN=..." là đường dẫn và đổi thành
+# "C:/Program Files/Git/CN=..." → openssl báo lỗi định dạng subject.
+MSYS_NO_PATHCONV=1 openssl req -x509 -newkey rsa:2048 -sha256 -days 10000 -nodes \
   -keyout toda-key.pem -out toda-cert.pem \
   -subj "/CN=TODA CAFE/O=TODA/C=VN"
 
@@ -57,6 +60,18 @@ openssl pkcs12 -export -inkey toda-key.pem -in toda-cert.pem \
 base64 -w0 toda-bankbridge.p12 > toda-bankbridge.p12.b64
 
 rm -f toda-key.pem toda-cert.pem   # dọn file trung gian
+```
+
+Kiểm nhanh (alias phải ra `toda`):
+
+```bash
+openssl pkcs12 -in toda-bankbridge.p12 -nokeys -passin pass:"$PASS" -info 2>&1 | grep friendlyName
+```
+
+Chép base64 thẳng vào clipboard, khỏi mở file:
+
+```bash
+cat toda-bankbridge.p12.b64 | clip
 ```
 
 ⚠️ **Cất `toda-bankbridge.p12` ở chỗ an toàn và ĐỪNG bỏ vào repo** (repo công

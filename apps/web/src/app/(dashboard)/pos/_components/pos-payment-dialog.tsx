@@ -70,6 +70,8 @@ export function PosPaymentDialog({
   /** Lần thanh toán này có in hóa đơn không — để màn báo thành công nói đúng sự thật. */
   const [printedReceipt, setPrintedReceipt] = useState(true);
   const [paymentRequestId, setPaymentRequestId] = useState<string | undefined>();
+  /** Tiền đã vào tài khoản nhưng không khớp phiếu — xem handlePaymentWs. */
+  const [mismatch, setMismatch] = useState<{ received: number; due: number } | null>(null);
   /** Đã tự nhận phiếu QR cũ cho lần mở này chưa — xem effect bên dưới. */
   const adoptedRef = useRef(false);
 
@@ -109,6 +111,7 @@ export function PosPaymentDialog({
       setDocNumber("");
       setDocHolderName("");
       setPaymentRequestId(undefined);
+      setMismatch(null);
       adoptedRef.current = false;
     }
   }, [open, totalAmount]);
@@ -163,9 +166,33 @@ export function PosPaymentDialog({
   // Vẫn GIỮ poll làm lưới an toàn: WS rớt thì poll cứu, mất tối đa 5 giây còn hơn treo.
   const handlePaymentWs = useCallback(
     (msg: WsMessage) => {
-      if (msg.type !== "payment:confirmed" && msg.type !== "payment:underpaid") return;
-      const p = msg.payload as { paymentRequestId?: string };
+      if (
+        msg.type !== "payment:confirmed" &&
+        msg.type !== "payment:underpaid" &&
+        msg.type !== "payment:mismatch"
+      ) {
+        return;
+      }
+      const p = msg.payload as {
+        paymentRequestId?: string;
+        receivedAmount?: number;
+        currentDue?: number;
+      };
       if (!paymentRequestId || p?.paymentRequestId !== paymentRequestId) return;
+
+      /*
+       * Tiền ĐÃ vào tài khoản nhưng không khớp phiếu — thường là bàn đổi món sau
+       * khi in phiếu QR. Máy chủ không chốt, nhưng tiền thì đã nằm trong tài khoản
+       * rồi, nên tuyệt đối không được im: thu ngân phải biết ngay để đối chiếu
+       * chứ không phải ngồi chờ tới lúc khách hỏi.
+       */
+      if (msg.type === "payment:mismatch") {
+        setMismatch({
+          received: Number(p?.receivedAmount || 0),
+          due: Number(p?.currentDue || 0),
+        });
+      }
+
       qc.invalidateQueries({ queryKey: ["payments", "requests", paymentRequestId] });
     },
     [paymentRequestId, qc],
@@ -360,15 +387,23 @@ export function PosPaymentDialog({
   const transferRequest = paymentRequest as any;
   const expiresAt = transferRequest?.expires_at ? new Date(transferRequest.expires_at) : null;
   const isExpired = Boolean(expiresAt && Date.now() > expiresAt.getTime());
+  /**
+   * ⚠️ `cancelled` PHẢI có nhánh riêng. Trước đây nó rơi vào nhánh cuối và hiện
+   * "Đang chờ chuyển khoản" — thu ngân ngồi chờ một tờ phiếu đã chết, khách quét
+   * vào cũng không bao giờ chốt được.
+   */
+  const isCancelled = transferRequest?.status === "cancelled";
   const transferStatus = transferRequest?.status === "paid"
     ? "Đã nhận tiền"
     : transferRequest?.paid_amount > 0 && transferRequest.paid_amount < transferRequest.amount
       ? "Thiếu tiền"
-      : isExpired || transferRequest?.status === "expired"
-        ? "Quá hạn"
-        : transferRequest
-          ? "Đang chờ chuyển khoản"
-          : "";
+      : isCancelled
+        ? "Phiếu đã huỷ — món trên bàn đã đổi"
+        : isExpired || transferRequest?.status === "expired"
+          ? "Quá hạn"
+          : transferRequest
+            ? "Đang chờ chuyển khoản"
+            : "";
 
   return (
     <Dialog open={open} onOpenChange={(val) => !processing && onOpenChange(val)}>
@@ -571,7 +606,9 @@ export function PosPaymentDialog({
                     onClick={() => handleQrBill(method === "momo" ? "momo" : "sepay")}
                     disabled={processing}
                   >
-                    {transferRequest.status === "expired" || isExpired ? "In phiếu mới" : "In lại phiếu"}
+                    {transferRequest.status === "expired" || isExpired || isCancelled
+                      ? "In phiếu mới"
+                      : "In lại phiếu"}
                   </Button>
                 </div>
                 {/* Cầu nối ngân hàng chết thì đơn KHÔNG tự chốt, mà nó chết rất
@@ -579,6 +616,37 @@ export function PosPaymentDialog({
                     phải bấm tay mà không ai biết là hỏng. Dòng này để thu ngân
                     thấy ngay lúc đang chờ tiền, chứ không phải phát hiện ra vào
                     cuối ngày khi đối sổ. */}
+                {/* Tiền đã về tài khoản nhưng không khớp phiếu. Đây là tin quan
+                    trọng nhất có thể hiện ở màn này — tiền của khách đang nằm
+                    trong tài khoản mà đơn chưa chốt. Để trên cả cảnh báo cầu nối. */}
+                {mismatch && (
+                  <div className="rounded-md border border-destructive bg-destructive/10 px-2 py-2 text-xs text-destructive">
+                    <div className="font-bold">⚠️ Đã nhận {formatCurrency(mismatch.received)} nhưng chưa chốt được</div>
+                    <div className="mt-0.5">
+                      Bàn đang cần trả <b>{formatCurrency(mismatch.due)}</b> — món đã đổi sau khi in phiếu.
+                    </div>
+                    <div className="mt-1">
+                      Kiểm lại món trên bàn, rồi bấm <b>In phiếu mới</b>. Nếu số tiền khách chuyển
+                      đã đủ, thu phần còn thiếu hoặc bấm nút xanh bên dưới để chốt tay.
+                    </div>
+                  </div>
+                )}
+                {/* Số tiền THẬT trên tờ phiếu khách đang cầm, do máy chủ tính.
+                    Màn hình này có thể đang hiện con số cũ trong bộ nhớ đệm —
+                    chỉ hiện thêm dòng này khi hai số khác nhau, để thu ngân đọc
+                    đúng cái khách phải trả chứ không đọc cái trên đầu màn hình. */}
+                {!isCancelled && transferRequest.amount !== totalAmount && (
+                  <p className="rounded-md bg-amber-500/10 px-2 py-1.5 text-xs font-semibold text-amber-700">
+                    Phiếu đã in ghi <b>{formatCurrency(transferRequest.amount)}</b> — đây mới là số
+                    khách phải chuyển.
+                  </p>
+                )}
+                {isCancelled && !mismatch && (
+                  <p className="rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
+                    ⚠️ Món trên bàn đã đổi sau khi in phiếu, nên phiếu QR cũ không dùng được nữa.
+                    Bấm <b>In phiếu mới</b> rồi đưa khách tờ mới.
+                  </p>
+                )}
                 {bridgeDown && (
                   <p className="rounded-md bg-destructive/10 px-2 py-1.5 text-xs text-destructive">
                     ⚠️ Cầu nối ngân hàng mất tín hiệu

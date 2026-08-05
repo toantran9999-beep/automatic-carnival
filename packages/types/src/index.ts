@@ -18,6 +18,11 @@ export type WsMessageType =
   | "shift:closed"
   | "payment:confirmed"
   | "payment:underpaid"
+  /**
+   * Tiền ĐÃ VÀO tài khoản nhưng không khớp phiếu QR (bàn đổi món sau khi in phiếu).
+   * Phải báo cho thu ngân: máy chủ từ chối chốt, nhưng tiền thì đã nằm trong tài khoản.
+   */
+  | "payment:mismatch"
   /** Máy bấm đơn xin Trạm quầy in phiếu QR chuyển khoản (xem WsPrintTransferPayload). */
   | "print:transfer"
   /** Thực đơn/cài đặt chi nhánh vừa đổi → máy khác xoá cache thực đơn ngay. */

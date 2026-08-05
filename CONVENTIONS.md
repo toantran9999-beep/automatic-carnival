@@ -167,7 +167,42 @@ bấm **tối thiểu 44×44px**. Nút gạt cũ chỉ cao 24px nên nhân viên
 
 ---
 
-## 6. Bốn cái bẫy đã trả giá — đọc kỹ
+## 6. Năm cái bẫy đã trả giá — đọc kỹ
+
+### 💰 "Còn nợ bao nhiêu" CHỈ được hỏi `dueBreakdown()`
+
+Một câu hỏi, một nơi trả lời. Muốn biết một đơn hay một bàn còn phải trả bao nhiêu
+thì gọi `dueBreakdown()` trong `routes/payments.ts` — **tuyệt đối không tự cộng lại
+ở chỗ khác**, dù chỉ hai dòng.
+
+Sáng **05/08/2026 bàn 13**: phiếu QR in ra liệt kê **85.000đ** tiền món nhưng dòng
+**TỔNG CẦN TRẢ ghi 70.000đ**. Khách chuyển đúng 70.000đ theo tờ phiếu, rồi máy chủ
+**từ chối chốt** vì bàn nợ 85.000đ. Bàn treo 31 phút, cuối cùng bấm tay.
+
+Nguyên nhân: **ba** chỗ cùng trả lời câu hỏi đó, mỗi chỗ một kiểu.
+
+| Chỗ | Tính kiểu gì | Ra số |
+|---|---|---|
+| máy POS gửi lên | đọc bộ nhớ đệm trên máy, có thể đã cũ | 70.000 |
+| gom món để in | "cho đơn vào rồi mới trừ tiền" → lấy trọn đơn cuối | 85.000 |
+| lúc nhận tiền | tổng nợ cả bàn | 85.000 |
+
+Ba luật rút ra, đừng phá:
+
+1. **Số tiền do máy chủ tính.** Máy khách gửi số nào cũng chỉ để ghi log khi lệch —
+   nó đọc từ bộ nhớ đệm nên không đáng tin.
+2. **Phiếu in không được tự mâu thuẫn.** `Tạm tính + Thuế = TỔNG CẦN TRẢ`, và
+   `subtotal` phải **suy ngược từ** tổng chứ không cộng độc lập.
+3. **Vòng lặp "gom tới khi hết tiền" là bẫy.** Kiểm *đơn này có vừa túi không* rồi
+   mới lấy, đừng *lấy rồi mới trừ*.
+
+Chốt chặn hiện có, đủ ba lớp: máy chủ tự tính lúc dựng phiếu → `GET /requests/:id`
+tự huỷ phiếu khi số tiền đổi (hộp thoại hỏi lại mỗi 5 giây) → lúc tiền về so lần
+nữa và bắn `payment:mismatch` cho thu ngân.
+
+⚠️ Chốt chặn đặt ở đường **ĐỌC**, cố ý không gắn vào từng chỗ sửa món. Gắn từng chỗ
+thì quên một chỗ là lỗi quay lại, mà quên chỗ nào cũng không ai biết cho tới lúc có
+khách chuyển tiền hụt.
 
 ### `sm:` / `md:` đo MÀN HÌNH, không đo khung chứa
 

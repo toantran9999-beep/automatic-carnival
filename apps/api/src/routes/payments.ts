@@ -373,43 +373,85 @@ async function runCompletionSideEffects(orders: any[], organizationId: string, b
  * Dùng để chặn cảnh gói tin về muộn: khách gọi thêm món hoặc thu ngân đã thu tiền
  * mặt sau lúc dựng QR → số tiền trên QR không còn khớp, chốt tiếp là ghi sai sổ.
  */
-async function currentDueForRequest(request: any): Promise<number | null> {
-  const [order] = await db
-    .select({
-      total: schema.orders.total,
-      status: schema.orders.status,
-      table_session_id: schema.orders.table_session_id,
-    })
+type DueLine = { order: any; remaining: number };
+
+/**
+ * ⭐ NGUỒN SỰ THẬT DUY NHẤT cho câu hỏi "chỗ này còn nợ bao nhiêu, gồm những đơn nào".
+ *
+ * ⚠️ Vì sao phải gom về một chỗ — chuyện thật sáng 05/08/2026, bàn 13:
+ * phiếu QR in ra liệt kê 85.000đ tiền món nhưng dòng TỔNG CẦN TRẢ ghi 70.000đ.
+ * Khách chuyển đúng 70.000đ theo phiếu, rồi máy chủ TỪ CHỐI vì bàn nợ 85.000đ.
+ * Bàn treo 31 phút, cuối cùng phải bấm tay.
+ *
+ * Gốc rễ là BA chỗ cùng trả lời một câu hỏi mà mỗi chỗ tính một kiểu:
+ *   1. máy POS gửi lên số của nó (đọc từ bộ nhớ đệm, có thể đã cũ),
+ *   2. lúc in, danh sách món gom theo kiểu "cho đơn vào rồi mới trừ tiền",
+ *   3. lúc nhận tiền, đòi khớp đúng tổng nợ CẢ BÀN.
+ *
+ * Nay cả ba đều gọi vào đây. Muốn hỏi "còn nợ bao nhiêu" thì KHÔNG được tự tính
+ * lại ở nơi khác — thêm một cách tính thứ hai là lỗi hôm đó quay lại nguyên xi.
+ *
+ * `lines` giữ đúng thứ tự tiền sẽ chảy vào: đơn đích trước, rồi các đơn còn lại
+ * của phiên theo giờ tạo.
+ *
+ * Trả `null` khi đơn không còn hợp lệ để thu (không tìm thấy / đã huỷ).
+ */
+async function dueBreakdown(orderId: string): Promise<{ lines: DueLine[]; due: number } | null> {
+  const [target] = await db
+    .select()
     .from(schema.orders)
-    .where(eq(schema.orders.id, request.order_id))
+    .where(eq(schema.orders.id, orderId))
     .limit(1);
 
-  if (!order || order.status === "cancelled") return null;
+  if (!target || target.status === "cancelled") return null;
 
-  if (order.table_session_id) {
-    const sessionDueRows = await db
-      .select({
-        total: schema.orders.total,
-        total_paid: sql<number>`COALESCE((SELECT SUM(amount)::int FROM payments WHERE payments.order_id = ${schema.orders.id} AND payments.status = 'completed'), 0)`,
-      })
+  let candidates: any[] = [target];
+  if (target.table_session_id) {
+    const sessionOrders = await db
+      .select()
       .from(schema.orders)
       .where(
         and(
-          eq(schema.orders.table_session_id, order.table_session_id),
+          eq(schema.orders.table_session_id, target.table_session_id),
           sql`orders.status != 'cancelled'`,
         ),
-      );
-    return sessionDueRows.reduce(
-      (sum, row) => sum + Math.max(0, row.total - Number(row.total_paid || 0)),
-      0,
-    );
+      )
+      .orderBy(schema.orders.created_at);
+    candidates = [target, ...sessionOrders.filter((o) => o.id !== target.id)];
   }
 
-  const [paid] = await db
-    .select({ total_paid: sum(schema.payments.amount) })
+  const paidRows = await db
+    .select({
+      order_id: schema.payments.order_id,
+      paid: sql<number>`COALESCE(SUM(${schema.payments.amount}), 0)::int`,
+    })
     .from(schema.payments)
-    .where(and(eq(schema.payments.order_id, request.order_id), eq(schema.payments.status, "completed")));
-  return Math.max(0, order.total - Number(paid?.total_paid || 0));
+    .where(
+      and(
+        inArray(schema.payments.order_id, candidates.map((o) => o.id)),
+        eq(schema.payments.status, "completed"),
+      ),
+    )
+    .groupBy(schema.payments.order_id);
+  const paidMap = new Map(paidRows.map((r) => [r.order_id, Number(r.paid || 0)]));
+
+  const lines = candidates.map((order) => ({
+    order,
+    remaining: Math.max(0, order.total - (paidMap.get(order.id) || 0)),
+  }));
+
+  return { lines, due: lines.reduce((sum, l) => sum + l.remaining, 0) };
+}
+
+/**
+ * Số tiền đơn (hoặc cả phiên bàn) CÒN PHẢI TRẢ, tính bằng cents.
+ *
+ * Dùng để chặn cảnh gói tin về muộn: khách gọi thêm món hoặc thu ngân đã thu tiền
+ * mặt sau lúc dựng QR → số tiền trên QR không còn khớp, chốt tiếp là ghi sai sổ.
+ */
+async function currentDueForRequest(request: any): Promise<number | null> {
+  const breakdown = await dueBreakdown(request.order_id);
+  return breakdown ? breakdown.due : null;
 }
 
 /**
@@ -494,33 +536,34 @@ async function buildPaidOrderPayload(orderId: string) {
  */
 async function buildTransferBillPayload(orderId: string, amount: number) {
   try {
-    const [target] = await db
-      .select()
-      .from(schema.orders)
-      .where(eq(schema.orders.id, orderId))
-      .limit(1);
-    if (!target) return null;
+    const breakdown = await dueBreakdown(orderId);
+    if (!breakdown) return null;
+    const target = breakdown.lines[0].order;
 
-    let covered = [target];
-    if (target.table_session_id) {
-      const sessionOrders = await db
-        .select()
-        .from(schema.orders)
-        .where(
-          and(
-            eq(schema.orders.table_session_id, target.table_session_id),
-            sql`orders.status NOT IN ('completed', 'cancelled')`,
-          ),
-        )
-        .orderBy(schema.orders.created_at);
+    /*
+     * Chỉ liệt kê những đơn CÒN NỢ, và liệt kê ĐỦ.
+     *
+     * ⚠️ Bản cũ gom bằng vòng lặp "cho đơn vào rồi mới trừ tiền":
+     *     if (budget <= 0) break; covered.push(o); budget -= o.total;
+     * nên đơn cuối luôn bị lấy TRỌN dù tiền không đủ. Với 70.000đ và ba đơn
+     * 45+15+25, nó liệt kê cả ba (85.000đ) trong khi dòng tổng ghi 70.000đ —
+     * đúng tờ phiếu sai của bàn 13 sáng 05/08/2026.
+     *
+     * Nay `amount` luôn bằng `breakdown.due` (máy chủ tự tính, xem POST /requests)
+     * nên danh sách này khớp khít với số tiền. Chốt chặn dưới đây canh điều đó.
+     */
+    const owing = breakdown.lines.filter((l) => l.remaining > 0);
+    const covered = (owing.length > 0 ? owing : [breakdown.lines[0]]).map((l) => l.order);
+    const coveredDue = owing.reduce((s, l) => s + l.remaining, 0);
 
-      let budget = amount;
-      covered = [];
-      for (const o of [target, ...sessionOrders.filter((s) => s.id !== target.id)]) {
-        if (budget <= 0) break;
-        covered.push(o);
-        budget -= o.total;
-      }
+    // Bất biến: phiếu KHÔNG được tự mâu thuẫn. Lệch là có ai đó lại thêm một cách
+    // tính thứ hai — hét lên ngay thay vì lặng lẽ in ra tờ giấy sai.
+    if (coveredDue !== amount) {
+      logger.error("Phiếu QR lệch: món liệt kê không khớp số tiền phải trả", {
+        orderId,
+        amountTrenQR: amount,
+        tongMonLietKe: coveredDue,
+      });
     }
 
     const rawItems = await db
@@ -552,14 +595,30 @@ async function buildTransferBillPayload(orderId: string, amount: number) {
       tableNumber = row?.number ?? null;
     }
 
+    /*
+     * Ba dòng tiền cuối phiếu phải CỘNG ĐÚNG với nhau: Tạm tính + Thuế = TỔNG CẦN TRẢ.
+     *
+     * Nên `subtotal` suy NGƯỢC ra từ `amount` chứ không cộng độc lập từ các đơn.
+     * Cộng độc lập là mở lại đúng cái cửa đã làm hỏng phiếu bàn 13: hai con số
+     * cùng nằm trên một tờ giấy mà tính bằng hai đường khác nhau thì sớm muộn
+     * cũng lệch, và người cầm tờ giấy không có cách nào biết bên nào đúng.
+     *
+     * Thuế chỉ lấy của những đơn còn nợ TRỌN VẸN — đơn trả dở thì phần thuế đã
+     * đi kèm phần tiền đã trả rồi.
+     */
+    const coveredTax = owing.reduce(
+      (s, l) => s + (l.remaining === l.order.total ? l.order.tax : 0),
+      0,
+    );
+
     return {
       orderNumber: target.order_number,
       customerName: target.customer_name,
       tableNumber,
-      subtotal: covered.reduce((s, o) => s + o.subtotal, 0),
-      tax: covered.reduce((s, o) => s + o.tax, 0),
-      // Tổng = ĐÚNG số tiền trên mã QR, không phải tổng các đơn. Trả một phần thì
-      // hai số lệch nhau, mà con số khách phải chuyển mới là con số cần in to.
+      subtotal: amount - coveredTax,
+      tax: coveredTax,
+      // Tổng = ĐÚNG số tiền trên mã QR. Đây là con số khách phải chuyển, và cũng
+      // là con số máy chủ sẽ đòi khớp lúc tiền về.
       total: amount,
       items,
     };
@@ -812,6 +871,26 @@ async function settleMatchedRequest(request: any, args: {
       .set({ status: "cancelled", cancelled_at: now, updated_at: now })
       .where(eq(schema.paymentRequests.id, request.id));
     await logWebhookEvent({ ...base, matched: false, reason: "stale_order_amount" });
+
+    /*
+     * ⚠️ TIỀN ĐÃ VÀO TÀI KHOẢN nhưng không khớp — PHẢI báo, không được im.
+     *
+     * Bản cũ chỉ ghi log rồi thôi. Sáng 05/08/2026 bàn 13: khách chuyển 70.000đ
+     * lúc 08:43:25, máy chủ biết thừa là tiền đã về và biết cả lý do lệch, mà
+     * không nói với ai. Thu ngân ngồi nhìn "Đang chờ chuyển khoản" thêm 31 phút.
+     */
+    await wsManager.publish(`branch:${request.branch_id}`, {
+      type: "payment:mismatch",
+      payload: {
+        paymentRequestId: request.id,
+        orderId: request.order_id,
+        receivedAmount: args.amountCents,
+        expectedAmount: request.amount,
+        currentDue,
+      },
+      timestamp: Date.now(),
+    });
+
     return { matched: false, reason: "stale_order_amount" };
   }
 
@@ -1692,12 +1771,31 @@ payments.post(
       );
     }
 
-    const [paid] = await db
-      .select({ total_paid: sum(schema.payments.amount) })
-      .from(schema.payments)
-      .where(and(eq(schema.payments.order_id, order.id), eq(schema.payments.status, "completed")));
-    const remaining = Math.max(0, order.total - Number(paid?.total_paid || 0));
-    const amount = body.amount || remaining || order.total;
+    /*
+     * ⭐ SỐ TIỀN DO MÁY CHỦ TỰ TÍNH. Cố ý BỎ QUA `body.amount`.
+     *
+     * ⚠️ Bản cũ lấy thẳng `body.amount || remaining || order.total`, mà `remaining`
+     * lại chỉ tính RIÊNG MỘT ĐƠN trong khi lúc nhận tiền đòi khớp tổng CẢ BÀN.
+     * Hai thước đo khác nhau ở hai đầu → in ra được tờ phiếu mà chính máy chủ
+     * không bao giờ chấp nhận. Sáng 05/08/2026 bàn 13 in phiếu 70.000đ khi bàn
+     * nợ 85.000đ; khách chuyển đúng 70.000đ rồi bị từ chối, bàn treo 31 phút.
+     *
+     * Con số máy POS gửi lên không đáng tin: nó đọc từ bộ nhớ đệm trên máy, bấm
+     * nhanh sau khi mở bàn là gửi số cũ. Máy chủ mới là nơi biết sự thật.
+     */
+    const breakdown = await dueBreakdown(order.id);
+    const amount = breakdown?.due ?? 0;
+
+    // Vẫn nhận trường `amount` cho máy khách cũ, nhưng chỉ để GHI LẠI khi lệch.
+    // Đây là cái chuông báo bộ nhớ đệm phía POS đang cũ — im lặng bỏ qua thì lần
+    // sau lại phải đi dò từ đầu như hôm nay.
+    if (body.amount && body.amount !== amount) {
+      logger.warn("Máy POS xin phiếu QR với số tiền lệch — đã dùng số của máy chủ", {
+        orderId: order.id,
+        posGuiLen: body.amount,
+        mayChuTinh: amount,
+      });
+    }
 
     if (amount <= 0) {
       return c.json(
@@ -1979,6 +2077,23 @@ payments.get("/requests/by-order/:orderId", requirePermission("payments:read"), 
 
   if (!request) return c.json({ success: true, data: null });
 
+  // Cùng chốt chặn với GET /requests/:id — xem chú thích đầy đủ ở dưới đó.
+  // Thiếu chỗ này thì mở lại hộp thoại là nhận về đúng cái phiếu đã lệch số tiền,
+  // rồi bấm "In lại phiếu" in ra y hệt tờ giấy sai.
+  const due = await currentDueForRequest(request);
+  if (due !== request.amount) {
+    await db
+      .update(schema.paymentRequests)
+      .set({ status: "cancelled", cancelled_at: now, updated_at: now })
+      .where(eq(schema.paymentRequests.id, request.id));
+    logger.info("Bỏ phiếu QR cũ vì món trên bàn đã đổi", {
+      paymentRequestId: request.id,
+      tienTrenPhieu: request.amount,
+      tienBanDangNo: due,
+    });
+    return c.json({ success: true, data: null });
+  }
+
   // Chuyển khoản ngân hàng cần khối `bank` để in lại phiếu; MoMo thì tiền vào ví
   // nên không có số tài khoản nào để in.
   let bank = null;
@@ -2026,6 +2141,36 @@ payments.get("/requests/:id", requirePermission("payments:read"), async (c) => {
       .where(eq(schema.paymentRequests.id, request.id))
       .returning();
     return c.json({ success: true, data: expired });
+  }
+
+  /*
+   * ⭐ Phiếu QR TỰ HUỶ khi số tiền không còn đúng.
+   *
+   * Đặt chốt chặn ở đường ĐỌC chứ không đi gắn vào từng chỗ sửa món (thêm món,
+   * tách bàn, huỷ đơn, thu tiền mặt một phần…). Gắn từng chỗ thì chỉ cần quên
+   * một chỗ là lỗi quay lại, mà quên chỗ nào thì không ai biết cho tới khi có
+   * khách chuyển tiền hụt. Hộp thoại thanh toán hỏi lại phiếu này mỗi 5 giây,
+   * nên mọi đường làm lệch số tiền đều bị bắt trong vòng 5 giây — kể cả đường
+   * mai mốt mới viết.
+   *
+   * Vẫn còn hai lớp nữa phía sau: lúc tiền về `settleMatchedRequest` so lại lần
+   * nữa, và nếu lệch thì bắn `payment:mismatch` cho thu ngân.
+   */
+  if (request.status === "pending") {
+    const due = await currentDueForRequest(request);
+    if (due !== request.amount) {
+      const [cancelled] = await db
+        .update(schema.paymentRequests)
+        .set({ status: "cancelled", cancelled_at: now, updated_at: now })
+        .where(eq(schema.paymentRequests.id, request.id))
+        .returning();
+      logger.info("Huỷ phiếu QR vì món trên bàn đã đổi sau khi in", {
+        paymentRequestId: request.id,
+        tienTrenPhieu: request.amount,
+        tienBanDangNo: due,
+      });
+      return c.json({ success: true, data: { ...cancelled, stale_reason: "amount_changed", current_due: due } });
+    }
   }
 
   return c.json({ success: true, data: request });

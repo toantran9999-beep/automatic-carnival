@@ -167,10 +167,41 @@ function webhookTransactionId(body: any) {
   );
 }
 
+/**
+ * Đọc số tiền VND từ một chuỗi do bên ngoài viết (JSON webhook hoặc chữ trong
+ * thông báo đẩy của app ngân hàng).
+ *
+ * ⚠️ Đây là chỗ dễ mất tiền nhất trong cả hệ thống, và trước đây có HAI bản khác
+ * nhau cùng làm việc này, sai theo hai kiểu ngược nhau:
+ *  - Bản của cầu ngân hàng xóa sạch `.` và `,` → "+5,000.00 VND" thành 500.000đ,
+ *    gấp 100 lần. Khâu chốt chỉ so "nhận >= phải trả" nên khách chuyển 5.000đ vẫn
+ *    đóng được hóa đơn 50.000đ, mà sổ sách trông vẫn khớp.
+ *  - Bản của webhook giữ lại `.` → "1.000.000" thành NaN → 0 → đơn treo vĩnh viễn.
+ *
+ * Quy tắc: `.` hoặc `,` đi kèm ĐÚNG 3 chữ số là dấu phân nghìn (bỏ); đi kèm 1-2
+ * chữ số ở CUỐI chuỗi là phần thập phân (cắt bỏ, tiền Việt không dùng hào).
+ *
+ * Tự kiểm:
+ *   "5,000.00" → 5000    "18.000"    → 18000
+ *   "1.234.567" → 1234567  "1,000,000" → 1000000
+ *   "50000"    → 50000   "18.000,50" → 18000
+ */
+export function parseVndAmount(raw: unknown): number {
+  let s = String(raw ?? "").replace(/[^\d.,]/g, "");
+  if (!s) return 0;
+  // Phần thập phân: dấu cuối cùng còn 1-2 chữ số theo sau và không còn dấu nào nữa.
+  s = s.replace(/[.,](\d{1,2})$/, "");
+  // Còn lại đều là phân nghìn.
+  s = s.replace(/[.,]/g, "");
+  const parsed = Number(s);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function webhookAmountCents(body: any) {
   const raw = body.transferAmount ?? body.transfer_amount ?? body.amount ?? body.value ?? 0;
-  const parsed = Number(String(raw).replace(/[^\d.-]/g, ""));
-  return Number.isFinite(parsed) ? Math.round(parsed * 100) : 0;
+  // Số JSON thuần (SePay gửi kiểu này) đi thẳng, khỏi qua bộ bóc chuỗi.
+  if (typeof raw === "number" && Number.isFinite(raw)) return Math.round(raw * 100);
+  return parseVndAmount(raw) * 100;
 }
 
 function webhookContent(body: any) {
@@ -292,13 +323,21 @@ async function completePaymentForOrder(tx: any, args: {
   };
 
   if (order.table_session_id) {
+    // ⚠️ Chỉ loại `cancelled`, KHÔNG loại `completed` — phải khớp CHÍNH XÁC tập đơn
+    // mà `dueBreakdown` đã dùng để tính số tiền in lên mã QR.
+    //
+    // Đơn có thể sang `completed` mà chưa hề có khoản thu nào (nhân viên bấm
+    // "served → completed" tay). Bản cũ lọc bỏ `completed` ở đây nên phiếu QR đòi
+    // cả phần đó, khách chuyển đủ, mà lúc rải tiền thì đơn đó vô hình → phần tiền
+    // ấy KHÔNG thành dòng `payments` nào và bị vứt im lặng. Tiền nằm trong tài
+    // khoản ngân hàng nhưng sổ quỹ ca hụt đúng số đó.
     const sessionOrders = await tx
       .select()
       .from(schema.orders)
       .where(
         and(
           eq(schema.orders.table_session_id, order.table_session_id),
-          sql`orders.status NOT IN ('completed', 'cancelled')`,
+          sql`orders.status <> 'cancelled'`,
         ),
       )
       .orderBy(schema.orders.created_at);
@@ -306,6 +345,16 @@ async function completePaymentForOrder(tx: any, args: {
     const sortedOrders = [order, ...sessionOrders.filter((o: any) => o.id !== order.id)];
     for (const o of sortedOrders) {
       await payOrder(o);
+    }
+
+    // Tiền về nhiều hơn tổng nợ của cả phiên. Không được im: đây là dấu hiệu phiếu
+    // QR và sổ đã lệch nhau, phải có vết để đối soát chứ đừng nuốt như bản cũ.
+    if (amountToDistribute > 0) {
+      logger.error("Thu tiền dư so với tổng nợ của phiên — phần dư không ghi được", {
+        orderId: order.id,
+        tableSessionId: order.table_session_id,
+        leftoverCents: amountToDistribute,
+      });
     }
 
     const otherUncompletedOrders = await tx
@@ -894,7 +943,15 @@ async function settleMatchedRequest(request: any, args: {
     return { matched: false, reason: "stale_order_amount" };
   }
 
-  if (args.amountCents < request.amount) {
+  /*
+   * ⚠️ So theo ĐỒNG, không so theo xu.
+   *
+   * Mã QR chỉ chở được số nguyên đồng (`centsToVnd` làm tròn), nên đơn có xu lẻ —
+   * sinh ra từ giảm giá phần trăm hoặc tách bàn — thì khách chuyển ĐÚNG số in trên
+   * phiếu vẫn thiếu vài xu so với `request.amount`. So theo xu là đơn đó không bao
+   * giờ chốt được, dù khách không hề làm sai.
+   */
+  if (centsToVnd(args.amountCents) < centsToVnd(request.amount)) {
     await db
       .update(schema.paymentRequests)
       .set({
@@ -1082,10 +1139,10 @@ function parseBankNotificationAmount(text: string): {
   direction: "in" | "out" | "unknown";
 } {
   const flat = stripDiacritics(text).toLowerCase();
-  const toVnd = (raw: string) => {
-    const parsed = Number(raw.replace(/[.,\s]/g, ""));
-    return Number.isFinite(parsed) ? parsed : 0;
-  };
+  // ⚠️ Dùng CHUNG `parseVndAmount` với webhook. Bản cũ ở đây xóa cả dấu thập phân
+  // nên "+5,000.00 VND" đọc thành 500.000đ — gấp 100 lần, và vì khâu chốt chỉ so
+  // "nhận >= phải trả" nên khách chuyển 5.000đ vẫn đóng được hóa đơn 50.000đ.
+  const toVnd = (raw: string) => parseVndAmount(raw);
 
   // Dạng có dấu, hay gặp nhất: "+18,000 VND" / "-50.000đ"
   const signed = flat.match(/([+\-])\s*(\d[\d.,\s]*?)\s*(?:vnd|d)\b/);
@@ -1419,20 +1476,47 @@ payments.post("/webhooks/momo", async (c) => {
     return c.body(null, 204);
   }
 
-  if (amountCents !== request.amount) {
-    await log(false, "amount_mismatch", request.branch_id, request.id);
-    return c.body(null, 204);
-  }
+  /*
+   * ⚠️ So theo ĐỒNG chứ không theo xu — cùng lý do với đường chuyển khoản ngân hàng:
+   * số gửi sang MoMo là `centsToVnd(amount)` đã làm tròn, nên đơn có xu lẻ (giảm giá
+   * phần trăm, tách bàn) thì IPN trả về không bao giờ bằng `request.amount` tính
+   * theo xu → giao dịch nào cũng "lệch số tiền" dù khách đã bị trừ tiền trong ví.
+   */
+  const momoMismatch = centsToVnd(amountCents) !== centsToVnd(request.amount);
 
   // Đơn có thể đã được thu tiền mặt / gọi thêm món sau khi dựng QR. Chốt tiếp là
   // ghi thừa một khoản thu không có thật vào sổ.
-  const due = await currentDueForRequest(request);
-  if (due === null || due !== request.amount) {
-    await db
-      .update(schema.paymentRequests)
-      .set({ status: "cancelled", cancelled_at: new Date(), updated_at: new Date() })
-      .where(eq(schema.paymentRequests.id, request.id));
-    await log(false, "stale_order_amount", request.branch_id, request.id);
+  const due = momoMismatch ? null : await currentDueForRequest(request);
+  const staleAmount = !momoMismatch && (due === null || due !== request.amount);
+
+  if (momoMismatch || staleAmount) {
+    if (staleAmount) {
+      await db
+        .update(schema.paymentRequests)
+        .set({ status: "cancelled", cancelled_at: new Date(), updated_at: new Date() })
+        .where(eq(schema.paymentRequests.id, request.id));
+    }
+    await log(false, momoMismatch ? "amount_mismatch" : "stale_order_amount", request.branch_id, request.id);
+
+    /*
+     * ⚠️ TIỀN ĐÃ BỊ TRỪ TRONG VÍ KHÁCH mà đơn không chốt — phải báo lên màn hình
+     * thu ngân, y như đường chuyển khoản ngân hàng đã làm.
+     *
+     * Bản cũ hai nhánh này chỉ ghi log rồi trả 204: khách trả xong, đơn treo, và
+     * không một ai trong quán biết là tiền đã vào.
+     */
+    await wsManager.publish(`branch:${request.branch_id}`, {
+      type: "payment:mismatch",
+      payload: {
+        paymentRequestId: request.id,
+        orderId: request.order_id,
+        receivedAmount: amountCents,
+        expectedAmount: request.amount,
+        currentDue: due,
+      },
+      timestamp: Date.now(),
+    });
+
     return c.body(null, 204);
   }
 
@@ -1496,7 +1580,9 @@ async function reconcileMomoOnce() {
       if (result.resultCode !== 0) continue;
 
       const amountCents = Math.round(result.amount * 100);
-      if (amountCents !== request.amount) continue;
+      // So theo ĐỒNG — cùng lý do với nhánh IPN: số gửi sang MoMo đã làm tròn về
+      // đồng, đơn có xu lẻ mà so theo xu thì không bao giờ đối soát được.
+      if (centsToVnd(amountCents) !== centsToVnd(request.amount)) continue;
 
       const due = await currentDueForRequest(request);
       if (due === null || due !== request.amount) continue;
@@ -2268,7 +2354,9 @@ payments.post(
     const remaining = order.total - previouslyPaid;
 
     let amountToDistribute = body.amount;
-    const paymentsCreated = [];
+    // Kiểu khai báo tường minh: bên dưới có đọc `paymentsCreated.length` ngay trong
+    // lượt insert, để TypeScript tự suy kiểu thì thành vòng lặp suy diễn.
+    const paymentsCreated: any[] = [];
     let fullyPaid = false;
 
     if (order.table_session_id) {
@@ -2322,7 +2410,15 @@ payments.post(
             method: body.method,
             amount: payAmount,
             reference: body.reference,
-            tip: o.id === order.id ? body.tip : 0, // only apply tip to the main order
+            /*
+             * Boa gắn vào dòng thu ĐẦU TIÊN của lượt này.
+             *
+             * ⚠️ Bản cũ gắn vào "đơn đích" (`o.id === order.id`). Nhưng vòng lặp có
+             * `continue` khi đơn đó đã trả đủ — thu ngân bấm thanh toán trên đơn đã
+             * xong để trả nốt đơn khác trong phiên thì dòng mang boa KHÔNG BAO GIỜ
+             * được tạo, tiền boa khách đưa biến mất khỏi hệ thống.
+             */
+            tip: paymentsCreated.length === 0 ? body.tip : 0,
             status: "completed",
           })
           .returning();

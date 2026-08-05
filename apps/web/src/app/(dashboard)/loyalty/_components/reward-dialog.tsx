@@ -24,6 +24,16 @@ const defaultForm = {
   discountValue: 10,
 };
 
+/**
+ * `discount_value` mang HAI đơn vị tùy `discount_type`: phần trăm thì là số trần,
+ * "fixed" thì là TIỀN (máy chủ lưu xu — xem applyRedemption trong order.service).
+ *
+ * ⚠️ Bản cũ gửi thẳng số nhập cho cả hai, nên phần thưởng "giảm 20.000đ" thực tế
+ * chỉ giảm 200đ. Vào form phải chia ngược lại, kẻo sửa một lần là số nhỏ đi 100 lần.
+ */
+const toFormValue = (type: string, v: number) => (type === "fixed" ? Math.round(v / 100) : v);
+const toApiValue = (type: string, v: number) => (type === "fixed" ? Math.round(v) * 100 : v);
+
 export function RewardDialog({
   open,
   onOpenChange,
@@ -56,7 +66,7 @@ export function RewardDialog({
         description: editData.description || "",
         pointsCost: editData.points_cost,
         discountType: editData.discount_type as "percentage" | "fixed",
-        discountValue: editData.discount_value,
+        discountValue: toFormValue(editData.discount_type, editData.discount_value),
       });
     } else {
       setForm(defaultForm);
@@ -74,7 +84,7 @@ export function RewardDialog({
           description: form.description || undefined,
           pointsCost: form.pointsCost,
           discountType: form.discountType,
-          discountValue: form.discountValue,
+          discountValue: toApiValue(form.discountType, form.discountValue),
         },
         {
           onSuccess: () => {
@@ -92,7 +102,7 @@ export function RewardDialog({
           description: form.description || undefined,
           pointsCost: form.pointsCost,
           discountType: form.discountType,
-          discountValue: form.discountValue,
+          discountValue: toApiValue(form.discountType, form.discountValue),
         },
         {
           onSuccess: () => {

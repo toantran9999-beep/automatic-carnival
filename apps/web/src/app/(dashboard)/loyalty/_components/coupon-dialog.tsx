@@ -20,6 +20,17 @@ import { toast } from "sonner";
 import { useTranslation } from "@/stores/lang-store";
 import { formatCurrency } from "@/lib/utils";
 
+/**
+ * Đồng (chủ quán gõ) → xu (máy chủ lưu).
+ *
+ * ⚠️ Mọi ô nhập TIỀN trong app đều phải qua bước này — xem product-dialog.tsx và
+ * shift-controls.tsx. Hộp thoại này trước đây gửi thẳng số nhập nên toàn bộ mã
+ * giảm giá bị nhỏ đi 100 lần mà không có dấu hiệu nào báo sai.
+ */
+function vndToCents(vnd: number): number {
+  return Math.round(vnd) * 100;
+}
+
 function generateCouponCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "REST-";
@@ -70,7 +81,13 @@ export function CreateCouponDialog({
     };
 
     if (["percentage", "fixed", "item_discount", "category_discount"].includes(form.type)) {
-      payload.discountValue = form.discountValue;
+      // ⚠️ Chỉ "fixed" là SỐ TIỀN — quy đồng → xu như mọi ô tiền khác trong app
+      // (xem product-dialog / shift-controls). Ba loại kia là phần trăm, để nguyên.
+      //
+      // Bản cũ gửi thẳng số nhập: chủ quán gõ 50000 định giảm 50.000đ thì máy chủ
+      // hiểu là 50.000 xu = 500đ.
+      payload.discountValue =
+        form.type === "fixed" ? vndToCents(form.discountValue) : form.discountValue;
     }
     if (["item_free", "item_discount"].includes(form.type) && form.menuItemId) {
       payload.menuItemId = form.menuItemId;
@@ -82,8 +99,10 @@ export function CreateCouponDialog({
       payload.buyQuantity = form.buyQuantity;
       payload.getQuantity = form.getQuantity;
     }
-    if (form.minOrderAmount > 0) payload.minOrderAmount = form.minOrderAmount;
-    if (form.maxDiscountAmount > 0) payload.maxDiscountAmount = form.maxDiscountAmount;
+    // Hai ngưỡng này cũng là tiền → xu. Bản cũ gửi thô nên "đơn từ 200.000đ" thành
+    // "đơn từ 2.000đ" (mọi đơn đều thỏa) và "giảm tối đa 50.000đ" thành 500đ.
+    if (form.minOrderAmount > 0) payload.minOrderAmount = vndToCents(form.minOrderAmount);
+    if (form.maxDiscountAmount > 0) payload.maxDiscountAmount = vndToCents(form.maxDiscountAmount);
     if (form.maxUsesTotal > 0) payload.maxUsesTotal = form.maxUsesTotal;
     if (form.maxUsesPerCustomer > 0) payload.maxUsesPerCustomer = form.maxUsesPerCustomer;
     if (form.startsAt) payload.startsAt = form.startsAt;

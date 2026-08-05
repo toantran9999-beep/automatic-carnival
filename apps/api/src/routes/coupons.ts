@@ -20,7 +20,10 @@ const createCouponSchema = z.object({
   name: z.string().min(1).max(255),
   description: z.string().max(500).optional(),
   type: z.enum(["percentage", "fixed", "item_free", "item_discount", "category_discount", "buy_x_get_y"]),
-  discountValue: z.number().int().optional(),
+  // ⚠️ min(0): giá trị ÂM làm phép giảm giá đổi dấu → đơn hàng TĂNG tiền.
+  // Gõ nhầm "-50" cho loại phần trăm là đơn 100.000đ thành 150.000đ, mà phiếu in
+  // ra vẫn ghi "Giảm giá −50.000đ".
+  discountValue: z.number().int().min(0).optional(),
   menuItemId: z.string().uuid().optional(),
   categoryId: z.string().uuid().optional(),
   buyQuantity: z.number().int().min(1).optional(),
@@ -37,7 +40,8 @@ const updateCouponSchema = z.object({
   name: z.string().min(1).max(255).optional(),
   description: z.string().max(500).optional(),
   status: z.enum(["active", "inactive", "expired"]).optional(),
-  discountValue: z.number().int().optional(),
+  /** min(0) — xem lý do ở createCouponSchema. */
+  discountValue: z.number().int().min(0).optional(),
   menuItemId: z.string().uuid().nullable().optional(),
   categoryId: z.string().uuid().nullable().optional(),
   buyQuantity: z.number().int().min(1).nullable().optional(),

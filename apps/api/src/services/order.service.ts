@@ -66,8 +66,15 @@ interface ResolvedItems {
  *
  * ⚠️ Dùng CHUNG cho cả tạo đơn mới lẫn thêm món vào đơn có sẵn. Đừng chép đôi khối
  * này — giá bán hai đường mà lệch nhau thì rất khó phát hiện, tới lúc đối soát mới lòi.
+ *
+ * ⚠️ PHẢI truyền `organizationId` + `branchId`: giá bán lấy từ DB theo id máy khách
+ * gửi lên, nên thiếu hai khóa này là ai cũng đặt được món/tùy chọn của CHI NHÁNH KHÁC
+ * và mua theo giá bên đó. Xem khối kiểm tra bên dưới.
  */
-async function resolveOrderItems(items: OrderItemInput[]): Promise<ResolvedItems> {
+async function resolveOrderItems(
+  items: OrderItemInput[],
+  scope: { organizationId: string; branchId: string },
+): Promise<ResolvedItems> {
   // Get menu items for price calculation (bỏ qua món nhập tay không có menuItemId)
   const menuItemIds = items
     .map((i) => i.menuItemId)
@@ -76,7 +83,15 @@ async function resolveOrderItems(items: OrderItemInput[]): Promise<ResolvedItems
     ? await db
         .select()
         .from(schema.menuItems)
-        .where(inArray(schema.menuItems.id, menuItemIds))
+        .where(
+          and(
+            inArray(schema.menuItems.id, menuItemIds),
+            // Khóa theo chi nhánh đang bán: id món của quán/chi nhánh khác coi như
+            // không tồn tại, chứ không âm thầm bán theo giá bên đó.
+            eq(schema.menuItems.branch_id, scope.branchId),
+            eq(schema.menuItems.organization_id, scope.organizationId),
+          ),
+        )
     : [];
 
   const menuItemMap = new Map(menuItemsResult.map((mi) => [mi.id, mi]));
@@ -90,16 +105,43 @@ async function resolveOrderItems(items: OrderItemInput[]): Promise<ResolvedItems
     string,
     { id: string; name: string; price: number }
   >();
+  /** modifierId -> các món được phép dùng tùy chọn đó (theo thực đơn đã cấu hình). */
+  const allowedItemsByModifier = new Map<string, Set<string>>();
   if (allModifierIds.length > 0) {
+    // ⚠️ KHÔNG lấy tùy chọn theo id trần. Phải đi qua nhóm tùy chọn đã gắn vào món
+    // (menu_item_modifier_groups) và nhóm phải thuộc đúng chi nhánh đang bán.
+    // Thiếu chốt này thì máy khách gắn tùy chọn giảm giá của MÓN KHÁC (hoặc chi
+    // nhánh khác) vào bất kỳ món nào — giá bán tụt mà sổ sách trông vẫn bình thường.
     const modifierRecords = await db
       .select({
         id: schema.modifiers.id,
         name: schema.modifiers.name,
         price: schema.modifiers.price,
+        item_id: schema.menuItemModifierGroups.item_id,
       })
       .from(schema.modifiers)
-      .where(inArray(schema.modifiers.id, allModifierIds));
-    modifierMap = new Map(modifierRecords.map((m) => [m.id, m]));
+      .innerJoin(
+        schema.modifierGroups,
+        eq(schema.modifierGroups.id, schema.modifiers.group_id),
+      )
+      .innerJoin(
+        schema.menuItemModifierGroups,
+        eq(schema.menuItemModifierGroups.group_id, schema.modifierGroups.id),
+      )
+      .where(
+        and(
+          inArray(schema.modifiers.id, allModifierIds),
+          eq(schema.modifiers.is_available, true),
+          eq(schema.modifierGroups.branch_id, scope.branchId),
+          eq(schema.modifierGroups.organization_id, scope.organizationId),
+        ),
+      );
+    for (const m of modifierRecords) {
+      modifierMap.set(m.id, { id: m.id, name: m.name, price: m.price });
+      const allowed = allowedItemsByModifier.get(m.id) ?? new Set<string>();
+      allowed.add(m.item_id);
+      allowedItemsByModifier.set(m.id, allowed);
+    }
   }
 
   // Validate items and calculate totals
@@ -139,11 +181,28 @@ async function resolveOrderItems(items: OrderItemInput[]): Promise<ResolvedItems
     if (item.modifiers?.length) {
       for (const mod of item.modifiers) {
         const modifier = modifierMap.get(mod.modifierId);
-        if (modifier) modifierPricePerUnit += modifier.price;
+        // ⚠️ Trước đây `if (modifier)` — tùy chọn không tra được thì ÂM THẦM bỏ qua,
+        // nghĩa là giá bán đổi mà không ai biết. Nay không tra được (đã ngừng bán,
+        // sai chi nhánh, hoặc không thuộc thực đơn) thì chặn hẳn đơn.
+        if (!modifier || !allowedItemsByModifier.get(mod.modifierId)?.has(menuItem.id)) {
+          throw new OrderValidationError(
+            `Tùy chọn không hợp lệ cho món "${menuItem.name}"`,
+          );
+        }
+        modifierPricePerUnit += modifier.price;
       }
     }
 
     const itemTotal = (menuItem.price + modifierPricePerUnit) * item.quantity;
+
+    // Chốt chặn cuối: tùy chọn giảm giá là CỐ Ý (VD "Nhẹ" -2.000đ), nhưng cộng dồn
+    // tới mức dòng món ra số âm thì chắc chắn là gói tin bịa, không phải cách bán.
+    if (itemTotal < 0) {
+      throw new OrderValidationError(
+        `Tùy chọn làm món "${menuItem.name}" thành giá âm`,
+      );
+    }
+
     subtotal += itemTotal;
 
     orderItemsData.push({
@@ -239,7 +298,10 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     createdBy,
   } = params;
 
-  const { subtotal, orderItemsData, modifierMap } = await resolveOrderItems(items);
+  const { subtotal, orderItemsData, modifierMap } = await resolveOrderItems(items, {
+    organizationId,
+    branchId,
+  });
   const taxRate = await getBranchTaxRate(branchId);
 
   // Create order + items + coupon redemption in a transaction
@@ -288,6 +350,8 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
       discount = couponResult.discount;
       couponId = couponResult.couponId;
     }
+    /** Riêng phần của MÃ GIẢM GIÁ — dòng coupon_redemptions phải ghi đúng số này. */
+    const couponDiscount = discount;
 
     // Apply reward redemption discount (stacks with coupon)
     let redemptionDiscount = 0;
@@ -369,7 +433,10 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
         coupon_id: couponId,
         customer_id: customerId || null,
         order_id: order.id,
-        discount_applied: discount,
+        // ⚠️ `couponDiscount` chứ KHÔNG phải `discount`: `discount` lúc này đã cộng
+        // thêm phần đổi điểm thưởng. Ghi cả cụm vào đây là báo cáo hiệu quả mã giảm
+        // giá thổi phồng lên, và phần khuyến mãi bị đếm hai lần khi đối soát.
+        discount_applied: couponDiscount,
       });
       // Increment current_uses
       await tx
@@ -444,8 +511,12 @@ export async function addItemsToOrder(
     throw new OrderValidationError("Đơn đã thanh toán xong, vui lòng tạo đơn mới");
   }
 
+  // Lấy tổ chức từ chính đơn đang mở — cùng chi nhánh, cùng thực đơn với lúc mở đơn.
   const { subtotal: addedSubtotal, orderItemsData, modifierMap } =
-    await resolveOrderItems(items);
+    await resolveOrderItems(items, {
+      organizationId: order.organization_id,
+      branchId,
+    });
   const taxRate = await getBranchTaxRate(branchId);
 
   return await db.transaction(async (tx) => {
@@ -669,8 +740,12 @@ async function applyCoupon(params: ApplyCouponParams, tx: TxOrDb): Promise<{ dis
     discount = coupon.max_discount_amount;
   }
 
-  // Ensure discount doesn't exceed subtotal
-  discount = Math.min(discount, subtotal);
+  // Kẹp cả HAI đầu: không quá tiền hàng, và không âm.
+  //
+  // ⚠️ Thiếu `Math.max(0, …)` là giảm giá âm chạy ngược — `total = subtotal − discount`
+  // nên discount âm làm đơn TĂNG tiền. Validator đã chặn ở đường tạo mã, nhưng mã cũ
+  // trong DB thì chỉ có chỗ này chặn được. (`applyRedemption` vốn đã kẹp đúng.)
+  discount = Math.max(0, Math.min(discount, subtotal));
 
   return { discount, couponId: coupon.id };
 }

@@ -6,7 +6,7 @@ import Image from "next/image";
 import { redirect, useRouter } from "next/navigation";
 import { Button } from "@restai/ui/components/button";
 import { Badge } from "@restai/ui/components/badge";
-import { useCartStore } from "@/stores/cart-store";
+import { useCartStore, cartLineKey } from "@/stores/cart-store";
 import { useCustomerStore } from "@/stores/customer-store";
 import { formatCurrency, cn } from "@/lib/utils";
 import { toThumbUrl } from "@/lib/image-thumb";
@@ -78,7 +78,7 @@ export default function CustomerMenuPage({
   const { branchSlug, tableCode } = use(params);
   const router = useRouter();
   const { t } = useTranslation();
-  const { addItem, getItemCount, items, updateQuantity } = useCartStore();
+  const { addItem, getItemCount, getSubtotal, items, updateQuantity } = useCartStore();
   const setSession = useCustomerStore((s) => s.setSession);
   const {
     menuData,
@@ -227,7 +227,10 @@ export default function CustomerMenuPage({
   }
 
   const itemCount = getItemCount();
-  const cartTotal = items.reduce((sum, i) => sum + i.unitPrice * i.quantity, 0);
+  // Dùng chung phép tính với trang Giỏ hàng. Bản cũ cộng `unitPrice * quantity`,
+  // BỎ QUÊN tiền tùy chọn — nút giỏ ghi 60.000đ mà bấm vào trang giỏ lại là
+  // 70.000đ, khách thấy giá nhảy.
+  const cartTotal = getSubtotal();
 
   const handleAddItem = (item: MenuItem) => {
     addItem({
@@ -239,8 +242,15 @@ export default function CustomerMenuPage({
     });
   };
 
+  /**
+   * Số lượng của dòng KHÔNG tùy chọn — đúng cái mà cặp nút +/− ở đây điều khiển.
+   *
+   * Ly có tùy chọn nằm thành dòng riêng trong giỏ (xem `cartLineKey`); đếm gộp vào
+   * đây thì con số hiện lên không khớp với thứ nút bấm tác động tới.
+   */
   const getItemQty = (itemId: string) => {
-    const cartItem = items.find((i) => i.menuItemId === itemId);
+    const plainKey = cartLineKey(itemId, []);
+    const cartItem = items.find((i) => cartLineKey(i.menuItemId, i.modifiers) === plainKey);
     return cartItem?.quantity || 0;
   };
 
@@ -349,7 +359,7 @@ export default function CustomerMenuPage({
                               className="w-9 h-9 flex items-center justify-center text-foreground hover:text-primary transition-colors"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                updateQuantity(item.id, qty - 1);
+                                updateQuantity(cartLineKey(item.id, []), qty - 1);
                               }}
                             >
                               <Minus className="h-4 w-4" />

@@ -6,7 +6,7 @@ import { useRouter } from "next/navigation";
 import { Button } from "@restai/ui/components/button";
 import { Card, CardContent } from "@restai/ui/components/card";
 import { Input } from "@restai/ui/components/input";
-import { useCartStore } from "@/stores/cart-store";
+import { useCartStore, cartLineKey } from "@/stores/cart-store";
 import { useCustomerStore } from "@/stores/customer-store";
 import { formatCurrency } from "@/lib/utils";
 import { Minus, Plus, Trash2, ArrowLeft, ShoppingBag, Ticket, Check, X, ChevronDown, Gift, ChevronRight } from "lucide-react";
@@ -424,7 +424,9 @@ export default function CartPage({
         items: items.map((item) => ({
           menuItemId: item.menuItemId,
           quantity: item.quantity,
-          notes: notes[item.menuItemId] || undefined,
+          // Ghi chú theo TỪNG DÒNG giỏ, không theo món: hai ly cùng món khác tùy
+          // chọn là hai dòng riêng, ghi chú của ly này không được lây sang ly kia.
+          notes: notes[cartLineKey(item.menuItemId, item.modifiers)] || undefined,
           modifiers: item.modifiers.map((m) => ({
             modifierId: m.modifierId,
           })),
@@ -500,8 +502,13 @@ export default function CartPage({
 
       {/* Cart items */}
       <div className="space-y-3">
-        {items.map((item) => (
-          <Card key={item.menuItemId}>
+        {items.map((item) => {
+          // Khóa dòng = món + đúng bộ tùy chọn. Dùng `menuItemId` trần thì hai ly
+          // cùng món khác tùy chọn sẽ chung một khóa React và chung một nút +/−.
+          const lineKey = cartLineKey(item.menuItemId, item.modifiers);
+          const modTotal = item.modifiers.reduce((s, m) => s + m.price, 0);
+          return (
+          <Card key={lineKey}>
             <CardContent className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex-1 min-w-0">
@@ -509,18 +516,27 @@ export default function CartPage({
                   <p className="text-sm text-muted-foreground">
                     {formatCurrency(item.unitPrice)} {t("customer.each")}
                   </p>
-                  {item.modifiers.length > 0 && (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      {item.modifiers.map((m) => m.name).join(", ")}
+                  {/* Mỗi tùy chọn một dòng KÈM tiền, giống phiếu in. Bản cũ chỉ ghi
+                      tên nên cộng dọc các dòng không ra Tạm tính bên dưới, khách
+                      không hiểu chênh lệch ở đâu ra. */}
+                  {item.modifiers.map((m, idx) => (
+                    <p key={`${m.modifierId}-${idx}`} className="text-xs text-muted-foreground mt-0.5">
+                      + {m.name}
+                      {m.price !== 0 && (
+                        <span className="ml-1 tabular-nums">
+                          {m.price > 0 ? "+" : "−"}
+                          {formatCurrency(Math.abs(m.price))}
+                        </span>
+                      )}
                     </p>
-                  )}
+                  ))}
                 </div>
                 <div className="flex items-center gap-1.5">
                   <Button
                     variant="outline"
                     size="icon"
                     className="h-9 w-9 rounded-full"
-                    onClick={() => updateQuantity(item.menuItemId, item.quantity - 1)}
+                    onClick={() => updateQuantity(lineKey, item.quantity - 1)}
                   >
                     <Minus className="h-4 w-4" />
                   </Button>
@@ -530,17 +546,17 @@ export default function CartPage({
                   <Button
                     size="icon"
                     className="h-9 w-9 rounded-full"
-                    onClick={() => updateQuantity(item.menuItemId, item.quantity + 1)}
+                    onClick={() => updateQuantity(lineKey, item.quantity + 1)}
                   >
                     <Plus className="h-4 w-4" />
                   </Button>
                 </div>
                 <div className="text-right shrink-0">
                   <p className="font-bold text-sm">
-                    {formatCurrency(item.unitPrice * item.quantity)}
+                    {formatCurrency((item.unitPrice + modTotal) * item.quantity)}
                   </p>
                   <button
-                    onClick={() => removeItem(item.menuItemId)}
+                    onClick={() => removeItem(lineKey)}
                     className="text-destructive hover:text-destructive/80 mt-1 p-2 -m-1"
                   >
                     <Trash2 className="h-4 w-4" />
@@ -551,15 +567,14 @@ export default function CartPage({
                 <Input
                   placeholder={t("customer.notesPlaceholder")}
                   className="text-base md:text-sm h-9"
-                  value={notes[item.menuItemId] || ""}
-                  onChange={(e) =>
-                    setNotes({ ...notes, [item.menuItemId]: e.target.value })
-                  }
+                  value={notes[lineKey] || ""}
+                  onChange={(e) => setNotes({ ...notes, [lineKey]: e.target.value })}
                 />
               </div>
             </CardContent>
           </Card>
-        ))}
+          );
+        })}
       </div>
 
       {/* Coupon section */}

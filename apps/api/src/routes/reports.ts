@@ -122,7 +122,12 @@ reports.get("/dashboard", requirePermission("reports:read"), async (c) => {
 
   const today = peruStartOfDay();
 
-  // Today's orders
+  // Doanh thu hôm nay — CHỈ đơn đã hoàn tất.
+  //
+  // ⚠️ Bản cũ không lọc trạng thái nên cộng cả đơn ĐÃ HỦY lẫn đơn đang pha chưa
+  // thu tiền. Cùng một ngày, cùng một chi nhánh mà Bảng điều khiển hiện 1.500.000đ
+  // còn trang Tổng quan hiện 1.000.000đ — hai trang cãi nhau, chủ quán không biết
+  // tin số nào. Các nơi khác (`/overview`, `/sales`, chốt ca) đều lọc `completed`.
   const [orderStats] = await db
     .select({
       totalOrders: count(),
@@ -132,6 +137,7 @@ reports.get("/dashboard", requirePermission("reports:read"), async (c) => {
     .where(
       and(
         ordersCondition,
+        eq(schema.orders.status, "completed"),
         gte(schema.orders.created_at, today),
       ),
     );

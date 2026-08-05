@@ -297,7 +297,7 @@ export default function ProductDetailPage({
   const { branchSlug, tableCode, itemId } = use(params);
   const router = useRouter();
   const { t } = useTranslation();
-  const { addItem, items, updateQuantity } = useCartStore();
+  const { addItem, getQtyForMenuItem } = useCartStore();
   const {
     menuData,
     setMenuData,
@@ -414,8 +414,9 @@ export default function ProductDetailPage({
   }
 
   const category = menuData.categories.find((c) => c.id === item.category_id);
-  const cartItem = items.find((i) => i.menuItemId === item.id);
-  const cartQty = cartItem?.quantity || 0;
+  // Dòng chữ "đã có trong giỏ" đếm GỘP mọi tổ hợp tùy chọn của món này — ở đây chỉ
+  // để thông báo, không có nút nào tác động lên một dòng cụ thể.
+  const cartQty = getQtyForMenuItem(item.id);
 
   const handleAddToCart = () => {
     for (const group of modifierGroups) {
@@ -434,17 +435,17 @@ export default function ProductDetailPage({
 
     const cartModifiers = buildCartModifiers(selectedModifiers, modifierGroups);
 
-    if (cartQty > 0 && cartModifiers.length === 0) {
-      updateQuantity(item.id, cartQty + quantity);
-    } else {
-      addItem({
-        menuItemId: item.id,
-        name: item.name,
-        unitPrice: item.price,
-        quantity,
-        modifiers: cartModifiers,
-      });
-    }
+    // `addItem` tự gộp khi TRÙNG CẢ tùy chọn, và tự tách dòng khi khác — nên không
+    // còn cần nhánh cộng số lượng bằng tay ở đây nữa. Nhánh cũ dùng `cartQty` (đếm
+    // gộp mọi tổ hợp) rồi ghi đè số lượng lên dòng đang có tùy chọn: gọi thêm 1 ly
+    // trơn là ly "thêm shot" trước đó bị nhân đôi mà không ai trả tiền phần shot.
+    addItem({
+      menuItemId: item.id,
+      name: item.name,
+      unitPrice: item.price,
+      quantity,
+      modifiers: cartModifiers,
+    });
     router.push(`/${branchSlug}/${tableCode}/menu`);
   };
 

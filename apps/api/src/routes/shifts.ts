@@ -35,6 +35,7 @@ async function computeSummary(branchId: string, openedAt: Date): Promise<ShiftSu
     .select({
       method: schema.payments.method,
       total: sum(schema.payments.amount),
+      tip: sum(schema.payments.tip),
     })
     .from(schema.payments)
     .where(
@@ -48,10 +49,12 @@ async function computeSummary(branchId: string, openedAt: Date): Promise<ShiftSu
 
   const byMethod: Record<string, number> = {};
   let totalSales = 0;
+  let cashTips = 0;
   for (const r of rows) {
     const amt = Number(r.total || 0);
     byMethod[r.method] = amt;
     totalSales += amt;
+    if (r.method === "cash") cashTips = Number(r.tip || 0);
   }
 
   const [oc] = await db
@@ -66,7 +69,10 @@ async function computeSummary(branchId: string, openedAt: Date): Promise<ShiftSu
     );
 
   return {
-    cashSales: byMethod["cash"] || 0,
+    // ⚠️ Cộng cả TIỀN BOA trả bằng tiền mặt: tiền boa nằm vật lý trong ngăn kéo,
+    // nên `expectedCash` bỏ nó ra là ca nào cũng báo "thừa tiền". Lệch dương đều
+    // đặn thì thu ngân quen mắt, và nó che luôn được lệch âm thật sự.
+    cashSales: (byMethod["cash"] || 0) + cashTips,
     totalSales,
     orderCount: Number(oc?.c || 0),
     byMethod,

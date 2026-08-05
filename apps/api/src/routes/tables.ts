@@ -1472,7 +1472,10 @@ tables.post(
               .update(schema.orderItems)
               .set({
                 quantity: remainingQty,
-                total: unitTotal * remainingQty,
+                // Lấy HIỆU chứ không nhân lại: `total` không chia hết cho số lượng
+                // (dòng đã từng tách, hoặc tùy chọn lẻ) thì nhân lại làm rơi xu mỗi
+                // lần tách, tổng bàn tụt dần mà không ai thấy.
+                total: row.item.total - splitTotal,
               })
               .where(eq(schema.orderItems.id, row.item.id));
           }
@@ -1506,12 +1509,31 @@ tables.post(
           if (subtotal <= 0) {
             await tx.delete(schema.orders).where(eq(schema.orders.id, orderId));
           } else {
+            /*
+             * ⚠️ PHẢI trừ lại `discount`. Bản cũ đặt `total = subtotal`, bỏ quên
+             * khoản giảm giá đã ghi trên đơn — đơn 100.000đ giảm 20.000đ (total
+             * 80.000) mà tách đi 30.000đ thì đơn nguồn thành total 70.000 thay vì
+             * 50.000: tổng hai bàn TĂNG 20.000đ so với trước khi tách, và bất biến
+             * `subtotal − discount = total` của createOrder bị phá.
+             *
+             * Kẹp `discount` theo subtotal mới: tách gần hết mà giữ nguyên mức giảm
+             * cũ thì đơn còn lại thành âm tiền.
+             */
+            const [srcOrder] = await tx
+              .select({ discount: schema.orders.discount })
+              .from(schema.orders)
+              .where(eq(schema.orders.id, orderId))
+              .limit(1);
+            const discount = Math.max(0, Math.min(srcOrder?.discount ?? 0, subtotal));
+            const total = subtotal - discount;
+
             await tx
               .update(schema.orders)
               .set({
                 subtotal,
-                tax: centsTax(subtotal, taxRate),
-                total: subtotal,
+                discount,
+                tax: centsTax(total, taxRate),
+                total,
                 updated_at: new Date(),
               })
               .where(eq(schema.orders.id, orderId));

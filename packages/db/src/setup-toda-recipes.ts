@@ -106,9 +106,10 @@ const RECIPES: Record<string, Recipe> = {
 
   // Hai món "(nhẹ)" vẫn còn đứng riêng trên thực đơn (chưa gộp hết vào tùy chọn
   // "Độ đậm"). SOP có cột Nhẹ riêng: 1 shot, bớt 1g đường, +25ml nước.
-  // ⚠️ Nếu thu ngân chọn thêm "Độ đậm — Nhẹ" trên chính món này thì bột bị trừ hai
-  // lần (12 − 6 = 6g). Cách chữa đúng là gộp món "(nhẹ)" vào tùy chọn, không phải
-  // sửa số ở đây.
+  //
+  // Để "nhẹ" chỉ trừ ĐÚNG MỘT LẦN, script gỡ luôn nhóm "Độ đậm" khỏi chính mấy món
+  // này (xem detachDoDamFromLightItems bên dưới) — món đã nhẹ sẵn thì không cho
+  // chọn nhẹ thêm lần nữa.
   "Cà phê đá (nhẹ)": [
     [HAT_NEN, SHOT1],
     ["Đường vàng", 6],
@@ -622,6 +623,51 @@ async function setupForBranch(branchId: string) {
     console.log(`  · Không có tùy chọn này ở chi nhánh (bỏ qua): ${missingMod.join(" | ")}`);
   }
   reportMissingIngredients(missingIng);
+
+  await detachDoDamFromLightItems(branchId, groups);
+}
+
+/**
+ * Gỡ nhóm "Độ đậm" khỏi những món đã mang sẵn "(nhẹ)" trong tên.
+ *
+ * Vì sao: món "Cà phê đá (nhẹ)" có công thức nền đã là 1 shot (12g). Nếu vẫn cho
+ * chọn thêm "Độ đậm — Nhẹ" thì delta −6g cộng vào lần nữa, còn 6g — trừ hai lần cho
+ * một lần nhẹ. Món đã nhẹ sẵn thì không có gì để nhẹ thêm.
+ *
+ * Chỉ gỡ LIÊN KẾT món ↔ nhóm. Nhóm, tùy chọn và GIÁ giữ nguyên tuyệt đối — món
+ * thường vẫn chọn "Nhẹ" bình thường.
+ */
+async function detachDoDamFromLightItems(
+  branchId: string,
+  groups: { id: string; name: string }[],
+) {
+  const doDam = groups.find((g) => g.name.trim().toLowerCase() === "độ đậm");
+  if (!doDam) return;
+
+  const lightRe = /\(\s*nh[eẹ]\s*\)/i;
+  const menuRows = await db
+    .select({ id: schema.menuItems.id, name: schema.menuItems.name })
+    .from(schema.menuItems)
+    .where(eq(schema.menuItems.branch_id, branchId));
+
+  const lightIds = menuRows.filter((m) => lightRe.test(m.name)).map((m) => m.id);
+  if (lightIds.length === 0) return;
+
+  const removed = await db
+    .delete(schema.menuItemModifierGroups)
+    .where(
+      and(
+        eq(schema.menuItemModifierGroups.group_id, doDam.id),
+        inArray(schema.menuItemModifierGroups.item_id, lightIds),
+      ),
+    )
+    .returning({ item_id: schema.menuItemModifierGroups.item_id });
+
+  if (removed.length > 0) {
+    console.log(
+      `  ✓ Gỡ nhóm "Độ đậm" khỏi ${removed.length} món đã là "(nhẹ)" — để nhẹ chỉ trừ một lần.`,
+    );
+  }
 }
 
 function reportMissingIngredients(missing: Set<string>) {

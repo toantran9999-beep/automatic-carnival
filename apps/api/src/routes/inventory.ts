@@ -602,6 +602,75 @@ inventory.patch(
   },
 );
 
+/**
+ * DELETE /items/:id — xoá nguyên liệu.
+ *
+ * ⚠️ KHÔNG xoá cứng khi nguyên liệu đã có lịch sử. `inventory_movements` và
+ * `recipe_ingredients` đều khai ON DELETE CASCADE, nên `DELETE` sẽ chạy trót lọt
+ * mà cuốn theo toàn bộ phiếu nhập/xuất — mất dấu đối soát mà không báo lỗi gì.
+ * Vì vậy phải ĐẾM TRƯỚC: có dấu vết thì ẩn (`is_active=false`), sạch thì mới xoá hẳn.
+ *
+ * (Khác chỗ xoá món ăn ở routes/menu.ts: bên đó FK là RESTRICT nên bắt lỗi 23503 là
+ * đủ. Ở đây CASCADE sẽ không bao giờ ném lỗi, nên bắt lỗi là bẫy chết người.)
+ */
+inventory.delete(
+  "/items/:id",
+  requirePermission("inventory:delete"),
+  zValidator("param", idParamSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const tenant = c.get("tenant") as any;
+
+    const [item] = await db
+      .select({ id: schema.inventoryItems.id })
+      .from(schema.inventoryItems)
+      .where(
+        and(
+          eq(schema.inventoryItems.id, id),
+          eq(schema.inventoryItems.branch_id, tenant.branchId),
+          eq(schema.inventoryItems.organization_id, tenant.organizationId),
+        ),
+      )
+      .limit(1);
+
+    if (!item) {
+      return c.json(
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "inventory_item_not_found") } },
+        404,
+      );
+    }
+
+    const [{ used }] = await db
+      .select({
+        used: sql<number>`(
+          (SELECT count(*) FROM ${schema.inventoryMovements}
+            WHERE ${schema.inventoryMovements.item_id} = ${id})
+        + (SELECT count(*) FROM ${schema.recipeIngredients}
+            WHERE ${schema.recipeIngredients.inventory_item_id} = ${id})
+        + (SELECT count(*) FROM ${schema.modifierIngredients}
+            WHERE ${schema.modifierIngredients.inventory_item_id} = ${id}
+               OR ${schema.modifierIngredients.replaces_item_id} = ${id})
+        )::int`,
+      })
+      .from(sql`(SELECT 1) AS _`);
+
+    if (used > 0) {
+      await db
+        .update(schema.inventoryItems)
+        .set({ is_active: false })
+        .where(eq(schema.inventoryItems.id, id));
+
+      return c.json({
+        success: true,
+        data: { message: t(c, "inventory_item_hidden_in_use"), hidden: true },
+      });
+    }
+
+    await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, id));
+    return c.json({ success: true, data: { message: t(c, "inventory_item_deleted"), hidden: false } });
+  },
+);
+
 // --- Movements ---
 
 // POST /movements

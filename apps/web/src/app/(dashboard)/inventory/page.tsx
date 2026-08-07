@@ -26,7 +26,7 @@ import {
 import { useBranchSettings } from "@/hooks/use-settings";
 import { PageHeader } from "@/components/page-header";
 import { ItemsTab } from "./_components/items-tab";
-import { CreateItemDialog } from "./_components/item-dialog";
+import { ItemDialog } from "./_components/item-dialog";
 import { MovementsTab } from "./_components/movements-tab";
 import { CreateMovementDialog } from "./_components/movement-dialog";
 import { RecipesTab } from "./_components/recipes-tab";
@@ -40,6 +40,8 @@ export default function InventoryPage() {
   const [activeTab, setActiveTab] = useState("stock");
   const [search, setSearch] = useState("");
   const [newItemOpen, setNewItemOpen] = useState(false);
+  /** Nguyên liệu đang sửa — null là đóng hộp thoại. */
+  const [editItem, setEditItem] = useState<any | null>(null);
   const [newMovementOpen, setNewMovementOpen] = useState(false);
   /** Món đang mở hộp thoại công thức — null là đóng. */
   const [recipeFor, setRecipeFor] = useState<{ id: string; name: string } | null>(null);
@@ -166,6 +168,7 @@ export default function InventoryPage() {
             search={search}
             setSearch={setSearch}
             onNewItem={() => setNewItemOpen(true)}
+            onEditItem={setEditItem}
           />
         </TabsContent>
 
@@ -189,9 +192,11 @@ export default function InventoryPage() {
         </TabsContent>
       </Tabs>
 
-      <CreateItemDialog
-        open={newItemOpen}
-        onOpenChange={setNewItemOpen}
+      <ItemDialog open={newItemOpen} onOpenChange={setNewItemOpen} />
+      <ItemDialog
+        open={!!editItem}
+        onOpenChange={(open) => !open && setEditItem(null)}
+        item={editItem}
       />
       <CreateMovementDialog
         open={newMovementOpen}

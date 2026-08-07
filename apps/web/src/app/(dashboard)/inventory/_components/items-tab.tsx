@@ -4,11 +4,13 @@ import { Card, CardContent } from "@restai/ui/components/card";
 import { Badge } from "@restai/ui/components/badge";
 import { Button } from "@restai/ui/components/button";
 import { Skeleton } from "@restai/ui/components/skeleton";
-import { Plus, AlertTriangle, Printer } from "lucide-react";
+import { Plus, AlertTriangle, Printer, Pencil, Trash2 } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { SearchInput } from "@/components/search-input";
 import { usePrintInventoryLabels } from "@/components/print-ticket";
+import { useDeleteInventoryItem } from "@/hooks/use-inventory";
 import { useTranslation } from "@/stores/lang-store";
+import { toast } from "sonner";
 
 export function ItemsTab({
   items,
@@ -16,15 +18,30 @@ export function ItemsTab({
   search,
   setSearch,
   onNewItem,
+  onEditItem,
 }: {
   items: any[];
   isLoading: boolean;
   search: string;
   setSearch: (s: string) => void;
   onNewItem: () => void;
+  onEditItem: (item: any) => void;
 }) {
   const { t, lang } = useTranslation();
   const printLabels = usePrintInventoryLabels();
+  const deleteItem = useDeleteInventoryItem();
+
+  async function remove(item: any) {
+    if (!window.confirm(`${t("common.delete")}: ${item.name}?`)) return;
+    try {
+      const res = await deleteItem.mutateAsync(item.id);
+      // Máy chủ ẩn thay vì xoá khi nguyên liệu đã có lịch sử — nói đúng chuyện đã
+      // xảy ra, đừng báo "đã xóa" cho một thứ vẫn còn trong DB.
+      toast.success(res?.message ?? t("inventory.saveSuccess"));
+    } catch (err) {
+      toast.error(`${t("common.error")}: ${(err as Error).message}`);
+    }
+  }
   const filteredItems = items.filter((item: any) =>
     item.name.toLowerCase().includes(search.toLowerCase())
   );
@@ -86,6 +103,9 @@ export function ItemsTab({
                   <th className="text-center p-3 text-sm font-medium text-muted-foreground">
                     {t("common.status")}
                   </th>
+                  <th className="p-3 text-right text-sm font-medium text-muted-foreground">
+                    {t("common.actions")}
+                  </th>
                 </tr>
               </thead>
               <tbody>
@@ -110,12 +130,15 @@ export function ItemsTab({
                       <td className="p-3">
                         <Skeleton className="h-5 w-12 mx-auto rounded-full" />
                       </td>
+                      <td className="p-3">
+                        <Skeleton className="h-5 w-16 ml-auto" />
+                      </td>
                     </tr>
                   ))
                 ) : filteredItems.length === 0 ? (
                   <tr>
                     <td
-                      colSpan={6}
+                      colSpan={7}
                       className="p-8 text-center text-sm text-muted-foreground"
                     >
                       {search
@@ -182,6 +205,30 @@ export function ItemsTab({
                           >
                             {isLow ? (lang === "vi" ? "Sắp hết" : "Low") : "OK"}
                           </Badge>
+                        </td>
+                        <td className="p-3">
+                          {/* h-11 w-11: máy quầy bấm bằng ngón tay, vùng bấm phải ≥44px. */}
+                          <div className="flex justify-end gap-1">
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-11 w-11"
+                              onClick={() => onEditItem(item)}
+                              aria-label={t("common.edit")}
+                            >
+                              <Pencil className="h-4 w-4" />
+                            </Button>
+                            <Button
+                              variant="ghost"
+                              size="icon"
+                              className="h-11 w-11 text-destructive"
+                              onClick={() => remove(item)}
+                              disabled={deleteItem.isPending}
+                              aria-label={t("common.delete")}
+                            >
+                              <Trash2 className="h-4 w-4" />
+                            </Button>
+                          </div>
                         </td>
                       </tr>
                     );

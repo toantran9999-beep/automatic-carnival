@@ -44,6 +44,19 @@ export function useUpdateInventoryItem() {
   });
 }
 
+/**
+ * Xoá nguyên liệu. Máy chủ tự quyết: sạch thì xoá hẳn, đã có lịch sử kho hoặc nằm
+ * trong công thức thì chỉ ẩn — trả về `hidden` để giao diện nói đúng chuyện gì xảy ra.
+ */
+export function useDeleteInventoryItem() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) =>
+      apiFetch(`/api/inventory/items/${id}`, { method: "DELETE" }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory"] }),
+  });
+}
+
 export function useCreateMovement() {
   const qc = useQueryClient();
   return useMutation({

@@ -13,7 +13,7 @@
  * "1 lon", "1 bao" sang đơn vị nền là việc của `pack_size`, làm đúng MỘT chỗ.
  */
 import { db, schema } from "./index";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq, inArray, sql } from "drizzle-orm";
 
 type Ing = {
   name: string;
@@ -172,6 +172,9 @@ const DEMO_CATEGORIES = ["Nguyên liệu chính"];
 const RENAMES: [from: string, to: string][] = [
   ["Hạt Robusta — Cầu Đất", "Hạt Robusta — Đắk Lắk"],
   ["Hạt Honey Robusta — Cầu Đất", "Hạt Robusta mật ong"],
+  // Tên do sửa tay trên giao diện (đúng vùng trồng, chỉ khác cách gọi). Gom về
+  // đúng tên trong bảng giá sỉ để công thức và kho cùng trỏ một bao.
+  ["Hạt Honey Robusta — Đắk Lắk", "Hạt Robusta mật ong"],
 ];
 
 /** Cấp mã nội bộ TODA-0001 tăng dần trong phạm vi một chi nhánh. */
@@ -221,15 +224,46 @@ async function setupForBranch(orgId: string, branchId: string) {
     if (!old) continue;
 
     const [clash] = await db
-      .select({ id: schema.inventoryItems.id })
+      .select({
+        id: schema.inventoryItems.id,
+        stock: schema.inventoryItems.current_stock,
+      })
       .from(schema.inventoryItems)
       .where(
         and(eq(schema.inventoryItems.branch_id, branchId), eq(schema.inventoryItems.name, to)),
       )
       .limit(1);
+
     if (clash) {
-      console.log(`  ! Bỏ qua đổi tên "${from}" → "${to}": tên mới đã có sẵn.`);
-      continue;
+      // Tên mới đã có sẵn. Xảy ra khi lần chạy trước đã tạo mới nó vì tên cũ bị
+      // sửa tay trên giao diện nên vòng đổi tên không nhận ra.
+      //
+      // Chỉ dọn được khi bao trùng tên còn RỖNG HOÀN TOÀN — không tồn, không công
+      // thức, không tùy chọn nào trỏ vào. Còn dính một thứ là DỪNG và báo ra:
+      // gộp hai bao đều có dữ liệu là quyết định của người, không phải của script.
+      const [{ refs }] = await db
+        .select({
+          refs: sql<number>`(
+            (SELECT count(*) FROM ${schema.recipeIngredients}
+              WHERE ${schema.recipeIngredients.inventory_item_id} = ${clash.id})
+          + (SELECT count(*) FROM ${schema.modifierIngredients}
+              WHERE ${schema.modifierIngredients.inventory_item_id} = ${clash.id}
+                 OR ${schema.modifierIngredients.replaces_item_id} = ${clash.id})
+          + (SELECT count(*) FROM ${schema.inventoryMovements}
+              WHERE ${schema.inventoryMovements.item_id} = ${clash.id})
+          )::int`,
+        })
+        .from(sql`(SELECT 1) AS _`);
+
+      if (refs > 0 || parseFloat(clash.stock) !== 0) {
+        console.log(
+          `  ! DỪNG đổi tên "${from}" → "${to}": cả hai bao đều đang có dữ liệu. Gộp tay rồi chạy lại.`,
+        );
+        continue;
+      }
+
+      await db.delete(schema.inventoryItems).where(eq(schema.inventoryItems.id, clash.id));
+      console.log(`  · Dọn bao rỗng trùng tên "${to}" để nhường chỗ cho bao đang dùng.`);
     }
 
     await db

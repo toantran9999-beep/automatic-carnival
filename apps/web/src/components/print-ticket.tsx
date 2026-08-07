@@ -1885,3 +1885,59 @@ export function usePrintShiftReport() {
     printHtml(buildShiftReportHtml(data));
   }, []);
 }
+
+export type InventoryLabel = {
+  /** Mã in thành QR — mã nội bộ TODA-0001 hoặc mã vạch nhà sản xuất. */
+  code: string;
+  name: string;
+  unit: string;
+  packLabel?: string | null;
+};
+
+/**
+ * Nhãn dán mã nội bộ cho nguyên liệu mua lẻ (chanh, tắc, dâu…) — loại không có mã
+ * vạch nào của nhà sản xuất để mà quét.
+ *
+ * In QR chứ không in mã vạch 1D: giấy nhiệt 58mm hẹp, mã 1D đủ dài để máy đọc chắc
+ * thì tràn khổ giấy, còn QR nhỏ vẫn đọc tốt. Đi qua `printHtml` nên dùng chung đúng
+ * đường in của phiếu bếp/hóa đơn, kể cả nhánh riêng cho Android.
+ */
+function buildInventoryLabelsHtml(labels: InventoryLabel[]): string {
+  const cards = labels
+    .map(
+      (l) => `
+  <div class="label">
+    <div class="qr">${qrSvgMarkup(l.code, 120)}</div>
+    <div class="name">${escapeHtml(l.name)}</div>
+    <div class="meta">${escapeHtml(l.unit)}${l.packLabel ? ` · ${escapeHtml(l.packLabel)}` : ""}</div>
+    <div class="code">${escapeHtml(l.code)}</div>
+  </div>`,
+    )
+    .join("");
+
+  return `<!DOCTYPE html>
+<html><head><meta charset="utf-8" /><title>Nhãn kho</title>
+<style>
+  @page { margin: 4mm; }
+  body { font-family: system-ui, sans-serif; margin: 0; }
+  .label {
+    width: 48mm; padding: 2mm 0 4mm; text-align: center;
+    /* Mỗi nhãn một tờ nhỏ — cắt rời được, và không bị chia đôi giữa hai trang. */
+    page-break-inside: avoid; break-inside: avoid;
+    border-bottom: 1px dashed #999;
+  }
+  .label:last-child { border-bottom: none; }
+  .qr svg { width: 28mm; height: 28mm; }
+  .name { font-size: 12px; font-weight: 700; margin-top: 1mm; word-break: break-word; }
+  .meta { font-size: 10px; color: #444; }
+  .code { font-size: 11px; font-family: monospace; margin-top: 0.5mm; }
+</style></head>
+<body>${cards}</body></html>`;
+}
+
+export function usePrintInventoryLabels() {
+  return useCallback((labels: InventoryLabel[]) => {
+    if (labels.length === 0) return;
+    printHtml(buildInventoryLabelsHtml(labels));
+  }, []);
+}

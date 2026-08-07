@@ -9,7 +9,15 @@ import {
   TabsTrigger,
   TabsContent,
 } from "@restai/ui/components/tabs";
-import { AlertTriangle, RefreshCw, Package, ArrowUpDown, ChefHat } from "lucide-react";
+import {
+  AlertTriangle,
+  RefreshCw,
+  Package,
+  ArrowUpDown,
+  ChefHat,
+  PackagePlus,
+  PackageMinus,
+} from "lucide-react";
 import {
   useInventoryItems,
   useInventoryMovements,
@@ -22,7 +30,9 @@ import { CreateItemDialog } from "./_components/item-dialog";
 import { MovementsTab } from "./_components/movements-tab";
 import { CreateMovementDialog } from "./_components/movement-dialog";
 import { RecipesTab } from "./_components/recipes-tab";
-import { CreateRecipeDialog } from "./_components/recipe-dialog";
+import { RecipeDialog } from "./_components/recipe-dialog";
+import { ReceiveTab } from "./_components/receive-tab";
+import { IssueTab } from "./_components/issue-tab";
 import { useTranslation } from "@/stores/lang-store";
 
 export default function InventoryPage() {
@@ -31,7 +41,8 @@ export default function InventoryPage() {
   const [search, setSearch] = useState("");
   const [newItemOpen, setNewItemOpen] = useState(false);
   const [newMovementOpen, setNewMovementOpen] = useState(false);
-  const [recipeDialogOpen, setRecipeDialogOpen] = useState(false);
+  /** Món đang mở hộp thoại công thức — null là đóng. */
+  const [recipeFor, setRecipeFor] = useState<{ id: string; name: string } | null>(null);
 
   const { data: branchData } = useBranchSettings();
   const inventoryEnabled = branchData?.settings?.inventory_enabled ?? false;
@@ -121,20 +132,32 @@ export default function InventoryPage() {
       />
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>
-        <TabsList>
-          <TabsTrigger value="stock">
-            <Package className="h-4 w-4 mr-1" />
-            {t("inventory.items")}
-          </TabsTrigger>
-          <TabsTrigger value="movements">
-            <ArrowUpDown className="h-4 w-4 mr-1" />
-            {t("inventory.movements")}
-          </TabsTrigger>
-          <TabsTrigger value="recipes">
-            <ChefHat className="h-4 w-4 mr-1" />
-            {t("inventory.recipes")}
-          </TabsTrigger>
-        </TabsList>
+        {/* 5 tab không lọt màn điện thoại → cho trượt ngang. overflow-y-hidden để
+            khoá chiều còn lại, kẻo nó tự thành auto và cắt cụt nhãn tab. */}
+        <div className="-mx-1 overflow-x-auto overflow-y-hidden px-1">
+          <TabsList>
+            <TabsTrigger value="stock">
+              <Package className="h-4 w-4 mr-1" />
+              {t("inventory.items")}
+            </TabsTrigger>
+            <TabsTrigger value="receive">
+              <PackagePlus className="h-4 w-4 mr-1" />
+              {t("inventory.receive")}
+            </TabsTrigger>
+            <TabsTrigger value="issue">
+              <PackageMinus className="h-4 w-4 mr-1" />
+              {t("inventory.issue")}
+            </TabsTrigger>
+            <TabsTrigger value="movements">
+              <ArrowUpDown className="h-4 w-4 mr-1" />
+              {t("inventory.movements")}
+            </TabsTrigger>
+            <TabsTrigger value="recipes">
+              <ChefHat className="h-4 w-4 mr-1" />
+              {t("inventory.recipes")}
+            </TabsTrigger>
+          </TabsList>
+        </div>
 
         <TabsContent value="stock">
           <ItemsTab
@@ -146,6 +169,14 @@ export default function InventoryPage() {
           />
         </TabsContent>
 
+        <TabsContent value="receive">
+          <ReceiveTab items={items} />
+        </TabsContent>
+
+        <TabsContent value="issue">
+          <IssueTab items={items} />
+        </TabsContent>
+
         <TabsContent value="movements">
           <MovementsTab
             movements={movements}
@@ -154,10 +185,7 @@ export default function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="recipes">
-          <RecipesTab
-            items={items}
-            onNewRecipe={() => setRecipeDialogOpen(true)}
-          />
+          <RecipesTab items={items} onOpenRecipe={setRecipeFor} />
         </TabsContent>
       </Tabs>
 
@@ -170,9 +198,10 @@ export default function InventoryPage() {
         onOpenChange={setNewMovementOpen}
         items={items}
       />
-      <CreateRecipeDialog
-        open={recipeDialogOpen}
-        onOpenChange={setRecipeDialogOpen}
+      <RecipeDialog
+        open={!!recipeFor}
+        onOpenChange={(open) => !open && setRecipeFor(null)}
+        menuItem={recipeFor}
         items={items}
       />
     </div>

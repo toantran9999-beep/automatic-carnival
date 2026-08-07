@@ -6,15 +6,34 @@ import { db, schema } from "@restai/db";
  * Returns the created movement record.
  * Throws if the inventory item is not found.
  */
+export type MovementType =
+  | "purchase"
+  | "consumption"
+  | "waste"
+  | "adjustment"
+  | "issue";
+
+/**
+ * Dấu của một loại phiếu: +1 cộng vào kho, -1 trừ ra.
+ *
+ * ⚠️ `adjustment` trả +1 nhưng SỐ LƯỢNG được phép âm — kiểm kê phát hiện thiếu thì
+ * ghi số âm. Trước đây hàm này ép `adjustment` luôn cộng, nên kiểm kê chỉ ghi được
+ * chiều thừa: đếm thiếu 200g sữa mà bấm vào là kho lại TĂNG thêm 200g.
+ */
+export function movementSign(type: MovementType): 1 | -1 {
+  return type === "purchase" || type === "adjustment" ? 1 : -1;
+}
+
 export async function recordMovement(params: {
   itemId: string;
-  type: "purchase" | "consumption" | "waste" | "adjustment";
+  type: MovementType;
   quantity: number;
   reference?: string | null;
   notes?: string | null;
   createdBy?: string | null;
+  unitCost?: number | null;
 }): Promise<typeof schema.inventoryMovements.$inferSelect> {
-  const { itemId, type, quantity, reference, notes, createdBy } = params;
+  const { itemId, type, quantity, reference, notes, createdBy, unitCost } = params;
 
   return await db.transaction(async (tx) => {
     // Read inside transaction with row lock
@@ -38,19 +57,19 @@ export async function recordMovement(params: {
         reference: reference || null,
         notes: notes || null,
         created_by: createdBy || null,
+        unit_cost: unitCost ?? null,
       })
       .returning();
 
-    // Atomic stock update using SQL
-    if (type === "purchase" || type === "adjustment") {
-      await tx.update(schema.inventoryItems).set({
-        current_stock: sql`(${schema.inventoryItems.current_stock}::numeric + ${quantity})::text`,
-      }).where(eq(schema.inventoryItems.id, itemId));
-    } else {
-      await tx.update(schema.inventoryItems).set({
-        current_stock: sql`(${schema.inventoryItems.current_stock}::numeric - ${quantity})::text`,
-      }).where(eq(schema.inventoryItems.id, itemId));
-    }
+    // Atomic stock update using SQL. Dấu do movementSign() quyết định — một chỗ duy
+    // nhất, để không nơi nào tự đoán "loại này cộng hay trừ".
+    const delta = movementSign(type) * quantity;
+    await tx
+      .update(schema.inventoryItems)
+      .set({
+        current_stock: sql`(${schema.inventoryItems.current_stock}::numeric + ${delta})::text`,
+      })
+      .where(eq(schema.inventoryItems.id, itemId));
 
     return movement;
   });
@@ -91,30 +110,53 @@ export async function deductForOrder(params: {
     for (const orderItem of orderItemsList) {
       // Món nhập tay không gắn menu item → không có công thức, bỏ qua trừ kho.
       if (!orderItem.menu_item_id) continue;
-      const recipeIngredients = await tx
+
+      const baseRecipe = await tx
         .select()
         .from(schema.recipeIngredients)
         .where(eq(schema.recipeIngredients.menu_item_id, orderItem.menu_item_id));
 
-      for (const ingredient of recipeIngredients) {
-        const deductQty = parseFloat(ingredient.quantity_used) * orderItem.quantity;
+      if (baseRecipe.length === 0) continue;
+
+      const chosen = await tx
+        .select({
+          modifier_id: schema.orderItemModifiers.modifier_id,
+          modifier_name: schema.orderItemModifiers.name,
+          inventory_item_id: schema.modifierIngredients.inventory_item_id,
+          quantity_delta: schema.modifierIngredients.quantity_delta,
+          replaces_item_id: schema.modifierIngredients.replaces_item_id,
+        })
+        .from(schema.orderItemModifiers)
+        .innerJoin(
+          schema.modifierIngredients,
+          eq(schema.modifierIngredients.modifier_id, schema.orderItemModifiers.modifier_id),
+        )
+        .where(eq(schema.orderItemModifiers.order_item_id, orderItem.id));
+
+      const { amounts, modifierNames } = resolveIngredientAmounts(baseRecipe, chosen);
+
+      const suffix = modifierNames.length ? ` (${modifierNames.join(", ")})` : "";
+
+      for (const [inventoryItemId, perUnit] of amounts) {
+        // Tùy chọn có thể trừ hết sạch một nguyên liệu ("Không đường"). Ghi phiếu 0
+        // hoặc âm là bịa ra chuyện không xảy ra.
+        if (perUnit <= 0) continue;
+        const deductQty = perUnit * orderItem.quantity;
 
         await tx
           .update(schema.inventoryItems)
           .set({
             current_stock: sql`(${schema.inventoryItems.current_stock}::numeric - ${deductQty})::text`,
           })
-          .where(eq(schema.inventoryItems.id, ingredient.inventory_item_id));
+          .where(eq(schema.inventoryItems.id, inventoryItemId));
 
-        await tx
-          .insert(schema.inventoryMovements)
-          .values({
-            item_id: ingredient.inventory_item_id,
-            type: "consumption",
-            quantity: String(deductQty),
-            reference: orderNumber,
-            notes: `Auto-consumo: ${orderItem.name} x${orderItem.quantity}`,
-          });
+        await tx.insert(schema.inventoryMovements).values({
+          item_id: inventoryItemId,
+          type: "consumption",
+          quantity: String(deductQty),
+          reference: orderNumber,
+          notes: `Tự trừ: ${orderItem.name} x${orderItem.quantity}${suffix}`,
+        });
       }
     }
 
@@ -123,6 +165,75 @@ export async function deductForOrder(params: {
       .set({ inventory_deducted: true })
       .where(eq(schema.orders.id, orderId));
   });
+}
+
+/**
+ * Gộp công thức nền với các tùy chọn khách chọn, ra lượng dùng cho MỘT phần.
+ *
+ * ⚠️ THỨ TỰ Ở ĐÂY LÀ BẮT BUỘC, làm sai là sai âm thầm:
+ *
+ *   1. Dựng bản đồ {nguyên liệu → lượng} từ công thức nền.
+ *   2. Áp `replaces_item_id` TRƯỚC — đổi hạt: chuyển lượng sang nguyên liệu mới,
+ *      giữ nguyên số.
+ *   3. RỒI MỚI cộng `quantity_delta`, và đích của delta cũng phải đi qua bản đồ
+ *      thay thế ở bước 2.
+ *
+ * Ca chứng minh vì sao: ly "Cà phê đá — Arabica + Nhẹ". Cả hai tùy chọn cùng đụng
+ * vào bột. Cộng dồn thẳng sẽ ra `hạt nền −24g, Arabica +18g` — sai cả hai vế.
+ * Đúng phải là `Arabica −12g`, hạt nền không đụng tới.
+ *
+ * Tách hàm riêng (không nhét trong transaction) để test được bằng số thuần.
+ */
+export function resolveIngredientAmounts(
+  baseRecipe: { inventory_item_id: string; quantity_used: string }[],
+  chosen: {
+    modifier_id: string | null;
+    modifier_name: string;
+    inventory_item_id: string;
+    quantity_delta: string;
+    replaces_item_id: string | null;
+  }[],
+): { amounts: Map<string, number>; modifierNames: string[] } {
+  // Bước 1 — công thức nền.
+  const amounts = new Map<string, number>();
+  for (const ing of baseRecipe) {
+    amounts.set(
+      ing.inventory_item_id,
+      (amounts.get(ing.inventory_item_id) ?? 0) + parseFloat(ing.quantity_used),
+    );
+  }
+
+  // `modifier_id` null = tùy chọn đã bị xoá khỏi thực đơn; dòng order_item_modifiers
+  // chỉ còn tên đã chụp lại, không còn đường nào lần ra định lượng. Bỏ qua.
+  const active = chosen.filter((m) => m.modifier_id);
+  const modifierNames = [...new Set(active.map((m) => m.modifier_name))];
+
+  // Bước 2 — thay nguyên liệu (đổi loại hạt).
+  const substituted = new Map<string, string>();
+  for (const mod of active) {
+    if (!mod.replaces_item_id) continue;
+    const from = mod.replaces_item_id;
+    const to = mod.inventory_item_id;
+    if (from === to) continue;
+
+    const qty = amounts.get(from);
+    if (qty === undefined) continue; // Món này không dùng nguyên liệu đó — không có gì để thay.
+
+    amounts.delete(from);
+    amounts.set(to, (amounts.get(to) ?? 0) + qty);
+    substituted.set(from, to);
+  }
+
+  // Bước 3 — cộng/trừ, đích đi qua bản đồ thay thế ở bước 2.
+  for (const mod of active) {
+    if (mod.replaces_item_id) continue;
+    const target = substituted.get(mod.inventory_item_id) ?? mod.inventory_item_id;
+    const delta = parseFloat(mod.quantity_delta);
+    if (!Number.isFinite(delta)) continue;
+    amounts.set(target, (amounts.get(target) ?? 0) + delta);
+  }
+
+  return { amounts, modifierNames };
 }
 
 /**

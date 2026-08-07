@@ -216,14 +216,63 @@ export const createInventoryItemSchema = z.object({
   currentStock: z.number().min(0).default(0),
   minStock: z.number().min(0).default(0),
   costPerUnit: z.number().int().min(0).default(0),
+  /** Mã vạch nhà sản xuất. Bỏ trống thì hệ thống tự cấp mã nội bộ "TODA-0001". */
+  barcode: z.string().max(64).optional().nullable(),
+  /** 1 lần quét = bao nhiêu đơn vị nền (1 lon sữa đặc = 380 g). */
+  packSize: z.number().positive().default(1),
+  packLabel: z.string().max(50).optional().nullable(),
 });
+
+/** Xuất kho có ba lý do khác nhau — gộp chung là báo cáo hao hụt sai. */
+export const inventoryMovementTypes = [
+  "purchase",
+  "consumption",
+  "waste",
+  "adjustment",
+  "issue",
+] as const;
 
 export const createInventoryMovementSchema = z.object({
   itemId: z.string().uuid(),
-  type: z.enum(["purchase", "consumption", "waste", "adjustment"]),
+  type: z.enum(inventoryMovementTypes),
+  /**
+   * ⚠️ CÓ DẤU với `adjustment`: kiểm kê phát hiện THIẾU thì phải ghi số âm.
+   * Các loại còn lại luôn dương (hướng cộng/trừ do `type` quyết định).
+   */
   quantity: z.number(),
   reference: z.string().max(255).optional(),
   notes: z.string().max(500).optional(),
+  /** Giá nhập mỗi đơn vị nền, theo XU. */
+  unitCost: z.number().int().min(0).optional().nullable(),
+});
+
+/** Một dòng trong phiếu nhập / phiếu xuất nhiều món. */
+const stockLineSchema = z.object({
+  itemId: z.string().uuid(),
+  quantity: z.number().positive(),
+  unitCost: z.number().int().min(0).optional().nullable(),
+});
+
+export const createStockReceiptSchema = z.object({
+  lines: z.array(stockLineSchema).min(1).max(200),
+  reference: z.string().max(255).optional(),
+  notes: z.string().max(500).optional(),
+});
+
+export const createStockIssueSchema = z.object({
+  /** `adjustment` cho phép số âm nên dùng schema riêng, không dùng lại stockLineSchema. */
+  lines: z
+    .array(
+      z.object({
+        itemId: z.string().uuid(),
+        quantity: z.number(),
+      }),
+    )
+    .min(1)
+    .max(200),
+  type: z.enum(["issue", "waste", "adjustment"]),
+  /** Bắt buộc: xuất kho mà không ghi lý do thì tháng sau không ai giải thích được. */
+  reason: z.string().min(1).max(500),
 });
 
 // Loyalty validators
@@ -341,6 +390,8 @@ export type CreatePaymentInput = z.infer<typeof createPaymentSchema>;
 export type CreateInvoiceInput = z.infer<typeof createInvoiceSchema>;
 export type CreateInventoryItemInput = z.infer<typeof createInventoryItemSchema>;
 export type CreateInventoryMovementInput = z.infer<typeof createInventoryMovementSchema>;
+export type CreateStockReceiptInput = z.infer<typeof createStockReceiptSchema>;
+export type CreateStockIssueInput = z.infer<typeof createStockIssueSchema>;
 export type CreateLoyaltyProgramInput = z.infer<typeof createLoyaltyProgramSchema>;
 export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
 export type ReportQueryInput = z.infer<typeof reportQuerySchema>;

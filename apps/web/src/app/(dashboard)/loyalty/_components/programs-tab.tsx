@@ -74,7 +74,7 @@ function OnboardingGuide({ onCreateProgram }: { onCreateProgram: () => void }) {
     {
       number: 3,
       title: lang === "vi" ? "Tích điểm tự động" : "Automatic points",
-      description: lang === "vi" ? "Thành viên tích điểm tự động mỗi khi hoàn thành đơn hàng tại nhà hàng." : "Members accumulate points automatically whenever they complete an order.",
+      description: lang === "vi" ? "Thành viên tích điểm tự động mỗi khi hoàn thành đơn hàng tại quán." : "Members accumulate points automatically whenever they complete an order.",
       icon: TrendingUp, color: "text-green-600 dark:text-green-400", bg: "bg-green-100 dark:bg-green-900/30",
     },
     {

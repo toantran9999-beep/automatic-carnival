@@ -92,6 +92,9 @@ export const inventoryMovementTypeEnum = pgEnum("inventory_movement_type", [
   "consumption",
   "waste",
   "adjustment",
+  /** Xuất kho mang đi dùng — tách khỏi `waste` (đổ bỏ vì hư) để báo cáo hao hụt
+   *  không phồng lên vì mấy lần xuất dùng bình thường. */
+  "issue",
 ]);
 
 export const loyaltyTransactionTypeEnum = pgEnum("loyalty_transaction_type", [

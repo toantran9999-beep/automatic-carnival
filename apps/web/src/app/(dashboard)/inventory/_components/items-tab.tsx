@@ -3,16 +3,12 @@
 import { Card, CardContent } from "@restai/ui/components/card";
 import { Badge } from "@restai/ui/components/badge";
 import { Button } from "@restai/ui/components/button";
-import { Plus, AlertTriangle } from "lucide-react";
+import { Skeleton } from "@restai/ui/components/skeleton";
+import { Plus, AlertTriangle, Printer } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { SearchInput } from "@/components/search-input";
+import { usePrintInventoryLabels } from "@/components/print-ticket";
 import { useTranslation } from "@/stores/lang-store";
-
-function Skeleton({ className }: { className?: string }) {
-  return (
-    <div className={`animate-pulse bg-muted rounded ${className ?? ""}`} />
-  );
-}
 
 export function ItemsTab({
   items,
@@ -28,19 +24,38 @@ export function ItemsTab({
   onNewItem: () => void;
 }) {
   const { t, lang } = useTranslation();
+  const printLabels = usePrintInventoryLabels();
   const filteredItems = items.filter((item: any) =>
     item.name.toLowerCase().includes(search.toLowerCase())
   );
 
+  /** In nhãn cho đúng những gì đang lọc — quán chỉ dán lại vài hũ chứ hiếm khi cả kho. */
+  function printFiltered() {
+    printLabels(
+      filteredItems
+        .filter((item: any) => item.internal_code)
+        .map((item: any) => ({
+          code: item.internal_code,
+          name: item.name,
+          unit: item.unit,
+          packLabel: item.pack_label,
+        })),
+    );
+  }
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-2">
+      <div className="flex flex-wrap gap-2">
         <SearchInput
           value={search}
           onChange={setSearch}
           placeholder={t("inventory.searchPlaceholder")}
-          className="flex-1"
+          className="min-w-0 flex-1"
         />
+        <Button variant="outline" onClick={printFiltered} disabled={filteredItems.length === 0}>
+          <Printer className="h-4 w-4 mr-2" />
+          {t("inventory.printLabel")}
+        </Button>
         <Button onClick={onNewItem}>
           <Plus className="h-4 w-4 mr-2" />
           {t("inventory.addIngredient")}
@@ -129,9 +144,17 @@ export function ItemsTab({
                             {isLow && (
                               <AlertTriangle className="h-4 w-4 text-destructive shrink-0" />
                             )}
-                            <span className="font-medium text-sm text-foreground">
-                              {item.name}
-                            </span>
+                            <div className="min-w-0">
+                              <span className="font-medium text-sm text-foreground">
+                                {item.name}
+                              </span>
+                              {/* Mã để nhân viên đối chiếu với nhãn đã dán trên hũ. */}
+                              {(item.internal_code || item.barcode) && (
+                                <p className="font-mono text-xs text-muted-foreground truncate">
+                                  {item.barcode || item.internal_code}
+                                </p>
+                              )}
+                            </div>
                           </div>
                         </td>
                         <td className="p-3 text-sm text-center text-muted-foreground hidden sm:table-cell">

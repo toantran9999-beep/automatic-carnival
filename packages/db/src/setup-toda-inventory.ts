@@ -32,12 +32,17 @@ const CATEGORIES: { name: string; items: Ing[] }[] = [
     // không ai biết đang trừ vào bao nào.
     name: "Hạt cà phê",
     items: [
-      // Tên khớp đúng tùy chọn "Loại hạt" đang chạy trên POS (Mix / Blend /
-      // Robusta Honey / Arabica Cầu Đất / Arabica Brazil), cộng thêm vùng trồng.
-      { name: "Hạt Robusta — Cầu Đất", unit: "g", pack: [1000, "bao 1kg"], min: 2000 },
-      { name: "Hạt Honey Robusta — Cầu Đất", unit: "g", pack: [1000, "bao 1kg"], min: 1000 },
+      // Hai loại hạt GỐC quán tự rang, theo bảng giá sỉ B2B: Robusta Đắk Lắk và
+      // Robusta mật ong. Mọi loại Toda 1–4 chỉ là hai thứ này trộn theo tỉ lệ khác
+      // nhau, nên kho chỉ đếm hai bao — không đẻ thêm "bao Toda 2" nào cả.
+      { name: "Hạt Robusta — Đắk Lắk", unit: "g", pack: [1000, "bao 1kg"], min: 3000 },
+      { name: "Hạt Robusta mật ong", unit: "g", pack: [1000, "bao 1kg"], min: 2000 },
+      // Hai lô Arabica chỉ dùng cho món uống tại quán (tùy chọn "Loại hạt").
       { name: "Hạt Arabica — Cầu Đất", unit: "g", pack: [1000, "bao 1kg"], min: 1000 },
       { name: "Hạt Arabica — Brazil Cerrado", unit: "g", pack: [1000, "bao 1kg"], min: 1000 },
+      // ⚠️ "Blend" và "Mix" là tên tùy chọn trên POS, CHƯA rõ trộn từ gì. Để riêng
+      // một bao cho tới khi anh Toàn xác nhận — nếu thật ra chúng là Toda 2 / Toda 3
+      // thì gộp lại sau, đừng đoán.
       { name: "Hạt Blend", unit: "g", pack: [1000, "bao 1kg"], min: 1000 },
       { name: "Hạt Mix", unit: "g", pack: [1000, "bao 1kg"], min: 1000 },
     ],
@@ -153,6 +158,22 @@ const DEMO_ITEMS = [
 ];
 const DEMO_CATEGORIES = ["Nguyên liệu chính"];
 
+/**
+ * Đổi tên nguyên liệu TẠI CHỖ (giữ nguyên id) — cũ → mới.
+ *
+ * ⚠️ Phải đổi tên chứ không được xoá rồi tạo lại: `recipe_ingredients` và
+ * `modifier_ingredients` trỏ vào id, mà cả hai đều ON DELETE CASCADE — xoá là
+ * cuốn theo toàn bộ công thức đã nạp, im lặng.
+ *
+ * Vì sao có mục này: bản seed đầu tôi đặt "Hạt Robusta — Cầu Đất" theo phỏng đoán.
+ * Bảng giá sỉ B2B của quán ghi rõ Robusta là **Đắk Lắk**, và loại mật ong không kèm
+ * vùng trồng.
+ */
+const RENAMES: [from: string, to: string][] = [
+  ["Hạt Robusta — Cầu Đất", "Hạt Robusta — Đắk Lắk"],
+  ["Hạt Honey Robusta — Cầu Đất", "Hạt Robusta mật ong"],
+];
+
 /** Cấp mã nội bộ TODA-0001 tăng dần trong phạm vi một chi nhánh. */
 async function nextInternalCode(branchId: string): Promise<string> {
   const rows = await db
@@ -185,6 +206,37 @@ async function setupForBranch(orgId: string, branchId: string) {
       .delete(schema.inventoryItems)
       .where(inArray(schema.inventoryItems.id, demo.map((d) => d.id)));
     console.log(`  ✓ Xoá ${demo.length} nguyên liệu mẫu: ${demo.map((d) => d.name).join(", ")}`);
+  }
+
+  // 1b) Đổi tên tại chỗ — chỉ đổi khi tên MỚI chưa tồn tại, kẻo đụng unique index
+  //     và kẻo chạy lần hai lại ghi đè một nguyên liệu hợp lệ.
+  for (const [from, to] of RENAMES) {
+    const [old] = await db
+      .select({ id: schema.inventoryItems.id })
+      .from(schema.inventoryItems)
+      .where(
+        and(eq(schema.inventoryItems.branch_id, branchId), eq(schema.inventoryItems.name, from)),
+      )
+      .limit(1);
+    if (!old) continue;
+
+    const [clash] = await db
+      .select({ id: schema.inventoryItems.id })
+      .from(schema.inventoryItems)
+      .where(
+        and(eq(schema.inventoryItems.branch_id, branchId), eq(schema.inventoryItems.name, to)),
+      )
+      .limit(1);
+    if (clash) {
+      console.log(`  ! Bỏ qua đổi tên "${from}" → "${to}": tên mới đã có sẵn.`);
+      continue;
+    }
+
+    await db
+      .update(schema.inventoryItems)
+      .set({ name: to })
+      .where(eq(schema.inventoryItems.id, old.id));
+    console.log(`  ✓ Đổi tên "${from}" → "${to}" (giữ nguyên tồn kho & công thức).`);
   }
 
   // 2) Nhóm nguyên liệu

@@ -18,10 +18,9 @@
  *   Hồng trà, Trà gừng, Trà chanh gừng, Ly trà đá, Cacao kem muối, Matcha kem muối,
  *   Cam vắt, Sữa tươi, Chanh đá.
  *
- * ⚠️ Nhóm "CÀ PHÊ BỘT HẠT" (Cà phê Toda 1–4, túi 250g/500g/3kg) cũng để trống: bán
- *   một túi là rút thẳng bấy nhiêu gam hạt ra khỏi kho, nhưng CHƯA biết mỗi loại
- *   Toda 1/2/3/4 ứng với bao hạt nào. Đoán sai là trừ nhầm bao — cần anh Toàn xác
- *   nhận rồi mới thêm.
+ * ⚠️ "Blend" và "Mix" (tùy chọn Loại hạt, và món "Cà phê đá (Blend)") đang trỏ vào
+ *   bao riêng vì CHƯA biết trộn từ gì. Nếu hoá ra chúng chính là Toda 2 / Toda 3 thì
+ *   gộp lại — sửa cả LO_HAT_DANG_DUNG lẫn công thức món, đừng để hai chỗ lệch nhau.
  */
 import { db, schema } from "./index";
 import { and, eq, inArray } from "drizzle-orm";
@@ -47,7 +46,7 @@ const DA_700 = 250;
 const NUOC_AMERICANO = 400;
 
 /** Nguyên liệu hạt mặc định của mọi món cà phê khi khách không chọn "Loại hạt". */
-const HAT_NEN = "Hạt Robusta — Cầu Đất";
+const HAT_NEN = "Hạt Robusta — Đắk Lắk";
 
 /**
  * Tùy chọn "Loại hạt" trỏ tới lô hạt nào. Khoá = tên tùy chọn ĐANG CHẠY trên POS.
@@ -59,7 +58,7 @@ const HAT_NEN = "Hạt Robusta — Cầu Đất";
 const LO_HAT_DANG_DUNG: Record<string, string> = {
   "Arabica Brazil": "Hạt Arabica — Brazil Cerrado",
   "Arabica Cầu Đất": "Hạt Arabica — Cầu Đất",
-  "Robusta Honey": "Hạt Honey Robusta — Cầu Đất",
+  "Robusta Honey": "Hạt Robusta mật ong",
   Blend: "Hạt Blend",
   Mix: "Hạt Mix",
 };
@@ -80,6 +79,44 @@ const BAO_BI: [string, number][] = [
 
 type Recipe = [ingredient: string, qty: number][];
 
+const ROBUSTA = "Hạt Robusta — Đắk Lắk";
+const MAT_ONG = "Hạt Robusta mật ong";
+
+/**
+ * Sinh công thức cho các túi cà phê Toda 1–4 ở mọi khối lượng đang bán.
+ *
+ * Tỉ lệ lấy từ bảng giá sỉ B2B (bang-gia-b2b-TODA.pdf). Viết thành hàm thay vì gõ
+ * tay 6 dòng: thêm cỡ túi mới chỉ cần thêm một số vào SIZES, khỏi lo quên loại nào.
+ */
+function todaBlends(): Record<string, Recipe> {
+  /** [số Toda, % Robusta Đắk Lắk, % Robusta mật ong] */
+  const BLENDS: [n: number, robusta: number, matOng: number][] = [
+    [1, 1, 0],
+    [2, 0.8, 0.2],
+    [3, 0.6, 0.4],
+    [4, 0, 1],
+  ];
+  /** Nhãn hiện trên thực đơn → số gam thật. */
+  const SIZES: [label: string, gram: number][] = [
+    ["250g", 250],
+    ["500g", 500],
+    ["3kg", 3000],
+  ];
+
+  const out: Record<string, Recipe> = {};
+  for (const [n, pRobusta, pMatOng] of BLENDS) {
+    for (const [label, gram] of SIZES) {
+      const recipe: Recipe = [];
+      if (pRobusta > 0) recipe.push([ROBUSTA, gram * pRobusta]);
+      if (pMatOng > 0) recipe.push([MAT_ONG, gram * pMatOng]);
+      // Món nào không có trên thực đơn thì vòng nạp tự bỏ qua và in ra — cứ khai
+      // đủ tổ hợp ở đây, khỏi phải dò xem cỡ nào đang bán.
+      out[`Cà phê Toda ${n} (${label})`] = recipe;
+    }
+  }
+  return out;
+}
+
 const RECIPES: Record<string, Recipe> = {
   // --- Nhóm cà phê (SOP IV.1) ---
 
@@ -94,8 +131,11 @@ const RECIPES: Record<string, Recipe> = {
     ["Đá viên", DA_360],
     ...BAO_BI,
   ],
+  // Dùng chung bao "Hạt Blend" với tùy chọn "Loại hạt — Blend" cho nhất quán.
+  // ⚠️ Chưa rõ Blend trộn từ gì; nếu hoá ra là Toda 2 (80/20) thì sửa ở đây và ở
+  // LO_HAT_DANG_DUNG, đừng để hai chỗ trỏ hai bao khác nhau.
   "Cà phê đá (Blend)": [
-    ["Hạt Honey Robusta — Cầu Đất", SHOT2],
+    ["Hạt Blend", SHOT2],
     ["Đường vàng", 7],
     ["Đá viên", DA_360],
     ...BAO_BI,
@@ -382,6 +422,19 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước đường", 15],
     ...BAO_BI,
   ],
+
+  // --- Cà phê bột/hạt bán túi (bảng giá sỉ B2B) ---
+  //
+  // Toda 1–4 KHÔNG phải bốn bao hàng riêng: chỉ là hai loại hạt gốc trộn theo tỉ lệ.
+  //   1. Mạnh Mẽ   — 100% Robusta Đắk Lắk
+  //   2. Đậm Nhẹ   — 80% Robusta + 20% Robusta mật ong
+  //   3. Cân Bằng  — 60% Robusta + 40% Robusta mật ong
+  //   4. Ngọt Ngào — 100% Robusta mật ong
+  // Nhờ vậy bán một túi Toda 3 (500g) là trừ đúng 300g bao Robusta + 200g bao mật
+  // ong — kho biết thật sự còn bao nhiêu mỗi loại, thay vì bốn con số rời rạc.
+  //
+  // Tùy chọn "Đóng gói: Hạt / Bột" chỉ đổi cách xay, không đổi định lượng.
+  ...todaBlends(),
 
   // --- Hàng bán nguyên gói: bán 1 trừ 1, không pha chế gì ---
   "Thuốc lá Sài Gòn bạc": [["Thuốc lá Sài Gòn bạc", 1]],

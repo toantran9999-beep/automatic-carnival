@@ -778,7 +778,7 @@ inventory.post(
         await tx
           .update(schema.inventoryItems)
           .set({
-            current_stock: sql`(${schema.inventoryItems.current_stock}::numeric + ${line.quantity})::text`,
+            current_stock: sql`(${schema.inventoryItems.current_stock}::numeric + ${line.quantity})`,
             // Giá vốn bình quân gia quyền: (tồn cũ×giá cũ + nhập×giá nhập) / tổng.
             // ⚠️ Đơn vị là XU. Tồn cũ ≤ 0 (kho mới dựng) thì lấy thẳng giá nhập, chứ
             // chia cho tổng bằng 0 là ra NaN rồi ghi đè mất giá vốn.
@@ -872,7 +872,7 @@ inventory.post(
         await tx
           .update(schema.inventoryItems)
           .set({
-            current_stock: sql`(${schema.inventoryItems.current_stock}::numeric + ${delta})::text`,
+            current_stock: sql`(${schema.inventoryItems.current_stock}::numeric + ${delta})`,
           })
           .where(eq(schema.inventoryItems.id, line.itemId));
 

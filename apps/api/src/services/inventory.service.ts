@@ -63,11 +63,19 @@ export async function recordMovement(params: {
 
     // Atomic stock update using SQL. Dấu do movementSign() quyết định — một chỗ duy
     // nhất, để không nơi nào tự đoán "loại này cộng hay trừ".
+    //
+    // ⚠️ TUYỆT ĐỐI KHÔNG thêm `::text` vào cuối biểu thức. `current_stock` là
+    // numeric(10,3) trong DB; drizzle khai kiểu TS là string nên rất dễ tưởng phải
+    // ép về text. Postgres KHÔNG tự ép text → numeric khi gán, và trả thẳng
+    //   'column "current_stock" is of type numeric but expression is of type text'
+    // → API 500. Lỗi này nằm sẵn trong code từ đầu ở CẢ recordMovement lẫn
+    // deductForOrder, không ai thấy vì kho chưa từng được dùng thật; đến lúc bấm
+    // "Lưu phiếu nhập" lần đầu (07/08/2026) mới lộ.
     const delta = movementSign(type) * quantity;
     await tx
       .update(schema.inventoryItems)
       .set({
-        current_stock: sql`(${schema.inventoryItems.current_stock}::numeric + ${delta})::text`,
+        current_stock: sql`(${schema.inventoryItems.current_stock}::numeric + ${delta})`,
       })
       .where(eq(schema.inventoryItems.id, itemId));
 
@@ -146,7 +154,7 @@ export async function deductForOrder(params: {
         await tx
           .update(schema.inventoryItems)
           .set({
-            current_stock: sql`(${schema.inventoryItems.current_stock}::numeric - ${deductQty})::text`,
+            current_stock: sql`(${schema.inventoryItems.current_stock}::numeric - ${deductQty})`,
           })
           .where(eq(schema.inventoryItems.id, inventoryItemId));
 

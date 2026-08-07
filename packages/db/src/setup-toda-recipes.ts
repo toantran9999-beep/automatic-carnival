@@ -13,9 +13,15 @@
  *   sai âm thầm.
  *
  * ⚠️ CHƯA CÓ ĐỊNH LƯỢNG (SOP không ghi) — cố ý để trống:
- *   Trà lài (đang pha ước chừng, cần cân lại), Espresso, Cà phê V60, Cà phê phin,
- *   Cà phê mix, Cà phê sữa đặc biệt, Hồng trà, Trà gừng, Trà chanh gừng, Cam vắt,
- *   Trà kem muối, Cacao kem muối, Matcha kem muối, Ly trà đá.
+ *   Trà lài (đang pha ước chừng, cần cân lại), Espresso (nóng), Espresso nhẹ (nóng),
+ *   Cà phê V60, Cà phê đá/sữa đá (pha phin), Cà phê mix, Cà phê sữa đặc biệt,
+ *   Hồng trà, Trà gừng, Trà chanh gừng, Ly trà đá, Cacao kem muối, Matcha kem muối,
+ *   Cam vắt, Sữa tươi, Chanh đá.
+ *
+ * ⚠️ Nhóm "CÀ PHÊ BỘT HẠT" (Cà phê Toda 1–4, túi 250g/500g/3kg) cũng để trống: bán
+ *   một túi là rút thẳng bấy nhiêu gam hạt ra khỏi kho, nhưng CHƯA biết mỗi loại
+ *   Toda 1/2/3/4 ứng với bao hạt nào. Đoán sai là trừ nhầm bao — cần anh Toàn xác
+ *   nhận rồi mới thêm.
  */
 import { db, schema } from "./index";
 import { and, eq, inArray } from "drizzle-orm";
@@ -44,15 +50,18 @@ const NUOC_AMERICANO = 400;
 const HAT_NEN = "Hạt Robusta — Cầu Đất";
 
 /**
- * Tùy chọn "Loại hạt" trỏ tới lô hạt nào.
+ * Tùy chọn "Loại hạt" trỏ tới lô hạt nào. Khoá = tên tùy chọn ĐANG CHẠY trên POS.
  *
- * ⚠️ Đây là chỗ duy nhất cần sửa khi nhập lô hạt mới (Ethiopia thay Brazil chẳng hạn) —
- * hoặc đổi ngay trên giao diện, mục "Lô hạt đang dùng" ở tab Định lượng.
- * Tùy chọn không có trong bảng này (Culi, Mộc) sẽ được BÁO RA chứ không đoán bừa.
+ * ⚠️ Đây là chỗ duy nhất cần sửa khi nhập lô hạt mới — hoặc đổi ngay trên giao diện,
+ * mục "Lô hạt đang dùng" ở tab Định lượng. Tùy chọn không có trong bảng này sẽ được
+ * BÁO RA chứ không đoán bừa.
  */
 const LO_HAT_DANG_DUNG: Record<string, string> = {
-  "Robusta truyền thống": "Hạt Robusta — Cầu Đất",
-  Arabica: "Hạt Arabica — Brazil Cerrado",
+  "Arabica Brazil": "Hạt Arabica — Brazil Cerrado",
+  "Arabica Cầu Đất": "Hạt Arabica — Cầu Đất",
+  "Robusta Honey": "Hạt Honey Robusta — Cầu Đất",
+  Blend: "Hạt Blend",
+  Mix: "Hạt Mix",
 };
 
 const LY_360 = "Ly nhựa 360ml";
@@ -94,6 +103,26 @@ const RECIPES: Record<string, Recipe> = {
 
   // Thường: Ít 20g / Vừa 30g / Nhiều 35g sữa đặc → nền lấy Vừa.
   "Cà phê sữa đá": [[HAT_NEN, SHOT2], ["Sữa đặc", 30], ["Đá viên", DA_360], ...BAO_BI],
+
+  // Hai món "(nhẹ)" vẫn còn đứng riêng trên thực đơn (chưa gộp hết vào tùy chọn
+  // "Độ đậm"). SOP có cột Nhẹ riêng: 1 shot, bớt 1g đường, +25ml nước.
+  // ⚠️ Nếu thu ngân chọn thêm "Độ đậm — Nhẹ" trên chính món này thì bột bị trừ hai
+  // lần (12 − 6 = 6g). Cách chữa đúng là gộp món "(nhẹ)" vào tùy chọn, không phải
+  // sửa số ở đây.
+  "Cà phê đá (nhẹ)": [
+    [HAT_NEN, SHOT1],
+    ["Đường vàng", 6],
+    ["Nước lọc", 25],
+    ["Đá viên", DA_360],
+    ...BAO_BI,
+  ],
+  "Cà phê sữa đá (nhẹ)": [
+    [HAT_NEN, SHOT1],
+    ["Sữa đặc", 25],
+    ["Nước lọc", 25],
+    ["Đá viên", DA_360],
+    ...BAO_BI,
+  ],
 
   // 30g sữa đặc + 50ml sữa tươi + 4g đường + đá → cà phê đổ lên tầng.
   "Bạc xỉu": [
@@ -322,7 +351,8 @@ const RECIPES: Record<string, Recipe> = {
   // --- Nhóm sữa chua (SOP IV.4) ---
   // Nền: 1 hũ sữa chua + 25g sữa đặc + xanthan + 1 ly đá 300ml.
 
-  "Sữa chua": [
+  // SOP gọi là "Sữa chua cơ bản"; trên thực đơn tên là "Sữa chua đá xay".
+  "Sữa chua đá xay": [
     ["Sữa chua", 1],
     ["Sữa đặc", 25],
     ["Bột xanthan", 0.2],
@@ -373,6 +403,13 @@ type ModRule = {
   replace?: [from: string, to: string];
 };
 
+/**
+ * ⚠️ Tên nhóm/tùy chọn dưới đây phải khớp ĐÚNG cái đang chạy trên POS ("Sữa đặc 1",
+ * "Ít đường"…), không phải tên trong SOP. Sai một chữ là dòng đó im lặng bị bỏ qua —
+ * script sẽ in ra danh sách không khớp, đọc log sau mỗi lần chạy.
+ *
+ * Chỉ đụng vào ĐỊNH LƯỢNG. Giá của tùy chọn giữ nguyên tuyệt đối.
+ */
 const MOD_RULES: ModRule[] = [
   // "Nhẹ" = 1 shot thay vì 2 → 18g về 12g. SOP còn ghi bớt 1g đường và thêm 25ml nước.
   {
@@ -385,30 +422,42 @@ const MOD_RULES: ModRule[] = [
     ],
   },
 
-  // Đường (nhóm này chỉ gắn cho món cà phê, nên đơn vị là đường vàng theo g).
-  // Nền 7g → Ít 4g → −3. Không đường → −7.
-  { group: "Đường", modifier: "Ít ngọt", deltas: [["Đường vàng", -3]] },
+  // Đường (nhóm chỉ gắn cho món cà phê nên đơn vị là đường vàng theo g).
+  // SOP: Ít 4g / Vừa 7g / Nhiều 10g. Nền là Vừa.
+  { group: "Đường", modifier: "Ít đường", deltas: [["Đường vàng", -3]] },
+  { group: "Đường", modifier: "Nhiều đường", deltas: [["Đường vàng", 3]] },
   { group: "Đường", modifier: "Không đường", deltas: [["Đường vàng", -7]] },
+  // "Rất nhiều đường" và "Đường ăn kiêng": SOP không có số, cố ý bỏ trống.
 
-  // Sữa đặc: SOP Ít 20g / Vừa 30g / Nhiều 35g. Nền là Vừa.
-  // "Nhiều sữa" SOP ghi thêm: +5g đường nước.
+  // Sữa đặc — tên tùy chọn đã ghi sẵn số gram, khỏi phải đoán. Nền 30g.
+  { group: "Sữa đặc 1", modifier: "Rất ít sữa 15g", deltas: [["Sữa đặc", -15]] },
+  { group: "Sữa đặc 1", modifier: "Ít sữa 20g", deltas: [["Sữa đặc", -10]] },
+  { group: "Sữa đặc 1", modifier: "Sữa đặc 35g", deltas: [["Sữa đặc", 5]] },
   {
-    group: "Sữa",
-    modifier: "Nhiều sữa",
+    // Đúng ghi chú SOP: "Nhiều sữa: +5g đường nước".
+    group: "Sữa đặc 1",
+    modifier: "Sữa đặc 35g + 5g đường nước",
     deltas: [
       ["Sữa đặc", 5],
       ["Nước đường", 5],
     ],
   },
-  { group: "Sữa", modifier: "Ít sữa", deltas: [["Sữa đặc", -10]] },
-  { group: "Sữa", modifier: "Không sữa", deltas: [["Sữa đặc", -30]] },
+  // "Sữa đặc 30g" = đúng mức nền → không cần dòng nào.
 
   // Đá — ⚠️ ước lượng như DA_360.
-  { group: "Đá", modifier: "Ít đá", deltas: [["Đá viên", -50]] },
+  { group: "Đá", modifier: "Ít đá", deltas: [["Đá viên", -40]] },
+  { group: "Đá", modifier: "Rất ít đá", deltas: [["Đá viên", -75]] },
   { group: "Đá", modifier: "Không đá", deltas: [["Đá viên", -DA_360]] },
+  { group: "Đá", modifier: "Nóng", deltas: [["Đá viên", -DA_360]] },
+  // Đá để riêng = tốn thêm một cái ly, đá vẫn đủ chừng đó.
+  { group: "Đá", modifier: "Đá riêng", deltas: [[LY_360, 1]] },
 
   { group: "Món thêm", modifier: "Thêm 1 shot cà phê", deltas: [[HAT_NEN, SHOT1]] },
+  { group: "Món thêm", modifier: "Thêm 2 shot cà phê", deltas: [[HAT_NEN, SHOT2]] },
   { group: "Món thêm", modifier: "Thêm soda", deltas: [["Soda", 160]] },
+  { group: "Món thêm", modifier: "Thêm chanh", deltas: [["Chanh", 10]] },
+  // "Thêm món" (3 mức giá) là ô mở cho thu ngân gõ tay — không gắn nguyên liệu nào.
+  // "Đóng gói: Hạt / Bột" chỉ đổi cách xay, không đổi định lượng.
 ];
 
 // ---------------------------------------------------------------------------

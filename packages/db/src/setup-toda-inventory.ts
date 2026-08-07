@@ -32,10 +32,14 @@ const CATEGORIES: { name: string; items: Ing[] }[] = [
     // không ai biết đang trừ vào bao nào.
     name: "Hạt cà phê",
     items: [
+      // Tên khớp đúng tùy chọn "Loại hạt" đang chạy trên POS (Mix / Blend /
+      // Robusta Honey / Arabica Cầu Đất / Arabica Brazil), cộng thêm vùng trồng.
       { name: "Hạt Robusta — Cầu Đất", unit: "g", pack: [1000, "bao 1kg"], min: 2000 },
       { name: "Hạt Honey Robusta — Cầu Đất", unit: "g", pack: [1000, "bao 1kg"], min: 1000 },
+      { name: "Hạt Arabica — Cầu Đất", unit: "g", pack: [1000, "bao 1kg"], min: 1000 },
       { name: "Hạt Arabica — Brazil Cerrado", unit: "g", pack: [1000, "bao 1kg"], min: 1000 },
-      { name: "Hạt Arabica — Ethiopia Sidamo", unit: "g", pack: [1000, "bao 1kg"], min: 1000 },
+      { name: "Hạt Blend", unit: "g", pack: [1000, "bao 1kg"], min: 1000 },
+      { name: "Hạt Mix", unit: "g", pack: [1000, "bao 1kg"], min: 1000 },
     ],
   },
   {
@@ -131,8 +135,22 @@ const CATEGORIES: { name: string; items: Ing[] }[] = [
   },
 ];
 
-/** Dữ liệu mẫu của khuôn nhà hàng — xoá hẳn, quán cà phê không dùng tới. */
-const DEMO_ITEMS = ["Gạo", "Thịt gà", "Bánh phở", "Trà", "Nước mắm", "Rau thơm", "Hành lá"];
+/**
+ * Dữ liệu mẫu của khuôn nhà hàng — xoá hẳn, quán cà phê không dùng tới.
+ *
+ * Kèm "Hạt Arabica — Ethiopia Sidamo": lô đó do bản seed đầu đoán ra, quán không
+ * bán. Thực tế POS có "Arabica Cầu Đất". Xoá cho khỏi lẫn.
+ */
+const DEMO_ITEMS = [
+  "Gạo",
+  "Thịt gà",
+  "Bánh phở",
+  "Trà",
+  "Nước mắm",
+  "Rau thơm",
+  "Hành lá",
+  "Hạt Arabica — Ethiopia Sidamo",
+];
 const DEMO_CATEGORIES = ["Nguyên liệu chính"];
 
 /** Cấp mã nội bộ TODA-0001 tăng dần trong phạm vi một chi nhánh. */

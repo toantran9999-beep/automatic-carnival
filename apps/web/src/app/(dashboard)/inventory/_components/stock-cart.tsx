@@ -160,8 +160,10 @@ export function StockCart({
                   <Input
                     className="w-24 shrink-0"
                     type="number"
-                    step="0.001"
-                    inputMode="decimal"
+                    // Nhập hàng và kiểm kê luôn là số nguyên (12 hũ, 1000 g). step chỉ
+                    // điều khiển nút tăng/giảm — gõ tay số lẻ vẫn được nếu thật sự cần.
+                    step="1"
+                    inputMode="numeric"
                     value={line.quantity}
                     onChange={(e) =>
                       setLines((prev) =>

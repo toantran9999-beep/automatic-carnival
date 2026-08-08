@@ -2,39 +2,25 @@
 
 import { Card, CardContent } from "@restai/ui/components/card";
 import { Badge } from "@restai/ui/components/badge";
-import { Button } from "@restai/ui/components/button";
-import { ArrowUpDown } from "lucide-react";
-import { formatDate } from "@/lib/utils";
+import { formatDate, formatQty } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
 
-export function MovementsTab({
-  movements,
-  onNewMovement,
-}: {
-  movements: any[];
-  onNewMovement: () => void;
-}) {
+export function MovementsTab({ movements }: { movements: any[] }) {
   const { t, lang } = useTranslation();
 
   const movementTypeLabels: Record<
     string,
     { label: string; variant: "default" | "secondary" | "destructive" | "outline" }
   > = {
-    purchase: { label: lang === "vi" ? "Nhập hàng" : "Purchase", variant: "default" },
+    purchase: { label: t("inventory.receive"), variant: "default" },
     consumption: { label: lang === "vi" ? "Tiêu hao" : "Consumption", variant: "secondary" },
+    issue: { label: t("inventory.issueReasonUse"), variant: "secondary" },
     waste: { label: lang === "vi" ? "Hao hụt" : "Waste", variant: "destructive" },
     adjustment: { label: lang === "vi" ? "Điều chỉnh" : "Adjustment", variant: "outline" },
   };
 
   return (
     <div className="space-y-4">
-      <div className="flex justify-end">
-        <Button onClick={onNewMovement}>
-          <ArrowUpDown className="h-4 w-4 mr-2" />
-          {t("inventory.addMovement")}
-        </Button>
-      </div>
-
       <Card>
         <CardContent className="p-0">
           <div className="overflow-x-auto">
@@ -86,8 +72,8 @@ export function MovementsTab({
                         <td className="p-3 text-sm font-medium text-foreground">
                           {mov.item_name || "-"}
                         </td>
-                        <td className="p-3 text-sm text-right font-medium text-foreground">
-                          {parseFloat(mov.quantity).toFixed(3)}
+                        <td className="p-3 text-sm text-right font-medium text-foreground tabular-nums">
+                          {formatQty(mov.quantity)}
                         </td>
                         <td className="p-3 text-sm text-muted-foreground hidden sm:table-cell">
                           {mov.reference || "-"}

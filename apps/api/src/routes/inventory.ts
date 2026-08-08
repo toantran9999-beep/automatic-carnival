@@ -355,8 +355,29 @@ inventory.get("/items", requirePermission("inventory:read"), async (c) => {
   const tenant = c.get("tenant") as any;
 
   const result = await db
-    .select()
+    .select({
+      id: schema.inventoryItems.id,
+      name: schema.inventoryItems.name,
+      unit: schema.inventoryItems.unit,
+      current_stock: schema.inventoryItems.current_stock,
+      min_stock: schema.inventoryItems.min_stock,
+      cost_per_unit: schema.inventoryItems.cost_per_unit,
+      barcode: schema.inventoryItems.barcode,
+      internal_code: schema.inventoryItems.internal_code,
+      pack_size: schema.inventoryItems.pack_size,
+      pack_label: schema.inventoryItems.pack_label,
+      is_active: schema.inventoryItems.is_active,
+      category_id: schema.inventoryItems.category_id,
+      // Kèm tên nhóm để trang Kho hàng gom nhóm được mà không phải gọi thêm lượt nữa.
+      category_name: schema.inventoryCategories.name,
+    })
     .from(schema.inventoryItems)
+    // leftJoin chứ KHÔNG innerJoin: nguyên liệu chưa gán nhóm vẫn phải hiện ra.
+    // innerJoin là chúng biến mất khỏi màn hình mà không ai biết là đang thiếu hàng.
+    .leftJoin(
+      schema.inventoryCategories,
+      eq(schema.inventoryItems.category_id, schema.inventoryCategories.id),
+    )
     .where(
       and(
         eq(schema.inventoryItems.branch_id, tenant.branchId),

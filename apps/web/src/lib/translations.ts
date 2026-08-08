@@ -514,7 +514,18 @@ export const translations = {
       beanLots: "Lô hạt đang dùng",
       beanLotsHelp: "Đổi lô hạt ở đây là mọi công thức tự trỏ theo — không phải mở lại từng món.",
       beanLotSame: "Dùng hạt nền (không thay)",
-      addIngredientRow: "Thêm nguyên liệu"
+      addIngredientRow: "Thêm nguyên liệu",
+
+      // Gom nhóm & lọc
+      allCategories: "Tất cả nhóm",
+      noCategory: "Chưa phân nhóm",
+      lowOnly: "Chỉ sắp hết",
+      lowSuffix: "sắp hết",
+      minShort: "Tối thiểu",
+      noMatch: "Không có nguyên liệu nào khớp",
+      belowMin: "nguyên liệu dưới mức tối thiểu",
+      andMore: "và {n} nguyên liệu nữa",
+      viewLow: "Xem"
     },
     kitchen: {
       title: "Nhà bếp",
@@ -1384,7 +1395,17 @@ export const translations = {
       beanLots: "Bean lot in use",
       beanLotsHelp: "Switch the lot here and every recipe follows — no need to reopen each item.",
       beanLotSame: "Use the base bean (no swap)",
-      addIngredientRow: "Add ingredient"
+      addIngredientRow: "Add ingredient",
+
+      allCategories: "All categories",
+      noCategory: "Uncategorised",
+      lowOnly: "Low stock only",
+      lowSuffix: "low",
+      minShort: "Min",
+      noMatch: "No ingredient matches",
+      belowMin: "ingredients below minimum stock",
+      andMore: "and {n} more",
+      viewLow: "View"
     },
     kitchen: {
       title: "Kitchen",

@@ -32,6 +32,38 @@ export function formatElapsed(startedAt: string, now: number): string {
   return `${Math.floor(mins / 60)}h${String(mins % 60).padStart(2, "0")}p`;
 }
 
+/**
+ * Số lượng kho — độ chính xác co giãn theo độ lớn của chính con số.
+ *
+ *   ≥ 10  → làm tròn số nguyên      3000 → "3.000",  95,4 → "95"
+ *   < 10  → tối đa 2 số lẻ, bỏ 0 thừa   0,5 → "0,5",  0,20 → "0,2"
+ *
+ * ⚠️ Vì sao KHÔNG làm tròn cứng: muối 0,5g và bột xanthan 0,2g mỗi ly là số thật.
+ * Làm tròn cứng là cả cột Lịch sử kho của mấy thứ đó thành "0" — nhìn như kho không
+ * trừ gì cả. Ngược lại 3.000g hạt thì phần lẻ chẳng ai quan tâm.
+ *
+ * Một hàm duy nhất cho mọi màn hình, để chỗ này hiện "95" mà chỗ kia hiện "95.400"
+ * thì không xảy ra.
+ */
+export function formatQty(value: number | string): string {
+  const n = typeof value === "number" ? value : parseFloat(value ?? "0");
+  if (!Number.isFinite(n)) return "0";
+
+  let lang = "vi";
+  try {
+    lang = useLangStore.getState()?.lang || "vi";
+  } catch {
+    // Bỏ qua lỗi hydrate phía máy chủ — mặc định tiếng Việt.
+  }
+
+  const decimals = Math.abs(n) >= 10 ? 0 : 2;
+  return n.toLocaleString(lang === "vi" ? "vi-VN" : "en-US", {
+    minimumFractionDigits: 0,
+    // maximumFractionDigits tự bỏ số 0 thừa: 0,20 → "0,2", 8,00 → "8".
+    maximumFractionDigits: decimals,
+  });
+}
+
 export function formatCurrency(cents: number, currencyCode?: string): string {
   let lang = "vi";
   try {

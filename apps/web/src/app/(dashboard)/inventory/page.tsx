@@ -28,7 +28,6 @@ import { PageHeader } from "@/components/page-header";
 import { ItemsTab } from "./_components/items-tab";
 import { ItemDialog } from "./_components/item-dialog";
 import { MovementsTab } from "./_components/movements-tab";
-import { CreateMovementDialog } from "./_components/movement-dialog";
 import { RecipesTab } from "./_components/recipes-tab";
 import { RecipeDialog } from "./_components/recipe-dialog";
 import { ReceiveTab } from "./_components/receive-tab";
@@ -42,7 +41,8 @@ export default function InventoryPage() {
   const [newItemOpen, setNewItemOpen] = useState(false);
   /** Nguyên liệu đang sửa — null là đóng hộp thoại. */
   const [editItem, setEditItem] = useState<any | null>(null);
-  const [newMovementOpen, setNewMovementOpen] = useState(false);
+  /** Bộ lọc "chỉ sắp hết" — ở đây chứ không trong tab, để băng cảnh báo bật được nó. */
+  const [lowOnly, setLowOnly] = useState(false);
   /** Món đang mở hộp thoại công thức — null là đóng. */
   const [recipeFor, setRecipeFor] = useState<{ id: string; name: string } | null>(null);
 
@@ -108,19 +108,35 @@ export default function InventoryPage() {
 
   return (
     <div className="space-y-6">
+      {/* Liệt kê hết 47 cái tên ở đây là chiếm cả màn hình mà chẳng ai đọc. Nêu số
+          lượng + vài cái tên, còn lại đưa người dùng sang danh sách đã lọc sẵn. */}
       {alerts.length > 0 && (
-        <div className="p-3 rounded-lg border border-destructive/50 bg-destructive/10 flex items-center gap-2">
-          <AlertTriangle className="h-5 w-5 text-destructive shrink-0" />
-          <div>
+        <div className="flex flex-wrap items-center gap-2 rounded-lg border border-destructive/50 bg-destructive/10 p-3">
+          <AlertTriangle className="h-5 w-5 shrink-0 text-destructive" />
+          <div className="min-w-0 flex-1">
             <p className="text-sm font-medium text-destructive">
-              {alerts.length}{" "}
-              {alerts.length === 1 ? t("inventory.items").toLowerCase() : t("inventory.items").toLowerCase()}{" "}
-              {lang === "vi" ? "dưới mức tối thiểu" : "below minimum stock"}
+              {alerts.length} {t("inventory.belowMin")}
             </p>
-            <p className="text-xs text-destructive/80">
-              {alerts.map((a: any) => a.name).join(", ")}
+            <p className="truncate text-xs text-destructive/80">
+              {alerts
+                .slice(0, 5)
+                .map((a: any) => a.name)
+                .join(", ")}
+              {alerts.length > 5 &&
+                ` ${t("inventory.andMore").replace("{n}", String(alerts.length - 5))}`}
             </p>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="shrink-0"
+            onClick={() => {
+              setActiveTab("stock");
+              setLowOnly(true);
+            }}
+          >
+            {t("inventory.viewLow")}
+          </Button>
         </div>
       )}
 
@@ -167,6 +183,8 @@ export default function InventoryPage() {
             isLoading={isLoading}
             search={search}
             setSearch={setSearch}
+            lowOnly={lowOnly}
+            setLowOnly={setLowOnly}
             onNewItem={() => setNewItemOpen(true)}
             onEditItem={setEditItem}
           />
@@ -181,10 +199,7 @@ export default function InventoryPage() {
         </TabsContent>
 
         <TabsContent value="movements">
-          <MovementsTab
-            movements={movements}
-            onNewMovement={() => setNewMovementOpen(true)}
-          />
+          <MovementsTab movements={movements} />
         </TabsContent>
 
         <TabsContent value="recipes">
@@ -197,11 +212,6 @@ export default function InventoryPage() {
         open={!!editItem}
         onOpenChange={(open) => !open && setEditItem(null)}
         item={editItem}
-      />
-      <CreateMovementDialog
-        open={newMovementOpen}
-        onOpenChange={setNewMovementOpen}
-        items={items}
       />
       <RecipeDialog
         open={!!recipeFor}

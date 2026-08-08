@@ -20,9 +20,13 @@ import {
 import {
   useCreateInventoryItem,
   useUpdateInventoryItem,
+  useInventoryCategories,
 } from "@/hooks/use-inventory";
 import { toast } from "sonner";
 import { useTranslation } from "@/stores/lang-store";
+
+/** Giá trị cho ô "chưa phân nhóm" — Radix Select không nhận value rỗng. */
+const NO_CATEGORY = "__none__";
 
 const EMPTY = {
   name: "",
@@ -33,6 +37,7 @@ const EMPTY = {
   barcode: "",
   packSize: "1",
   packLabel: "",
+  categoryId: NO_CATEGORY,
 };
 
 /**
@@ -54,6 +59,8 @@ export function ItemDialog({
   const { t, lang } = useTranslation();
   const createItem = useCreateInventoryItem();
   const updateItem = useUpdateInventoryItem();
+  const { data: categoriesData } = useInventoryCategories();
+  const categories: any[] = categoriesData ?? [];
   const isEdit = !!item;
   const [form, setForm] = useState(EMPTY);
 
@@ -71,6 +78,7 @@ export function ItemDialog({
             barcode: item.barcode ?? "",
             packSize: String(parseFloat(item.pack_size ?? "1")),
             packLabel: item.pack_label ?? "",
+            categoryId: item.category_id ?? NO_CATEGORY,
           }
         : EMPTY,
     );
@@ -92,11 +100,17 @@ export function ItemDialog({
 
     try {
       if (isEdit) {
-        await updateItem.mutateAsync({ id: item.id, ...shared });
+        await updateItem.mutateAsync({
+          id: item.id,
+          ...shared,
+          // PATCH nhận null để gỡ nhóm; POST thì zod đòi uuid nên phải bỏ hẳn khoá.
+          categoryId: form.categoryId === NO_CATEGORY ? null : form.categoryId,
+        });
       } else {
         await createItem.mutateAsync({
           ...shared,
           currentStock: parseFloat(form.currentStock) || 0,
+          ...(form.categoryId !== NO_CATEGORY ? { categoryId: form.categoryId } : {}),
         });
       }
       onOpenChange(false);
@@ -129,6 +143,26 @@ export function ItemDialog({
               onChange={(e) => setForm({ ...form, name: e.target.value })}
               required
             />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="itemCategory">{t("menu.category")}</Label>
+            <Select
+              value={form.categoryId}
+              onValueChange={(v) => setForm({ ...form, categoryId: v })}
+            >
+              <SelectTrigger id="itemCategory">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value={NO_CATEGORY}>{t("inventory.noCategory")}</SelectItem>
+                {categories.map((cat: any) => (
+                  <SelectItem key={cat.id} value={cat.id}>
+                    {cat.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
 
           <div className="grid grid-cols-2 gap-4">
@@ -179,9 +213,9 @@ export function ItemDialog({
                 <Input
                   id="itemStock"
                   type="number"
-                  step="0.001"
+                  step="1"
                   min="0"
-                  inputMode="decimal"
+                  inputMode="numeric"
                   placeholder="0"
                   value={form.currentStock}
                   onChange={(e) => setForm({ ...form, currentStock: e.target.value })}
@@ -193,9 +227,9 @@ export function ItemDialog({
               <Input
                 id="itemMinStock"
                 type="number"
-                step="0.001"
+                step="1"
                 min="0"
-                inputMode="decimal"
+                inputMode="numeric"
                 placeholder="0"
                 value={form.minStock}
                 onChange={(e) => setForm({ ...form, minStock: e.target.value })}
@@ -209,9 +243,9 @@ export function ItemDialog({
               <Input
                 id="itemPackSize"
                 type="number"
-                step="0.001"
-                min="0.001"
-                inputMode="decimal"
+                step="1"
+                min="0"
+                inputMode="numeric"
                 value={form.packSize}
                 onChange={(e) => setForm({ ...form, packSize: e.target.value })}
               />

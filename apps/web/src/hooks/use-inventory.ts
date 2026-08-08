@@ -57,15 +57,12 @@ export function useDeleteInventoryItem() {
   });
 }
 
-export function useCreateMovement() {
-  const qc = useQueryClient();
-  return useMutation({
-    mutationFn: (data: any) =>
-      apiFetch("/api/inventory/movements", {
-        method: "POST",
-        body: JSON.stringify(data),
-      }),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["inventory"] }),
+/** Nhóm nguyên liệu — dùng để gom nhóm ở tab Nguyên liệu và chọn nhóm khi tạo/sửa. */
+export function useInventoryCategories() {
+  const branch = useBranchKey();
+  return useQuery({
+    queryKey: ["inventory", branch, "categories"],
+    queryFn: () => apiFetch("/api/inventory/categories"),
   });
 }
 

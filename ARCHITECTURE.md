@@ -71,11 +71,22 @@
 | 0005 | `modifier_groups.sort_order`. |
 | 0006 | `payment_requests` + `payment_webhook_events` cho QR chuyển khoản tạm tính 60 phút và đối soát webhook SePay. |
 | 0007 | `register_shifts` (ca bán hàng tại quầy) + unique index 1 ca mở/chi nhánh (`WHERE status='open'`). |
+| 0008 | `custom_order_items` — món nhập tay ngoài thực đơn. |
+| 0009 | `shift_day_summary`. |
+| 0010 | `shift_order_seq` — số phiếu đếm theo ca (01, 02…). |
+| 0011 | `sales_history_daily` / `sales_history_items` — nhập 359 ngày từ POS cũ (`bigint`, đơn vị xu). |
+| 0012 | `orders.created_by` + `order_items.created_by/created_at` — ghi ai order, giờ order. |
+| 0013 | `bridge_heartbeat` — cầu thông báo ngân hàng. |
+| 0014 | Kho hàng: barcode/`pack_size`, `recipe_ingredients`, `modifier_ingredients` (định lượng theo tùy chọn). |
+| 0015 | Tùy chọn kiểu **gõ số**: `modifiers.input_type/unit/min_value/max_value/default_value`, `order_item_modifiers.input_value`, `modifier_ingredients.value_mode`. |
+
+> Nguồn sự thật về danh sách migration là `packages/db/drizzle/meta/_journal.json` — bảng trên chỉ để tra nhanh.
 
 > ⚠️ `drizzle-kit generate` đôi khi sinh dư (re-create bảng đã có) do snapshot lệch → **rút gọn migration chỉ giữ ALTER cần thiết** + thêm `IF EXISTS/IF NOT EXISTS`.
 
 ## 6. TÍNH NĂNG đã làm (log)
 
+- **Tùy chọn kiểu "gõ số"** (migration 0015): mục `input_type='number'` cho nhân viên gõ con số lúc bán — "Đường 13g" — vì 5 mức bấm sẵn không diễn tả hết yêu cầu khách. **Điểm mấu chốt: máy chủ ghép sẵn con số vào bản chụp `order_item_modifiers.name`**, nên toàn bộ đường in và hiển thị không phải sửa gì. Hàm ghép tên `modifierLabel()` nằm ở `packages/config` (một bản cho cả api lẫn web). Kho trừ **đúng số gõ** qua `modifier_ingredients.value_mode='absolute'` + bước 4 của `resolveIngredientAmounts` (đặt đè, không cộng — đường nền 7g mà cộng 13 sẽ ra 20g). Chỉ nhân viên POS gõ được: màn khách lọc `input_type='number'`, và `createOrder` nhận cờ `allowNumericInput=false` cho đường khách quét QR.
 - **Việt hóa** + mặc định VN (timezone Asia/Ho_Chi_Minh, VND, VAT 10%).
 - **In phiếu tách/gộp** (`branches.settings.print_mode`) — `print-ticket.tsx`; phiếu kiểu **"PHIẾU ĐẶT ĐỒ"** (iPOS): tiêu đề + MANG VỀ/BÀN + Giờ/Ngày/Nhân viên/STT + bảng `SL | Tên món | ĐVT` + footer Toda Café.
 - **In trên Android**: KHÔNG dùng iframe ẩn (Chrome Android in nhầm trang app) → chèn phiếu + `@media print` ẩn app, `window.print()` top-level (`isAndroid()` trong print-ticket).

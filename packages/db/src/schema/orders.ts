@@ -4,6 +4,7 @@ import {
   varchar,
   text,
   integer,
+  numeric,
   boolean,
   timestamp,
   index,
@@ -99,6 +100,18 @@ export const orderItemModifiers = pgTable("order_item_modifiers", {
     .references(() => orderItems.id, { onDelete: "cascade" }),
   modifier_id: uuid("modifier_id")
     .references(() => modifiers.id, { onDelete: "set null" }),
+  /**
+   * Bản chụp TÊN lúc bán. Với tùy chọn kiểu gõ số, máy chủ ghép sẵn con số vào
+   * đây — "Đường 13g" — nên mọi đường in và hiển thị (phiếu bếp, hóa đơn, phiếu
+   * tạm tính, 3 driver in, các hộp thoại) chỉ đọc `name` là đủ, không nơi nào
+   * phải biết tới `input_value`.
+   */
   name: varchar("name", { length: 255 }).notNull(), // snapshot
   price: integer("price").notNull().default(0), // snapshot in cents
+  /**
+   * Con số nhân viên gõ (chỉ tùy chọn `input_type = 'number'`), theo đơn vị của
+   * tùy chọn. Dùng để TRỪ KHO đúng lượng thật và để soi lại sau này.
+   * NULL = tùy chọn bấm chọn bình thường.
+   */
+  input_value: numeric("input_value", { precision: 10, scale: 3 }),
 });

@@ -4,6 +4,7 @@ import {
   varchar,
   text,
   integer,
+  numeric,
   boolean,
   primaryKey,
   index,
@@ -73,6 +74,27 @@ export const modifiers = pgTable("modifiers", {
   price: integer("price").default(0).notNull(), // stored in cents
   is_available: boolean("is_available").default(true).notNull(),
   sort_order: integer("sort_order").default(0).notNull(),
+
+  /**
+   * `choice` = bấm chọn (mặc định, mọi tùy chọn cũ).
+   * `number` = nhân viên GÕ SỐ lúc bán — khách đòi đúng "đường 13g" mà 5 mức bấm
+   * sẵn không diễn tả hết. Con số gõ ra nằm ở `order_item_modifiers.input_value`.
+   *
+   * ⚠️ Chỉ nhân viên POS được gõ; màn khách quét QR lọc bỏ kiểu này
+   * (xem `routes/customer.ts`) — khách lạ không biết 13g là nhiều hay ít.
+   */
+  input_type: varchar("input_type", { length: 16 }).default("choice").notNull(),
+  /** Đơn vị hiện cạnh ô nhập và ghép vào tên in ra phiếu: "g", "ml", "shot". */
+  unit: varchar("unit", { length: 16 }),
+  /**
+   * Khoảng hợp lệ. ⚠️ Đặt `max_value` sát thực tế: kho chỉ trừ MỘT LẦN cho mỗi
+   * đơn (`orders.inventory_deducted`), gõ nhầm 130g thay vì 13g là phải chỉnh
+   * kho bằng tay.
+   */
+  min_value: numeric("min_value", { precision: 10, scale: 3 }),
+  max_value: numeric("max_value", { precision: 10, scale: 3 }),
+  /** Điền sẵn vào ô cho nhân viên bớt gõ — thường bằng đúng liều nền của công thức. */
+  default_value: numeric("default_value", { precision: 10, scale: 3 }),
 });
 
 export const menuItemModifierGroups = pgTable(

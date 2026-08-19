@@ -23,6 +23,45 @@ import {
 } from "@/hooks/use-menu";
 import { toast } from "sonner";
 import { useTranslation } from "@/stores/lang-store";
+import { modifierLabel } from "@restai/config";
+
+interface NewModifierRow {
+  name: string;
+  price: string;
+  /** "choice" = bấm chọn (mặc định) · "number" = nhân viên gõ số lúc bán. */
+  inputType: "choice" | "number";
+  unit: string;
+  minValue: string;
+  maxValue: string;
+  defaultValue: string;
+}
+
+const emptyRow: NewModifierRow = {
+  name: "",
+  price: "0",
+  inputType: "choice",
+  unit: "g",
+  minValue: "0",
+  maxValue: "",
+  defaultValue: "",
+};
+
+/** Số hợp lệ thì gửi, để trống thì bỏ hẳn khỏi payload (máy chủ hiểu là không giới hạn). */
+function numOrUndef(v: string): number | undefined {
+  const n = parseFloat((v ?? "").replace(",", "."));
+  return Number.isFinite(n) ? n : undefined;
+}
+
+function numericPayload(mod: NewModifierRow) {
+  if (mod.inputType !== "number") return { inputType: "choice" as const };
+  return {
+    inputType: "number" as const,
+    unit: mod.unit.trim() || undefined,
+    minValue: numOrUndef(mod.minValue),
+    maxValue: numOrUndef(mod.maxValue),
+    defaultValue: numOrUndef(mod.defaultValue),
+  };
+}
 
 export function ModifierGroupDialog({
   open,
@@ -50,10 +89,15 @@ export function ModifierGroupDialog({
   );
   const [isRequired, setIsRequired] = useState(initial?.is_required ?? false);
 
-  // For new groups: inline modifiers to create
-  const [newModifiers, setNewModifiers] = useState<
-    { name: string; price: string }[]
-  >(isEdit ? [] : [{ name: "", price: "0" }]);
+  /**
+   * Dòng tùy chọn sắp tạo.
+   *
+   * `inputType: "number"` = mục GÕ SỐ: nhân viên nhập con số lúc bán, VD "Đường 13g".
+   * Sinh ra vì 5 mức bấm sẵn không diễn tả hết yêu cầu của khách (9g/13g/15g).
+   */
+  const [newModifiers, setNewModifiers] = useState<NewModifierRow[]>(
+    isEdit ? [] : [{ ...emptyRow }],
+  );
 
   // For editing: track existing modifiers (sorted, reorderable)
   const [existing, setExisting] = useState<any[]>(
@@ -85,7 +129,7 @@ export function ModifierGroupDialog({
     addModifier.isPending;
 
   const handleAddRow = () => {
-    setNewModifiers((prev) => [...prev, { name: "", price: "0" }]);
+    setNewModifiers((prev) => [...prev, { ...emptyRow }]);
   };
 
   const handleRemoveRow = (idx: number) => {
@@ -94,7 +138,7 @@ export function ModifierGroupDialog({
 
   const handleModChange = (
     idx: number,
-    field: "name" | "price",
+    field: keyof NewModifierRow,
     value: string
   ) => {
     setNewModifiers((prev) =>
@@ -137,6 +181,7 @@ export function ModifierGroupDialog({
             price: Math.round(parseFloat(mod.price || "0") * 100),
             isAvailable: true,
             sortOrder: existing.length + i,
+            ...numericPayload(mod),
           });
         }
 
@@ -163,6 +208,7 @@ export function ModifierGroupDialog({
             price: Math.round(parseFloat(mod.price || "0") * 100),
             isAvailable: true,
             sortOrder: i,
+            ...numericPayload(mod),
           });
         }
 
@@ -294,34 +340,107 @@ export function ModifierGroupDialog({
             </Label>
             <div className="space-y-2">
               {newModifiers.map((mod, idx) => (
-                <div key={idx} className="flex items-center gap-2">
-                  <Input
-                    value={mod.name}
-                    onChange={(e) =>
-                      handleModChange(idx, "name", e.target.value)
-                    }
-                    placeholder={t("menu.name")}
-                    className="flex-1"
-                  />
-                  <Input
-                    type="number"
-                    step="any"
-                    value={mod.price}
-                    onChange={(e) =>
-                      handleModChange(idx, "price", e.target.value)
-                    }
-                    placeholder="+/- giá"
-                    title="Để 0 nếu không đổi giá. Số âm = giảm giá."
-                    className="w-24"
-                  />
-                  {newModifiers.length > 1 && (
-                    <button
-                      type="button"
-                      onClick={() => handleRemoveRow(idx)}
-                      className="text-muted-foreground hover:text-destructive shrink-0"
-                    >
-                      <X className="h-4 w-4" />
-                    </button>
+                <div key={idx} className="space-y-2 rounded-lg border p-2">
+                  <div className="flex items-center gap-2">
+                    <Input
+                      value={mod.name}
+                      onChange={(e) =>
+                        handleModChange(idx, "name", e.target.value)
+                      }
+                      placeholder={t("menu.name")}
+                      className="flex-1"
+                    />
+                    <Input
+                      type="number"
+                      step="any"
+                      value={mod.price}
+                      onChange={(e) =>
+                        handleModChange(idx, "price", e.target.value)
+                      }
+                      placeholder="+/- giá"
+                      title="Để 0 nếu không đổi giá. Số âm = giảm giá."
+                      className="w-24"
+                    />
+                    {newModifiers.length > 1 && (
+                      <button
+                        type="button"
+                        onClick={() => handleRemoveRow(idx)}
+                        className="text-muted-foreground hover:text-destructive shrink-0"
+                      >
+                        <X className="h-4 w-4" />
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Kiểu nhập: bấm chọn (như xưa nay) hay để nhân viên gõ số. */}
+                  <div className="flex items-center gap-1.5">
+                    {(["choice", "number"] as const).map((kind) => (
+                      <button
+                        key={kind}
+                        type="button"
+                        onClick={() => handleModChange(idx, "inputType", kind)}
+                        className={`h-8 rounded-md border px-2.5 text-xs font-medium transition-colors ${
+                          mod.inputType === kind
+                            ? "border-primary bg-primary/10 text-primary"
+                            : "border-border text-muted-foreground hover:border-primary/40"
+                        }`}
+                      >
+                        {kind === "choice" ? "Bấm chọn" : "Nhập số"}
+                      </button>
+                    ))}
+                  </div>
+
+                  {mod.inputType === "number" && (
+                    <div className="space-y-2 rounded-md bg-muted/40 p-2">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <Input
+                          value={mod.unit}
+                          onChange={(e) => handleModChange(idx, "unit", e.target.value)}
+                          placeholder="Đơn vị"
+                          title="g, ml, shot…"
+                          className="h-9 w-20"
+                        />
+                        <Input
+                          type="number"
+                          step="any"
+                          value={mod.minValue}
+                          onChange={(e) => handleModChange(idx, "minValue", e.target.value)}
+                          placeholder="Nhỏ nhất"
+                          className="h-9 w-24"
+                        />
+                        <Input
+                          type="number"
+                          step="any"
+                          value={mod.maxValue}
+                          onChange={(e) => handleModChange(idx, "maxValue", e.target.value)}
+                          placeholder="Lớn nhất"
+                          title="Đặt sát thực tế: kho chỉ trừ một lần cho mỗi đơn, gõ nhầm 130g là phải chỉnh kho tay."
+                          className="h-9 w-24"
+                        />
+                        <Input
+                          type="number"
+                          step="any"
+                          value={mod.defaultValue}
+                          onChange={(e) => handleModChange(idx, "defaultValue", e.target.value)}
+                          placeholder="Mặc định"
+                          className="h-9 w-24"
+                        />
+                      </div>
+                      {/* Xem trước: tên được GHÉP với con số nên phải đặt tên là
+                          "Đường", đừng đặt "Tự nhập" — không thì phiếu in ra
+                          "Tự nhập 13g", người pha đọc không hiểu là gì. */}
+                      <p className="text-xs leading-snug text-muted-foreground">
+                        Phiếu sẽ in:{" "}
+                        <span className="font-medium text-foreground">
+                          {modifierLabel(
+                            mod.name.trim() || "Đường",
+                            numOrUndef(mod.defaultValue) ?? 13,
+                            mod.unit.trim(),
+                          )}
+                        </span>{" "}
+                        — chỉ nhân viên tại quầy gõ được, khách quét QR không thấy mục này.
+                      </p>
+                    </div>
                   )}
                 </div>
               ))}

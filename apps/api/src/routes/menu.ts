@@ -24,6 +24,14 @@ import { wsManager } from "../ws/manager.js";
 
 const menu = new Hono<AppEnv>();
 
+/**
+ * Số → chuỗi cho cột `numeric` của Postgres (Drizzle nhận chuỗi), giữ nguyên
+ * null/undefined. Dùng cho khoảng hợp lệ của tùy chọn kiểu gõ số.
+ */
+function numOrNull(v: number | null | undefined): string | null {
+  return v === null || v === undefined ? null : String(v);
+}
+
 menu.use("*", authMiddleware);
 menu.use("*", tenantMiddleware);
 menu.use("*", requireBranch);
@@ -474,6 +482,12 @@ menu.post(
         price: body.price,
         is_available: body.isAvailable,
         sort_order: body.sortOrder ?? 0,
+        // Tùy chọn kiểu gõ số. `numOrNull` vì cột là numeric — Drizzle nhận chuỗi.
+        input_type: body.inputType,
+        unit: body.unit ?? null,
+        min_value: numOrNull(body.minValue),
+        max_value: numOrNull(body.maxValue),
+        default_value: numOrNull(body.defaultValue),
       })
       .returning();
 
@@ -681,6 +695,12 @@ menu.patch(
     if (body.price !== undefined) updateData.price = body.price;
     if (body.isAvailable !== undefined) updateData.is_available = body.isAvailable;
     if (body.sortOrder !== undefined) updateData.sort_order = body.sortOrder;
+    // ⚠️ Quên thêm vào danh sách trắng này là PATCH im lặng không lưu.
+    if (body.inputType !== undefined) updateData.input_type = body.inputType;
+    if (body.unit !== undefined) updateData.unit = body.unit ?? null;
+    if (body.minValue !== undefined) updateData.min_value = numOrNull(body.minValue);
+    if (body.maxValue !== undefined) updateData.max_value = numOrNull(body.maxValue);
+    if (body.defaultValue !== undefined) updateData.default_value = numOrNull(body.defaultValue);
 
     const [updated] = await db
       .update(schema.modifiers)

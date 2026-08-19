@@ -233,7 +233,12 @@ export default function PosPage() {
             // máy chủ báo lỗi. Đơn cũ vẫn in ra được vì tên/giá đã chụp ảnh sẵn.
             modifiers: item.modifiers
               .filter((m): m is typeof m & { modifierId: string } => !!m.modifierId)
-              .map((m) => ({ modifierId: m.modifierId })),
+              // `value` chỉ có với tùy chọn kiểu gõ số ("Đường 13g"); máy chủ kiểm
+              // lại theo khoảng khai trong thực đơn rồi mới ghi.
+              .map((m) => ({
+                modifierId: m.modifierId,
+                ...(m.value === null || m.value === undefined ? {} : { value: m.value }),
+              })),
           }
         : {
             customName: item.name,

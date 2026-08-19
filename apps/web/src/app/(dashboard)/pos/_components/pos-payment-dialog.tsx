@@ -25,6 +25,7 @@ import {
 import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
 import { usePrintReceipt } from "@/components/print-ticket";
 import { formatCurrency } from "@/lib/utils";
+import { modifierLabel } from "@restai/config";
 import { useTranslation } from "@/stores/lang-store";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useAuthStore } from "@/stores/auth-store";
@@ -232,7 +233,12 @@ export function PosPaymentDialog({
       total: (i.unitPrice + modTotal) * i.quantity,
       notes: i.notes,
       unit: i.unit,
-      modifiers: i.modifiers.map((m) => ({ name: m.name, price: m.price })),
+      // Ghép con số vào tên ("Đường 13g") — đơn này in TỪ GIỎ, chưa qua máy chủ
+      // nên chưa có bản chụp tên đã ghép sẵn.
+      modifiers: i.modifiers.map((m) => ({
+        name: modifierLabel(m.name, m.value, m.unit),
+        price: m.price,
+      })),
     };
   });
 

@@ -265,16 +265,32 @@ export function ModifierGroupsPanel() {
                               </button>
                             </div>
                             <span>{mod.name}</span>
-                            {idx === 0 && (
+                            {idx === 0 && mod.input_type !== "number" && (
                               <Badge variant="outline" className="h-4 px-1 text-[9px]">
                                 Mặc định
                               </Badge>
                             )}
+                            {mod.input_type === "number" && (
+                              <Badge variant="outline" className="h-4 px-1 text-[9px]">
+                                Nhập số
+                              </Badge>
+                            )}
                           </div>
                           <span className="text-muted-foreground">
-                            {mod.price > 0
-                              ? `+${formatCurrency(mod.price)}`
-                              : t("menu.free", "Free")}
+                            {/* Mục gõ số: cho thấy khoảng hợp lệ thay vì ô giá — giá
+                                của nó gần như luôn là 0, còn khoảng mới là thứ cần soi. */}
+                            {mod.input_type === "number"
+                              ? [
+                                  mod.min_value != null && mod.max_value != null
+                                    ? `${parseFloat(mod.min_value)}–${parseFloat(mod.max_value)}`
+                                    : null,
+                                  mod.unit || null,
+                                ]
+                                  .filter(Boolean)
+                                  .join(" ") || t("menu.free", "Free")
+                              : mod.price > 0
+                                ? `+${formatCurrency(mod.price)}`
+                                : t("menu.free", "Free")}
                           </span>
                         </div>
                       ))}

@@ -4,6 +4,7 @@ import { generateOrderNumber } from "../lib/id.js";
 import { logger } from "../lib/logger.js";
 import { awardPoints } from "./loyalty.service.js";
 import { deductForOrder } from "./inventory.service.js";
+import { modifierLabel } from "@restai/config";
 
 // Types for order creation input
 interface OrderItemInput {
@@ -13,7 +14,8 @@ interface OrderItemInput {
   customPrice?: number;
   quantity: number;
   notes?: string;
-  modifiers?: Array<{ modifierId: string }>;
+  /** `value` chỉ dùng cho tùy chọn kiểu gõ số (VD "Đường 13g"). */
+  modifiers?: Array<{ modifierId: string; value?: number }>;
 }
 
 interface CreateOrderParams {
@@ -36,6 +38,12 @@ interface CreateOrderParams {
    * được từ chỗ nào khác (ca làm chỉ có một tên cho cả buổi).
    */
   createdBy?: string | null;
+  /**
+   * Cho phép tùy chọn kiểu GÕ SỐ ("Đường 13g"). Mặc định bật (nhân viên tại quầy).
+   * ⚠️ Đường khách tự gọi qua QR phải truyền `false`: khách lạ không biết 13g là
+   * nhiều hay ít, và màn khách vốn đã lọc bỏ kiểu tùy chọn này.
+   */
+  allowNumericInput?: boolean;
 }
 
 interface CreateOrderResult {
@@ -51,13 +59,23 @@ interface ResolvedOrderItem {
   total: number;
   notes?: string;
   unit?: string | null;
-  modifiers: Array<{ modifierId: string }>;
+  modifiers: Array<{ modifierId: string; value?: number }>;
+}
+
+interface ResolvedModifier {
+  id: string;
+  name: string;
+  price: number;
+  input_type: string;
+  unit: string | null;
+  min_value: string | null;
+  max_value: string | null;
 }
 
 interface ResolvedItems {
   subtotal: number;
   orderItemsData: ResolvedOrderItem[];
-  modifierMap: Map<string, { id: string; name: string; price: number }>;
+  modifierMap: Map<string, ResolvedModifier>;
 }
 
 /**
@@ -73,8 +91,17 @@ interface ResolvedItems {
  */
 async function resolveOrderItems(
   items: OrderItemInput[],
-  scope: { organizationId: string; branchId: string },
+  scope: {
+    organizationId: string;
+    branchId: string;
+    /**
+     * Cho phép tùy chọn kiểu GÕ SỐ. Chỉ bật cho nhân viên tại quầy; khách tự gọi
+     * qua QR thì tắt — màn khách đã lọc bỏ kiểu này, nên gói tin có nó là bịa.
+     */
+    allowNumericInput?: boolean;
+  },
 ): Promise<ResolvedItems> {
+  const allowNumericInput = scope.allowNumericInput !== false;
   // Get menu items for price calculation (bỏ qua món nhập tay không có menuItemId)
   const menuItemIds = items
     .map((i) => i.menuItemId)
@@ -101,10 +128,7 @@ async function resolveOrderItems(
     (i) => i.modifiers?.map((m) => m.modifierId) || [],
   );
 
-  let modifierMap = new Map<
-    string,
-    { id: string; name: string; price: number }
-  >();
+  let modifierMap = new Map<string, ResolvedModifier>();
   /** modifierId -> các món được phép dùng tùy chọn đó (theo thực đơn đã cấu hình). */
   const allowedItemsByModifier = new Map<string, Set<string>>();
   if (allModifierIds.length > 0) {
@@ -117,6 +141,10 @@ async function resolveOrderItems(
         id: schema.modifiers.id,
         name: schema.modifiers.name,
         price: schema.modifiers.price,
+        input_type: schema.modifiers.input_type,
+        unit: schema.modifiers.unit,
+        min_value: schema.modifiers.min_value,
+        max_value: schema.modifiers.max_value,
         item_id: schema.menuItemModifierGroups.item_id,
       })
       .from(schema.modifiers)
@@ -137,7 +165,15 @@ async function resolveOrderItems(
         ),
       );
     for (const m of modifierRecords) {
-      modifierMap.set(m.id, { id: m.id, name: m.name, price: m.price });
+      modifierMap.set(m.id, {
+        id: m.id,
+        name: m.name,
+        price: m.price,
+        input_type: m.input_type,
+        unit: m.unit,
+        min_value: m.min_value,
+        max_value: m.max_value,
+      });
       const allowed = allowedItemsByModifier.get(m.id) ?? new Set<string>();
       allowed.add(m.item_id);
       allowedItemsByModifier.set(m.id, allowed);
@@ -189,6 +225,34 @@ async function resolveOrderItems(
             `Tùy chọn không hợp lệ cho món "${menuItem.name}"`,
           );
         }
+
+        if (modifier.input_type === "number") {
+          // Tùy chọn kiểu gõ số: con số là phần chính của nó, thiếu thì phiếu in ra
+          // "Đường" trống trơn và kho trừ sai. Chặn hẳn thay vì đoán.
+          if (!allowNumericInput) {
+            throw new OrderValidationError(
+              `Tùy chọn "${modifier.name}" chỉ nhân viên tại quầy được nhập`,
+            );
+          }
+          if (mod.value === undefined || !Number.isFinite(mod.value)) {
+            throw new OrderValidationError(
+              `Tùy chọn "${modifier.name}" cần nhập số`,
+            );
+          }
+          const min = modifier.min_value === null ? null : Number(modifier.min_value);
+          const max = modifier.max_value === null ? null : Number(modifier.max_value);
+          if ((min !== null && mod.value < min) || (max !== null && mod.value > max)) {
+            throw new OrderValidationError(
+              `"${modifier.name}" phải trong khoảng ${min ?? "-"}–${max ?? "-"}${modifier.unit ?? ""}`,
+            );
+          }
+        } else if (mod.value !== undefined) {
+          // Gửi số cho tùy chọn bấm chọn = gói tin sai, đừng nuốt im lặng.
+          throw new OrderValidationError(
+            `Tùy chọn "${modifier.name}" không nhận số`,
+          );
+        }
+
         modifierPricePerUnit += modifier.price;
       }
     }
@@ -235,6 +299,12 @@ export interface ItemModifierSnapshot {
   name: string;
   /** Phụ trội MỖI ĐƠN VỊ, tính bằng xu. Âm = giảm giá (VD "Nhẹ" = -200000). */
   price: number;
+  /**
+   * Con số nhân viên gõ (tùy chọn kiểu số), null với tùy chọn bấm chọn.
+   * ⚠️ Phần HIỂN THỊ đừng dùng cột này — `name` đã ghép sẵn ("Đường 13g").
+   * Để đây cho báo cáo và đối chiếu định lượng.
+   */
+  inputValue: number | null;
 }
 
 /**
@@ -262,6 +332,7 @@ export async function loadItemModifiers(
       modifier_id: schema.orderItemModifiers.modifier_id,
       name: schema.orderItemModifiers.name,
       price: schema.orderItemModifiers.price,
+      input_value: schema.orderItemModifiers.input_value,
     })
     .from(schema.orderItemModifiers)
     .where(inArray(schema.orderItemModifiers.order_item_id, itemIds));
@@ -272,6 +343,7 @@ export async function loadItemModifiers(
       modifierId: r.modifier_id,
       name: r.name,
       price: r.price,
+      inputValue: r.input_value === null ? null : Number(r.input_value),
     });
   }
   return map;
@@ -296,11 +368,13 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
     lang,
     registerShiftId,
     createdBy,
+    allowNumericInput,
   } = params;
 
   const { subtotal, orderItemsData, modifierMap } = await resolveOrderItems(items, {
     organizationId,
     branchId,
+    allowNumericInput,
   });
   const taxRate = await getBranchTaxRate(branchId);
 
@@ -411,8 +485,11 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
             return {
               order_item_id: createdItems[i].id,
               modifier_id: mod.modifierId,
-              name: modifier?.name || "Tùy chọn",
+              // Ghép sẵn con số vào TÊN ("Đường 13g"): nhờ vậy mọi đường in và
+              // hiển thị chỉ cần đọc `name`, không nơi nào phải biết `input_value`.
+              name: modifierLabel(modifier?.name || "Tùy chọn", mod.value, modifier?.unit),
               price: modifier?.price || 0,
+              input_value: mod.value === undefined ? null : String(mod.value),
             };
           }),
         );
@@ -542,8 +619,11 @@ export async function addItemsToOrder(
             return {
               order_item_id: addedItems[i].id,
               modifier_id: mod.modifierId,
-              name: modifier?.name || "Tùy chọn",
+              // Ghép sẵn con số vào TÊN ("Đường 13g"): nhờ vậy mọi đường in và
+              // hiển thị chỉ cần đọc `name`, không nơi nào phải biết `input_value`.
+              name: modifierLabel(modifier?.name || "Tùy chọn", mod.value, modifier?.unit),
               price: modifier?.price || 0,
+              input_value: mod.value === undefined ? null : String(mod.value),
             };
           }),
         );

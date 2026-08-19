@@ -133,6 +133,11 @@ inventory.post(
             inventoryItemId: z.string().uuid(),
             quantityDelta: z.number(),
             replacesItemId: z.string().uuid().optional().nullable(),
+            /**
+             * 'absolute' = trừ ĐÚNG con số nhân viên gõ lúc bán (tùy chọn kiểu số),
+             * bỏ qua `quantityDelta`. Mặc định 'delta' như mọi tùy chọn cũ.
+             */
+            valueMode: z.enum(["delta", "absolute"]).optional(),
           }),
         )
         .optional(),
@@ -250,6 +255,7 @@ inventory.post(
               inventory_item_id: m.inventoryItemId,
               quantity_delta: String(m.quantityDelta),
               replaces_item_id: m.replacesItemId ?? null,
+              value_mode: m.valueMode ?? "delta",
             })),
           );
         }
@@ -325,6 +331,11 @@ inventory.get(
         inventory_item_id: schema.modifierIngredients.inventory_item_id,
         quantity_delta: schema.modifierIngredients.quantity_delta,
         replaces_item_id: schema.modifierIngredients.replaces_item_id,
+        value_mode: schema.modifierIngredients.value_mode,
+        // Hộp thoại Công thức cần biết tùy chọn nào là kiểu gõ số để đổi ô nhập ±
+        // thành dòng "trừ đúng số nhân viên gõ".
+        input_type: schema.modifiers.input_type,
+        modifier_unit: schema.modifiers.unit,
       })
       .from(schema.menuItemModifierGroups)
       .innerJoin(

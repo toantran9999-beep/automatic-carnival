@@ -291,3 +291,34 @@ export function buildVietQrPayload(input: VietQrInput): string | null {
   payload += "6304";
   return payload + crc16ccitt(payload);
 }
+
+// ---------------------------------------------------------------------------
+// Tùy chọn món kiểu "gõ số"
+// ---------------------------------------------------------------------------
+
+/**
+ * Tên hiển thị của một tùy chọn, đã ghép con số nhân viên gõ.
+ *
+ *   modifierLabel("Đường", 13, "g")   -> "Đường 13g"
+ *   modifierLabel("Đường", 7.5, "g")  -> "Đường 7.5g"
+ *   modifierLabel("Đường", null, "g") -> "Đường"
+ *
+ * ⚠️ Đặt ở gói dùng CHUNG là cố ý. Máy chủ ghép tên này vào bản chụp
+ * `order_item_modifiers.name` (nhờ vậy mọi đường in và hiển thị không phải sửa
+ * gì), còn giỏ hàng POS phải tự ghép trước khi gửi đơn. Hai bản riêng thì sớm
+ * muộn giỏ và phiếu in ra hai kiểu chữ khác nhau cho cùng một ly.
+ *
+ * Bỏ số 0 thừa sau dấu chấm: cột lưu `numeric(10,3)` nên 13 đọc ra là "13.000".
+ */
+export function modifierLabel(
+  name: string,
+  value?: number | string | null,
+  unit?: string | null,
+): string {
+  if (value === null || value === undefined || value === "") return name;
+  const num = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(num)) return name;
+  // parseFloat của chuỗi đã chuẩn hoá cắt đuôi ".000" mà vẫn giữ ".5"
+  const shown = String(parseFloat(num.toFixed(3)));
+  return `${name} ${shown}${unit ?? ""}`;
+}

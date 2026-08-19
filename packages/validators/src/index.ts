@@ -85,6 +85,19 @@ export const createModifierGroupSchema = z.object({
   sortOrder: z.number().int().min(0).optional(),
 });
 
+/**
+ * Tùy chọn kiểu GÕ SỐ (`inputType: "number"`): nhân viên gõ con số lúc bán, VD
+ * "Đường 13g". Các trường `unit/minValue/maxValue/defaultValue` chỉ có nghĩa với
+ * kiểu này; kiểu `choice` bỏ trống hết và chạy y như trước.
+ */
+const modifierNumericFields = {
+  inputType: z.enum(["choice", "number"]).default("choice"),
+  unit: z.string().trim().max(16).optional(),
+  minValue: z.number().finite().optional(),
+  maxValue: z.number().finite().optional(),
+  defaultValue: z.number().finite().optional(),
+};
+
 export const createModifierSchema = z.object({
   groupId: z.string().uuid(),
   name: z.string().min(1).max(255),
@@ -92,6 +105,7 @@ export const createModifierSchema = z.object({
   price: z.number().int().min(-100000000).max(100000000).default(0),
   isAvailable: z.boolean().default(true),
   sortOrder: z.number().int().min(0).optional(),
+  ...modifierNumericFields,
 });
 
 export const updateModifierGroupSchema = createModifierGroupSchema.partial();
@@ -100,6 +114,11 @@ export const updateModifierSchema = z.object({
   price: z.number().int().min(-100000000).max(100000000).optional(),
   isAvailable: z.boolean().optional(),
   sortOrder: z.number().int().min(0).optional(),
+  inputType: z.enum(["choice", "number"]).optional(),
+  unit: z.string().trim().max(16).nullable().optional(),
+  minValue: z.number().finite().nullable().optional(),
+  maxValue: z.number().finite().nullable().optional(),
+  defaultValue: z.number().finite().nullable().optional(),
 });
 
 // Space validators
@@ -142,6 +161,12 @@ export const createOrderItemSchema = z
     notes: z.string().max(500).optional(),
     modifiers: z.array(z.object({
       modifierId: z.string().uuid(),
+      /**
+       * Con số nhân viên gõ — CHỈ cho tùy chọn `input_type = "number"`.
+       * Máy chủ kiểm lại theo min/max khai trong thực đơn và từ chối đơn nếu
+       * thiếu hoặc ngoài khoảng (xem `resolveOrderItems`), nên đừng tin số này.
+       */
+      value: z.number().finite().optional(),
     })).default([]),
   })
   .refine(

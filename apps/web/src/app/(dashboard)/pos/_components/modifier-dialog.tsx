@@ -16,6 +16,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { toThumbUrl } from "@/lib/image-thumb";
 import { useItemModifierGroups } from "@/hooks/use-menu";
 import { useTranslation } from "@/stores/lang-store";
+import { modifierLabel } from "@restai/config";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -30,6 +31,13 @@ export interface CartModifier {
   name: string;
   /** Phụ trội mỗi đơn vị, tính bằng xu. Âm = giảm giá. */
   price: number;
+  /**
+   * Con số nhân viên gõ với tùy chọn kiểu số ("Đường 13g"). null/undefined với
+   * tùy chọn bấm chọn bình thường.
+   */
+  value?: number | null;
+  /** Đơn vị của con số trên ("g", "ml", "shot") — để ghép tên hiển thị. */
+  unit?: string | null;
 }
 
 // ---------------------------------------------------------------------------
@@ -52,6 +60,8 @@ export function ModifierDialog({
   const { t } = useTranslation();
 
   const [selected, setSelected] = useState<Record<string, string[]>>({});
+  /** modifierId -> con số nhân viên đang gõ (giữ dạng chuỗi để gõ dở "1." không bị nhảy). */
+  const [values, setValues] = useState<Record<string, string>>({});
   const [openGroups, setOpenGroups] = useState<Record<string, boolean>>({});
   const [quantity, setQuantity] = useState(1);
   const [notes, setNotes] = useState("");
@@ -60,6 +70,7 @@ export function ModifierDialog({
   useEffect(() => {
     if (open) {
       setSelected({});
+      setValues({});
       setOpenGroups({});
       setQuantity(1);
       setNotes("");
@@ -95,7 +106,31 @@ export function ModifierDialog({
   // If no modifier groups, the useEffect above handles auto-add
   if (!isLoading && modifierGroups.length === 0) return null;
 
+  /** Tra một tùy chọn theo id (dùng cho phần kiểm và phần dựng giỏ). */
+  const findModifier = (modId: string): any => {
+    for (const g of modifierGroups) {
+      const found = (g.modifiers || []).find((m: any) => m.id === modId);
+      if (found) return found;
+    }
+    return null;
+  };
+
+  /** Con số đã gõ, đã chuẩn hoá. NaN = chưa gõ gì hợp lệ. */
+  const numericValue = (modId: string): number => {
+    const raw = (values[modId] ?? "").replace(",", ".").trim();
+    return raw === "" ? NaN : Number(raw);
+  };
+
   const toggleModifier = (groupId: string, modId: string, maxSelections: number, isSingle: boolean) => {
+    // Chọn tùy chọn kiểu số thì điền sẵn liều mặc định — nhân viên chỉ sửa khi khách đòi khác.
+    const mod = findModifier(modId);
+    if (mod?.input_type === "number" && values[modId] === undefined) {
+      const preset = mod.default_value;
+      setValues((prev) => ({
+        ...prev,
+        [modId]: preset === null || preset === undefined ? "" : String(parseFloat(preset)),
+      }));
+    }
     setSelected((prev) => {
       const curr = prev[groupId] || [];
       if (isSingle) {
@@ -126,6 +161,23 @@ export function ModifierDialog({
     return sel.length < (g.min_selections || 1);
   });
 
+  /**
+   * Đã chọn mục gõ số mà ô trống hoặc ngoài khoảng → khoá nút xác nhận.
+   * Máy chủ cũng chặn lần nữa; ở đây chặn sớm để nhân viên khỏi bấm rồi mới báo lỗi.
+   */
+  const invalidNumericIds = Object.values(selected)
+    .flat()
+    .filter((modId) => {
+      const mod = findModifier(modId);
+      if (mod?.input_type !== "number") return false;
+      const v = numericValue(modId);
+      if (!Number.isFinite(v)) return true;
+      const min = mod.min_value === null || mod.min_value === undefined ? null : Number(mod.min_value);
+      const max = mod.max_value === null || mod.max_value === undefined ? null : Number(mod.max_value);
+      return (min !== null && v < min) || (max !== null && v > max);
+    });
+  const hasNumericErrors = invalidNumericIds.length > 0;
+
   const handleConfirm = () => {
     const cartMods: CartModifier[] = [];
     for (const [groupId, modIds] of Object.entries(selected)) {
@@ -133,7 +185,16 @@ export function ModifierDialog({
       if (!group) continue;
       for (const modId of modIds) {
         const mod = group.modifiers.find((m: any) => m.id === modId);
-        if (mod) cartMods.push({ modifierId: mod.id, name: mod.name, price: mod.price || 0 });
+        if (!mod) continue;
+        const isNumeric = mod.input_type === "number";
+        const value = isNumeric ? numericValue(mod.id) : null;
+        cartMods.push({
+          modifierId: mod.id,
+          name: mod.name,
+          price: mod.price || 0,
+          value: isNumeric && Number.isFinite(value as number) ? (value as number) : null,
+          unit: mod.unit ?? null,
+        });
       }
     }
     onAdd(item, quantity, cartMods, notes);
@@ -227,9 +288,11 @@ export function ModifierDialog({
                       <div className="space-y-1">
                         {(group.modifiers || []).filter((m: any) => m.is_available !== false).map((mod: any) => {
                           const isSelected = sel.includes(mod.id);
+                          const isNumeric = mod.input_type === "number";
+                          const badValue = isSelected && invalidNumericIds.includes(mod.id);
                           return (
+                            <div key={mod.id}>
                             <button
-                              key={mod.id}
                               type="button"
                               onClick={() => toggleModifier(group.id, mod.id, group.max_selections, isSingle)}
                               className={`w-full flex min-h-12 items-center justify-between rounded-lg border px-3 py-3 text-base transition-colors md:text-sm ${
@@ -261,6 +324,41 @@ export function ModifierDialog({
                                 </span>
                               )}
                             </button>
+
+                            {/* Ô gõ số — chỉ hiện khi đã chọn mục kiểu số. Nằm NGOÀI
+                                <button> ở trên: lồng input vào button thì bấm vào ô
+                                sẽ kích hoạt nút và tự bỏ chọn ngay. */}
+                            {isNumeric && isSelected && (
+                              <div className="mt-1.5 flex items-center gap-2 rounded-lg border border-primary/40 bg-primary/5 px-3 py-2">
+                                <Input
+                                  autoFocus
+                                  type="text"
+                                  inputMode="decimal"
+                                  value={values[mod.id] ?? ""}
+                                  onChange={(e) =>
+                                    setValues((prev) => ({ ...prev, [mod.id]: e.target.value }))
+                                  }
+                                  placeholder={
+                                    mod.default_value != null ? String(parseFloat(mod.default_value)) : "0"
+                                  }
+                                  className={cn(
+                                    "h-11 w-24 text-base font-semibold tabular-nums md:text-sm",
+                                    badValue && "border-destructive",
+                                  )}
+                                />
+                                {mod.unit && (
+                                  <span className="text-sm font-medium text-muted-foreground">
+                                    {mod.unit}
+                                  </span>
+                                )}
+                                <span className="ml-auto text-xs leading-snug text-muted-foreground">
+                                  {mod.min_value != null && mod.max_value != null
+                                    ? `${parseFloat(mod.min_value)}–${parseFloat(mod.max_value)}${mod.unit ?? ""}`
+                                    : t("pos.enterAmount", "Nhập số")}
+                                </span>
+                              </div>
+                            )}
+                            </div>
                           );
                         })}
                       </div>
@@ -311,7 +409,7 @@ export function ModifierDialog({
             </div>
             <Button
               className="w-full h-12 text-base font-semibold"
-              disabled={hasRequiredErrors}
+              disabled={hasRequiredErrors || hasNumericErrors}
               onClick={handleConfirm}
             >
               <Plus className="h-4 w-4 mr-2" />

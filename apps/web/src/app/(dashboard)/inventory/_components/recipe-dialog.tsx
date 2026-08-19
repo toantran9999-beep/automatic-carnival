@@ -23,8 +23,18 @@ import { toast } from "sonner";
 import { useTranslation } from "@/stores/lang-store";
 
 type BaseRow = { inventoryItemId: string; quantityUsed: string };
-/** Một dòng chênh: tùy chọn nào, nguyên liệu nào, cộng/trừ bao nhiêu. */
-type ModRow = { modifierId: string; inventoryItemId: string; quantityDelta: string };
+/**
+ * Một dòng chênh: tùy chọn nào, nguyên liệu nào, cộng/trừ bao nhiêu.
+ *
+ * `valueMode: "absolute"` = tùy chọn kiểu gõ số — trừ ĐÚNG con số nhân viên nhập
+ * lúc bán, `quantityDelta` không dùng tới.
+ */
+type ModRow = {
+  modifierId: string;
+  inventoryItemId: string;
+  quantityDelta: string;
+  valueMode: "delta" | "absolute";
+};
 
 /**
  * Cấu hình công thức cho MỘT món: phần nền + phần chênh theo tùy chọn.
@@ -55,13 +65,20 @@ export function RecipeDialog({
 
   /** Tùy chọn của món, gom theo nhóm — mỗi tùy chọn hiện một lần dù có 0 hay N dòng chênh. */
   const modifiers = useMemo(() => {
-    const byId = new Map<string, { id: string; name: string; group: string }>();
+    const byId = new Map<
+      string,
+      { id: string; name: string; group: string; isNumeric: boolean; unit: string | null }
+    >();
     for (const r of modifierRows) {
       if (!byId.has(r.modifier_id)) {
         byId.set(r.modifier_id, {
           id: r.modifier_id,
           name: r.modifier_name,
           group: r.group_name,
+          // Tùy chọn kiểu gõ số: lượng dùng là con số nhân viên nhập lúc bán,
+          // không phải số khai sẵn ở đây.
+          isNumeric: r.input_type === "number",
+          unit: r.modifier_unit ?? null,
         });
       }
     }
@@ -89,6 +106,7 @@ export function RecipeDialog({
           modifierId: r.modifier_id,
           inventoryItemId: r.inventory_item_id,
           quantityDelta: String(parseFloat(r.quantity_delta)),
+          valueMode: r.value_mode === "absolute" ? ("absolute" as const) : ("delta" as const),
         })),
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -111,8 +129,14 @@ export function RecipeDialog({
 
     // Delta = 0 là không chênh gì cả — ghi vào chỉ tốn dòng, nhưng KHÔNG lọc số âm:
     // "Ít ngọt −3g" chính là dạng phổ biến nhất ở đây.
+    //
+    // ⚠️ Dòng "trừ đúng số nhân viên gõ" (absolute) LUÔN có delta = 0, nên phải
+    // được giữ lại riêng — lọc theo delta như cũ là khai xong bấm Lưu thì mất sạch.
     const validMods = mods.filter(
-      (m) => m.modifierId && m.inventoryItemId && parseFloat(m.quantityDelta),
+      (m) =>
+        m.modifierId &&
+        m.inventoryItemId &&
+        (m.valueMode === "absolute" || parseFloat(m.quantityDelta)),
     );
 
     try {
@@ -125,7 +149,8 @@ export function RecipeDialog({
         modifierIngredients: validMods.map((m) => ({
           modifierId: m.modifierId,
           inventoryItemId: m.inventoryItemId,
-          quantityDelta: parseFloat(m.quantityDelta),
+          quantityDelta: m.valueMode === "absolute" ? 0 : parseFloat(m.quantityDelta),
+          valueMode: m.valueMode,
         })),
       });
       onOpenChange(false);
@@ -229,9 +254,24 @@ export function RecipeDialog({
                   <div key={index} className="flex items-center gap-2">
                     <Select
                       value={row.modifierId || "none"}
-                      onValueChange={(v) =>
-                        updateMod(index, "modifierId", v === "none" ? "" : v)
-                      }
+                      onValueChange={(v) => {
+                        const id = v === "none" ? "" : v;
+                        // Kiểu tính đi theo tùy chọn, không cho chọn tay: mục gõ số
+                        // thì bắt buộc "trừ đúng số gõ", mục bấm chọn thì luôn là chênh.
+                        const picked = modifiers.find((m) => m.id === id);
+                        setMods((rows) =>
+                          rows.map((r, i) =>
+                            i === index
+                              ? {
+                                  ...r,
+                                  modifierId: id,
+                                  valueMode: picked?.isNumeric ? "absolute" : "delta",
+                                  quantityDelta: picked?.isNumeric ? "0" : r.quantityDelta,
+                                }
+                              : r,
+                          ),
+                        );
+                      }}
                     >
                       <SelectTrigger className="min-w-0 flex-1">
                         <SelectValue />
@@ -240,6 +280,7 @@ export function RecipeDialog({
                         {modifiers.map((m) => (
                           <SelectItem key={m.id} value={m.id}>
                             {m.group} — {m.name}
+                            {m.isNumeric ? ` (gõ số${m.unit ? `, ${m.unit}` : ""})` : ""}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -261,15 +302,25 @@ export function RecipeDialog({
                         ))}
                       </SelectContent>
                     </Select>
-                    <Input
-                      className="w-24 shrink-0"
-                      type="number"
-                      step="0.001"
-                      inputMode="decimal"
-                      placeholder="±"
-                      value={row.quantityDelta}
-                      onChange={(e) => updateMod(index, "quantityDelta", e.target.value)}
-                    />
+                    {row.valueMode === "absolute" ? (
+                      // Không có ô nhập: lượng dùng là con số nhân viên gõ lúc bán.
+                      <span
+                        className="w-24 shrink-0 text-center text-xs leading-tight text-muted-foreground"
+                        title="Trừ đúng số nhân viên gõ trên máy POS, không phải chênh so với công thức nền."
+                      >
+                        = số gõ
+                      </span>
+                    ) : (
+                      <Input
+                        className="w-24 shrink-0"
+                        type="number"
+                        step="0.001"
+                        inputMode="decimal"
+                        placeholder="±"
+                        value={row.quantityDelta}
+                        onChange={(e) => updateMod(index, "quantityDelta", e.target.value)}
+                      />
+                    )}
                     <Button
                       type="button"
                       variant="outline"
@@ -294,6 +345,8 @@ export function RecipeDialog({
                         modifierId: modifiers[0]?.id ?? "",
                         inventoryItemId: "",
                         quantityDelta: "",
+                        // Khớp kiểu của tùy chọn được chọn sẵn ở dòng mới.
+                        valueMode: modifiers[0]?.isNumeric ? "absolute" : "delta",
                       },
                     ])
                   }

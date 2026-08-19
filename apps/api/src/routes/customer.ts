@@ -498,9 +498,14 @@ customer.get("/:branchSlug/menu/items/:itemId/modifiers", async (c) => {
     )
     .orderBy(asc(schema.modifiers.sort_order), asc(schema.modifiers.name));
 
+  // ⚠️ Lọc bỏ tùy chọn kiểu GÕ SỐ ("Đường 13g"): chỉ nhân viên tại quầy được nhập.
+  // Khách lạ không biết 13g là nhiều hay ít, mà đưa ô số trống cho khách tự gõ thì
+  // sớm muộn có người gõ 500. Máy chủ còn một chốt nữa ở `allowNumericInput`.
   const result = groups.map((g) => ({
     ...g,
-    modifiers: allModifiers.filter((m) => m.group_id === g.id && m.is_available),
+    modifiers: allModifiers.filter(
+      (m) => m.group_id === g.id && m.is_available && m.input_type !== "number",
+    ),
   }));
 
   return c.json({ success: true, data: result });
@@ -761,6 +766,9 @@ customer.post("/orders", customerAuth, requireActiveSession, zValidator("json", 
       registerShiftId: openShift?.id ?? null,
       // Khách tự gọi qua QR: không có nhân viên nào bấm, để trống chứ đừng gán bừa.
       createdBy: null,
+      // Tùy chọn kiểu gõ số chỉ dành cho nhân viên tại quầy. Màn khách đã lọc bỏ
+      // rồi, đây là chốt thứ hai phòng người gọi thẳng API.
+      allowNumericInput: false,
     });
   } catch (err) {
     if (err instanceof OrderValidationError) {

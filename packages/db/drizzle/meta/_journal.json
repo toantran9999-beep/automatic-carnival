@@ -106,6 +106,13 @@
       "when": 1786060800000,
       "tag": "0014_inventory_barcode_recipes",
       "breakpoints": true
+    },
+    {
+      "idx": 15,
+      "version": "7",
+      "when": 1787097600000,
+      "tag": "0015_modifier_numeric_input",
+      "breakpoints": true
     }
   ]
 }

@@ -16,6 +16,7 @@ import {
   Printer,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
+import { modifierLabel } from "@restai/config";
 import { useTranslation } from "@/stores/lang-store";
 import { useBranchSettings } from "@/hooks/use-settings";
 import type { PosCartItem } from "../page";
@@ -196,12 +197,14 @@ export function CartSidebar({
 
                   {item.modifiers.length > 0 && (
                     <div className="flex flex-wrap gap-1 pl-10">
-                      {item.modifiers.map((mod) => (
+                      {item.modifiers.map((mod, mi) => (
                         <span
-                          key={mod.modifierId}
+                          // Khoá kèm giá trị + vị trí: hai ly cùng tùy chọn khác số
+                          // (9g / 15g) dùng chung `modifierId` nên khoá trần bị trùng.
+                          key={`${mod.modifierId ?? "x"}-${mod.value ?? ""}-${mi}`}
                           className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
                         >
-                          {mod.name}
+                          {modifierLabel(mod.name, mod.value, mod.unit)}
                           {mod.price > 0 && ` +${formatCurrency(mod.price)}`}
                         </span>
                       ))}
@@ -259,11 +262,12 @@ export function CartSidebar({
                           </p>
                           {item.modifiers.length > 0 && (
                             <div className="mt-1 flex flex-wrap gap-1">
-                              {item.modifiers.map((mod: any) => (
+                              {item.modifiers.map((mod: any, mi: number) => (
                                 <span
-                                  key={mod.modifierId}
+                                  key={`${mod.modifierId ?? "x"}-${mi}`}
                                   className="rounded border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground"
                                 >
+                                  {/* Món đã gửi: tên do máy chủ ghép sẵn ("Đường 13g"). */}
                                   {mod.name}
                                   {mod.price > 0 && ` +${formatCurrency(mod.price)}`}
                                 </span>

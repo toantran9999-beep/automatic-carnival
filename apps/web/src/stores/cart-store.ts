@@ -14,9 +14,19 @@ import type { CartItem } from "@restai/types";
  *    trân châu → thu thừa của khách.
  *
  * Sắp xếp id trước khi ghép: chọn [A,B] và [B,A] là cùng một ly.
+ *
+ * ⚠️ Ghép CẢ con số của tùy chọn kiểu gõ số ("Đường 9g" vs "Đường 15g"): hai ly đó
+ * cùng `modifierId` nên chỉ ghép id là gộp làm một, đúng lỗi vừa vá ở trên. Hiện
+ * khách quét QR chưa gõ số được, nhưng để sẵn thì sau này mở ra khỏi vỡ âm thầm.
  */
-export function cartLineKey(menuItemId: string, modifiers: { modifierId: string }[]): string {
-  const mods = modifiers.map((m) => m.modifierId).sort().join(",");
+export function cartLineKey(
+  menuItemId: string,
+  modifiers: { modifierId: string; value?: number | null }[],
+): string {
+  const mods = modifiers
+    .map((m) => (m.value === null || m.value === undefined ? m.modifierId : `${m.modifierId}:${m.value}`))
+    .sort()
+    .join(",");
   return mods ? `${menuItemId}|${mods}` : menuItemId;
 }
 

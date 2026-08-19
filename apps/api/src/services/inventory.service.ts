@@ -133,6 +133,8 @@ export async function deductForOrder(params: {
           inventory_item_id: schema.modifierIngredients.inventory_item_id,
           quantity_delta: schema.modifierIngredients.quantity_delta,
           replaces_item_id: schema.modifierIngredients.replaces_item_id,
+          value_mode: schema.modifierIngredients.value_mode,
+          input_value: schema.orderItemModifiers.input_value,
         })
         .from(schema.orderItemModifiers)
         .innerJoin(
@@ -185,6 +187,8 @@ export async function deductForOrder(params: {
  *      giữ nguyên số.
  *   3. RỒI MỚI cộng `quantity_delta`, và đích của delta cũng phải đi qua bản đồ
  *      thay thế ở bước 2.
+ *   4. CUỐI CÙNG là các dòng `value_mode = 'absolute'` — con số nhân viên gõ
+ *      ("Đường 13g") ĐẶT ĐÈ lên kết quả, không cộng vào.
  *
  * Ca chứng minh vì sao: ly "Cà phê đá — Arabica + Nhẹ". Cả hai tùy chọn cùng đụng
  * vào bột. Cộng dồn thẳng sẽ ra `hạt nền −24g, Arabica +18g` — sai cả hai vế.
@@ -200,6 +204,10 @@ export function resolveIngredientAmounts(
     inventory_item_id: string;
     quantity_delta: string;
     replaces_item_id: string | null;
+    /** 'delta' (mặc định) | 'absolute' — xem bước 4. */
+    value_mode?: string | null;
+    /** Con số nhân viên gõ lúc bán, chỉ có với tùy chọn kiểu số. */
+    input_value?: string | null;
   }[],
 ): { amounts: Map<string, number>; modifierNames: string[] } {
   // Bước 1 — công thức nền.
@@ -235,10 +243,34 @@ export function resolveIngredientAmounts(
   // Bước 3 — cộng/trừ, đích đi qua bản đồ thay thế ở bước 2.
   for (const mod of active) {
     if (mod.replaces_item_id) continue;
+    if (mod.value_mode === "absolute") continue; // để bước 4 lo
     const target = substituted.get(mod.inventory_item_id) ?? mod.inventory_item_id;
     const delta = parseFloat(mod.quantity_delta);
     if (!Number.isFinite(delta)) continue;
     amounts.set(target, (amounts.get(target) ?? 0) + delta);
+  }
+
+  /*
+   * Bước 4 — con số nhân viên gõ, ĐẶT ĐÈ.
+   *
+   * ⚠️ Phải là "đặt bằng" chứ không phải "cộng vào": đường nền 7g, nhân viên gõ
+   * "13g" nghĩa là ly đó dùng 13g, không phải 7+13 = 20g. Đây là toàn bộ lý do
+   * `modifier_ingredients.value_mode` tồn tại.
+   *
+   * ⚠️ Đích vẫn phải đi qua bản đồ thay thế ở bước 2 — ly "Arabica + tự nhập" mà
+   * bỏ qua chỗ này là ghi vào bao hạt nền vốn đã được chuyển đi hết.
+   *
+   * Đặt CUỐI cùng nên nếu vì lý do gì mà một nguyên liệu vừa có delta vừa có
+   * absolute thì absolute thắng — đúng, vì đó là số người pha thật sự dùng.
+   */
+  for (const mod of active) {
+    if (mod.replaces_item_id) continue;
+    if (mod.value_mode !== "absolute") continue;
+    if (mod.input_value === null || mod.input_value === undefined) continue;
+    const value = parseFloat(mod.input_value);
+    if (!Number.isFinite(value)) continue;
+    const target = substituted.get(mod.inventory_item_id) ?? mod.inventory_item_id;
+    amounts.set(target, value);
   }
 
   return { amounts, modifierNames };

@@ -112,8 +112,21 @@ export const modifierIngredients = pgTable(
     inventory_item_id: uuid("inventory_item_id")
       .notNull()
       .references(() => inventoryItems.id, { onDelete: "cascade" }),
-    /** CÓ DẤU: "Ít ngọt" = -3, "Thêm 1 shot" = +12. Phần lớn tùy chọn là BỚT đi. */
+    /**
+     * CÓ DẤU: "Ít ngọt" = -3, "Thêm 1 shot" = +12. Phần lớn tùy chọn là BỚT đi.
+     * ⚠️ Bỏ qua khi `value_mode = 'absolute'` (ghi 0 cho có) — lúc đó lượng dùng
+     * là con số nhân viên gõ, không phải số khai sẵn ở đây.
+     */
     quantity_delta: numeric("quantity_delta", { precision: 10, scale: 3 }).notNull(),
+    /**
+     * Đọc con số thế nào:
+     *  - `delta`    (mặc định) = CHÊNH so với công thức nền, như mọi tùy chọn cũ.
+     *  - `absolute` = đặt THẲNG bằng `order_item_modifiers.input_value`.
+     *
+     * ⚠️ Phải tách hai kiểu. Đường nền 7g; nhân viên gõ "13g" là số TUYỆT ĐỐI,
+     * nhét vào `quantity_delta` sẽ thành 7+13 = 20g.
+     */
+    value_mode: varchar("value_mode", { length: 16 }).default("delta").notNull(),
     /**
      * Tùy chọn kiểu THAY nguyên liệu (giữ nguyên lượng), không phải cộng/trừ.
      *

@@ -82,10 +82,13 @@
 
 > Nguồn sự thật về danh sách migration là `packages/db/drizzle/meta/_journal.json` — bảng trên chỉ để tra nhanh.
 
+> ⚠️ **Kiểm trạng thái bằng BẢN CHỤP đọc từ trước = không chặn được gì.** Mọi chỗ "đọc rồi mới ghi" trên đường tiền phải khoá dòng (`FOR UPDATE`) hoặc dùng `UPDATE … WHERE <điều kiện> RETURNING`. Đã trả giá 1,67 triệu vì chỗ này.
+
 > ⚠️ `drizzle-kit generate` đôi khi sinh dư (re-create bảng đã có) do snapshot lệch → **rút gọn migration chỉ giữ ALTER cần thiết** + thêm `IF EXISTS/IF NOT EXISTS`.
 
 ## 6. TÍNH NĂNG đã làm (log)
 
+- **Chặn ghi thu tiền HAI LẦN** (24/08/2026, `27aa91b`): Android đẩy lại cùng một thông báo ngân hàng, hai lượt cách nhau vài phần nghìn giây cùng đọc thấy phiếu `pending` → cả hai cùng ghi một khoản thu đủ. 58 đơn, 1.673.000đ tiền chuyển khoản ảo (31/07–24/08). Vá bằng **chốt nguyên tử** trong `finalizePaidRequest`: `UPDATE payment_requests SET status='paid' WHERE id=? AND status='pending' RETURNING` — khoá dòng, lượt thua trả `null` và **không** chạy side effects, **không** phát `payment:confirmed`. Cùng đợt: `logWebhookEvent` chuyển sang `onConflictDoNothing`; đường thu tay tách `insertManualPayment()` có `SELECT … FOR UPDATE`; Bảng điều khiển + Báo cáo dùng chung `components/payment-reconcile.tsx` (dòng ✓/≠). Đã dọn 62 dòng trùng, sao lưu ở `/root/toda-pos/backups/`.
 - **Tùy chọn kiểu "gõ số"** (migration 0015): mục `input_type='number'` cho nhân viên gõ con số lúc bán — "Đường 13g" — vì 5 mức bấm sẵn không diễn tả hết yêu cầu khách. **Điểm mấu chốt: máy chủ ghép sẵn con số vào bản chụp `order_item_modifiers.name`**, nên toàn bộ đường in và hiển thị không phải sửa gì. Hàm ghép tên `modifierLabel()` nằm ở `packages/config` (một bản cho cả api lẫn web). Kho trừ **đúng số gõ** qua `modifier_ingredients.value_mode='absolute'` + bước 4 của `resolveIngredientAmounts` (đặt đè, không cộng — đường nền 7g mà cộng 13 sẽ ra 20g). Chỉ nhân viên POS gõ được: màn khách lọc `input_type='number'`, và `createOrder` nhận cờ `allowNumericInput=false` cho đường khách quét QR.
 - **Việt hóa** + mặc định VN (timezone Asia/Ho_Chi_Minh, VND, VAT 10%).
 - **In phiếu tách/gộp** (`branches.settings.print_mode`) — `print-ticket.tsx`; phiếu kiểu **"PHIẾU ĐẶT ĐỒ"** (iPOS): tiêu đề + MANG VỀ/BÀN + Giờ/Ngày/Nhân viên/STT + bảng `SL | Tên món | ĐVT` + footer Toda Café.

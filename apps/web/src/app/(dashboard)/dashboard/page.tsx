@@ -91,6 +91,8 @@ export default function DashboardPage() {
             <PaymentDonut
               paymentMethods={overview?.paymentMethods ?? []}
               isLoading={overviewLoading}
+              // Cùng một tập đơn với vòng tròn → hai số phải bằng nhau.
+              todayRevenue={overview?.today.revenue}
             />
           </div>
 

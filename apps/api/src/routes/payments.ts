@@ -234,30 +234,84 @@ async function logWebhookEvent(data: {
   reason: string;
   payload: unknown;
 }) {
-  if (data.providerTransactionId) {
-    const [existing] = await db
-      .select({ id: schema.paymentWebhookEvents.id })
-      .from(schema.paymentWebhookEvents)
+  /*
+   * ⚠️ Để RÀNG BUỘC UNIQUE làm việc chống trùng, đừng SELECT rồi mới INSERT.
+   *
+   * Bản cũ hỏi trước rồi mới ghi — hai gói tin giống hệt tới cùng lúc thì cả hai
+   * cùng hỏi, cùng thấy "chưa có", cùng ghi. Một cái sẽ đâm vào unique
+   * (provider, provider_transaction_id) và NÉM LỖI ngược ra tay xử lý webhook.
+   * `onConflictDoNothing` vừa hết đường đua vừa hết lỗi 500.
+   */
+  await db
+    .insert(schema.paymentWebhookEvents)
+    .values({
+      provider: data.provider,
+      provider_transaction_id: data.providerTransactionId || null,
+      payment_request_id: data.paymentRequestId || null,
+      branch_id: data.branchId || null,
+      amount: data.amount,
+      content: data.content,
+      matched: data.matched,
+      reason: data.reason,
+      payload: data.payload as any,
+    })
+    .onConflictDoNothing();
+}
+
+/**
+ * Ghi MỘT khoản thu tay (tiền mặt/thẻ) cho một đơn, có KHOÁ DÒNG ĐƠN.
+ *
+ * ⚠️ Đọc "đã trả bao nhiêu" rồi mới ghi mà không khoá là đúng cái lỗi đã làm
+ * hỏng đường chuyển khoản: hai lượt cùng lúc cùng đọc thấy còn nợ đủ, cả hai
+ * cùng ghi một khoản thu đủ. Thu ngân bấm hai lần thật nhanh trên màn cảm ứng
+ * là ra y hệt. `FOR UPDATE` bắt lượt sau xếp hàng, đọc lại số dư đã cập nhật.
+ *
+ * Trả `null` khi đơn không còn gì để thu.
+ */
+async function insertManualPayment(args: {
+  orderId: string;
+  orderTotal: number;
+  organizationId: string;
+  branchId: string;
+  method: any;
+  want: number;
+  reference?: string | null;
+  tip: number;
+}): Promise<{ payment: any; payAmount: number; previouslyPaid: number } | null> {
+  return await db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT 1 FROM orders WHERE id = ${args.orderId} FOR UPDATE`);
+
+    const [prev] = await tx
+      .select({ total_paid: sum(schema.payments.amount) })
+      .from(schema.payments)
       .where(
         and(
-          eq(schema.paymentWebhookEvents.provider, data.provider),
-          eq(schema.paymentWebhookEvents.provider_transaction_id, data.providerTransactionId),
+          eq(schema.payments.order_id, args.orderId),
+          eq(schema.payments.status, "completed"),
         ),
-      )
-      .limit(1);
-    if (existing) return;
-  }
+      );
 
-  await db.insert(schema.paymentWebhookEvents).values({
-    provider: data.provider,
-    provider_transaction_id: data.providerTransactionId || null,
-    payment_request_id: data.paymentRequestId || null,
-    branch_id: data.branchId || null,
-    amount: data.amount,
-    content: data.content,
-    matched: data.matched,
-    reason: data.reason,
-    payload: data.payload as any,
+    const previouslyPaid = Number(prev?.total_paid || 0);
+    const orderRemaining = args.orderTotal - previouslyPaid;
+    if (orderRemaining <= 0) return null;
+
+    const payAmount = Math.min(args.want, orderRemaining);
+
+    const [payment] = await tx
+      .insert(schema.payments)
+      .values({
+        order_id: args.orderId,
+        organization_id: args.organizationId,
+        branch_id: args.branchId,
+        method: args.method,
+        amount: payAmount,
+        reference: args.reference ?? undefined,
+        tip: args.tip,
+        status: "completed",
+      })
+      .returning();
+
+    return { payment, payAmount, previouslyPaid };
   });
 }
 
@@ -742,6 +796,9 @@ async function broadcastTransferPrint(args: {
  * Dùng chung cho CẢ BA đường tiền vào (SePay webhook / MoMo IPN / đối soát định
  * kỳ). Đừng chép lại logic này ở đường thứ tư — ba đường lệch nhau là nguồn gốc
  * của cảnh "đơn chốt nhưng bàn không dọn".
+ *
+ * Trả `null` khi phiếu đã được người khác chốt mất — người gọi PHẢI coi đó là
+ * "đã chốt rồi", không ghi thêm gì và không báo gì.
  */
 async function finalizePaidRequest(request: any, args: {
   provider: string;
@@ -753,15 +810,25 @@ async function finalizePaidRequest(request: any, args: {
   const now = new Date();
 
   const result = await db.transaction(async (tx) => {
-    const completed = await completePaymentForOrder(tx, {
-      orderId: request.order_id,
-      organizationId: request.organization_id,
-      branchId: request.branch_id,
-      amount: request.amount,
-      reference: args.reference,
-    });
-
-    await tx
+    /*
+     * ⚠️ GIÀNH QUYỀN CHỐT TRƯỚC, rồi mới ghi tiền. Thứ tự này là bắt buộc.
+     *
+     * Bản cũ ghi payment trước rồi mới đổi trạng thái, và chỗ kiểm "phiếu đã
+     * paid chưa" nằm ở `settleMatchedRequest` — đọc trên một BẢN CHỤP lấy từ
+     * trước, không khoá dòng. Android hay đẩy lại y hệt một thông báo ngân hàng;
+     * hai lượt tới cách nhau vài phần nghìn giây thì CẢ HAI cùng đọc thấy
+     * `pending`, cả hai đi tiếp, cả hai ghi một khoản thu đủ.
+     *
+     * Đo trên dữ liệu thật 31/07–24/08: 58 đơn bị ghi thu hai lần, 1.673.000đ
+     * tiền chuyển khoản ảo trong sổ (tiền thật trong tài khoản chỉ có một lần).
+     * Hai dòng cách nhau ít nhất 0,000015 giây — không cách nào chặn bằng kiểm
+     * tra thông thường.
+     *
+     * `UPDATE ... WHERE status='pending'` khoá dòng phiếu: lượt thứ hai chờ ở
+     * đây, khoá nhả ra thì Postgres kiểm lại điều kiện, thấy đã `paid` → khớp 0
+     * dòng → thoát tay không. Không cần bảng phụ, không cần khoá ứng dụng.
+     */
+    const [claimed] = await tx
       .update(schema.paymentRequests)
       .set({
         status: "paid",
@@ -771,10 +838,28 @@ async function finalizePaidRequest(request: any, args: {
         paid_at: now,
         updated_at: now,
       })
-      .where(eq(schema.paymentRequests.id, request.id));
+      .where(
+        and(
+          eq(schema.paymentRequests.id, request.id),
+          eq(schema.paymentRequests.status, "pending"),
+        ),
+      )
+      .returning({ id: schema.paymentRequests.id });
 
-    return completed;
+    if (!claimed) return null;
+
+    return await completePaymentForOrder(tx, {
+      orderId: request.order_id,
+      organizationId: request.organization_id,
+      branchId: request.branch_id,
+      amount: request.amount,
+      reference: args.reference,
+    });
   });
+
+  // Lượt này thua cuộc đua — phiếu đã được chốt xong xuôi ở lượt kia. Im lặng
+  // rút lui: gọi tiếp là trừ kho lần hai và trạm quầy in hóa đơn lần hai.
+  if (!result) return null;
 
   // Sau khi tx commit: trừ kho + tích điểm (idempotent, tự nuốt lỗi).
   await runCompletionSideEffects(result.completedOrders || [], request.organization_id, request.branch_id);
@@ -975,7 +1060,7 @@ async function settleMatchedRequest(request: any, args: {
     return { matched: false, reason: "underpaid" };
   }
 
-  await finalizePaidRequest(request, {
+  const settled = await finalizePaidRequest(request, {
     provider: args.provider,
     providerTransactionId: args.providerTransactionId,
     paidAmountCents: args.amountCents,
@@ -984,6 +1069,13 @@ async function settleMatchedRequest(request: any, args: {
     // đã xoá gạch nối, sổ sách phải mang mã gốc để đối chiếu với phiếu đã in.
     reference: request.payment_code,
   });
+
+  // Thua cuộc đua: một lượt khác vừa chốt đúng phiếu này. Vẫn là "khớp" — tiền
+  // đã vào sổ rồi — chỉ là lượt này không được ghi thêm gì.
+  if (!settled) {
+    await logWebhookEvent({ ...base, matched: true, reason: "already_paid" });
+    return { matched: true, reason: "already_paid" };
+  }
 
   const reason = args.amountCents > request.amount ? "overpaid" : "paid";
   await logWebhookEvent({ ...base, matched: true, reason });
@@ -1520,7 +1612,7 @@ payments.post("/webhooks/momo", async (c) => {
     return c.body(null, 204);
   }
 
-  await finalizePaidRequest(request, {
+  const settled = await finalizePaidRequest(request, {
     provider: "momo",
     providerTransactionId,
     paidAmountCents: amountCents,
@@ -1528,7 +1620,9 @@ payments.post("/webhooks/momo", async (c) => {
     reference: orderId,
   });
 
-  await log(true, "paid", request.branch_id, request.id);
+  // MoMo gửi lại IPN là chuyện bình thường của họ. Không giành được quyền chốt
+  // nghĩa là lượt trước đã ghi xong — trả 204 để MoMo thôi gửi lại.
+  await log(true, settled ? "paid" : "already_paid", request.branch_id, request.id);
 
   return c.body(null, 204);
 });
@@ -1595,13 +1689,18 @@ async function reconcileMomoOnce() {
         .limit(1);
       if (fresh?.status !== "pending") continue;
 
-      await finalizePaidRequest(request, {
+      const settled = await finalizePaidRequest(request, {
         provider: "momo",
         providerTransactionId: result.transId,
         paidAmountCents: amountCents,
         providerPayload: result.raw,
         reference: request.payment_code,
       });
+
+      // IPN vừa về đúng lúc đối soát đang chạy — kiểm `fresh.status` ở trên
+      // không đủ, vì giữa lúc kiểm và lúc ghi vẫn còn khe. Chốt nguyên tử bên
+      // trong mới là thứ chặn thật; ở đây chỉ việc lặng lẽ đi tiếp.
+      if (!settled) continue;
 
       await logWebhookEvent({
         provider: "momo",
@@ -2382,47 +2481,29 @@ payments.post(
       for (const o of sortedOrders) {
         if (amountToDistribute <= 0) break;
 
-        // Sum previous payments for this specific order
-        const [prevOPayments] = await db
-          .select({ total_paid: sum(schema.payments.amount) })
-          .from(schema.payments)
-          .where(
-            and(
-              eq(schema.payments.order_id, o.id),
-              eq(schema.payments.status, "completed")
-            )
-          );
+        const written = await insertManualPayment({
+          orderId: o.id,
+          orderTotal: o.total,
+          organizationId: tenant.organizationId,
+          branchId: tenant.branchId,
+          method: body.method,
+          want: amountToDistribute,
+          reference: body.reference,
+          /*
+           * Boa gắn vào dòng thu ĐẦU TIÊN của lượt này.
+           *
+           * ⚠️ Bản cũ gắn vào "đơn đích" (`o.id === order.id`). Nhưng vòng lặp bỏ
+           * qua đơn đã trả đủ — thu ngân bấm thanh toán trên đơn đã xong để trả
+           * nốt đơn khác trong phiên thì dòng mang boa KHÔNG BAO GIỜ được tạo,
+           * tiền boa khách đưa biến mất khỏi hệ thống.
+           */
+          tip: paymentsCreated.length === 0 ? body.tip : 0,
+        });
 
-        const oPreviouslyPaid = Number(prevOPayments?.total_paid || 0);
-        const orderRemaining = o.total - oPreviouslyPaid;
+        if (!written) continue;
 
-        if (orderRemaining <= 0) continue;
-
-        const payAmount = Math.min(amountToDistribute, orderRemaining);
+        const { payment, payAmount, previouslyPaid: oPreviouslyPaid } = written;
         amountToDistribute -= payAmount;
-
-        const [payment] = await db
-          .insert(schema.payments)
-          .values({
-            order_id: o.id,
-            organization_id: tenant.organizationId,
-            branch_id: tenant.branchId,
-            method: body.method,
-            amount: payAmount,
-            reference: body.reference,
-            /*
-             * Boa gắn vào dòng thu ĐẦU TIÊN của lượt này.
-             *
-             * ⚠️ Bản cũ gắn vào "đơn đích" (`o.id === order.id`). Nhưng vòng lặp có
-             * `continue` khi đơn đó đã trả đủ — thu ngân bấm thanh toán trên đơn đã
-             * xong để trả nốt đơn khác trong phiên thì dòng mang boa KHÔNG BAO GIỜ
-             * được tạo, tiền boa khách đưa biến mất khỏi hệ thống.
-             */
-            tip: paymentsCreated.length === 0 ? body.tip : 0,
-            status: "completed",
-          })
-          .returning();
-
         paymentsCreated.push(payment);
 
         if (oPreviouslyPaid + payAmount >= o.total) {
@@ -2493,23 +2574,28 @@ payments.post(
         );
       }
 
-      const payAmount = Math.min(amountToDistribute, remaining);
-      const [payment] = await db
-        .insert(schema.payments)
-        .values({
-          order_id: body.orderId,
-          organization_id: tenant.organizationId,
-          branch_id: tenant.branchId,
-          method: body.method,
-          amount: payAmount,
-          reference: body.reference,
-          tip: body.tip,
-          status: "completed",
-        })
-        .returning();
+      const written = await insertManualPayment({
+        orderId: body.orderId,
+        orderTotal: order.total,
+        organizationId: tenant.organizationId,
+        branchId: tenant.branchId,
+        method: body.method,
+        want: amountToDistribute,
+        reference: body.reference,
+        tip: body.tip,
+      });
 
+      // Lượt bấm trước vừa thu đủ đơn này (bấm hai lần thật nhanh) — không ghi thêm.
+      if (!written) {
+        return c.json(
+          { success: false, error: { code: "BAD_REQUEST", message: t(c, "order_paid") } },
+          400,
+        );
+      }
+
+      const { payment, payAmount } = written;
       paymentsCreated.push(payment);
-      fullyPaid = (previouslyPaid + payAmount) >= order.total;
+      fullyPaid = (written.previouslyPaid + payAmount) >= order.total;
 
       if (fullyPaid) {
         await db

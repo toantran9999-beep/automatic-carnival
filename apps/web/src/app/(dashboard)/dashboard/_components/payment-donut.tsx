@@ -5,6 +5,7 @@ import { formatCurrency } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
 import type { OverviewPaymentMethod } from "@/hooks/use-dashboard";
 import { PieChart, Pie, Cell, Tooltip, ResponsiveContainer } from "recharts";
+import { PaymentReconcile } from "@/components/payment-reconcile";
 
 const PIE_COLORS = ["#0f766e", "#2563eb", "#16a34a", "#d97706", "#e11d48", "#4b5563"];
 
@@ -15,9 +16,17 @@ function Skeleton({ className }: { className?: string }) {
 interface PaymentDonutProps {
   paymentMethods: OverviewPaymentMethod[];
   isLoading: boolean;
+  /**
+   * Doanh thu hôm nay — mốc để vòng tròn này TỰ đối chiếu.
+   *
+   * ⚠️ Hai con số cùng lấy từ CÙNG một tập đơn đã hoàn tất, nên chúng phải bằng
+   * nhau. Ngày 24/08/2026 chúng đá nhau 133.000đ (6 đơn chuyển khoản bị ghi thu
+   * hai lần) và nằm cạnh nhau suốt nhiều ngày mà không có gì báo động.
+   */
+  todayRevenue?: number;
 }
 
-export function PaymentDonut({ paymentMethods, isLoading }: PaymentDonutProps) {
+export function PaymentDonut({ paymentMethods, isLoading, todayRevenue }: PaymentDonutProps) {
   const { t } = useTranslation();
   const methodLabel = (m: string) => t(`dashboard.method_${m}`, m);
   const total = paymentMethods.reduce((s, p) => s + p.amount, 0);
@@ -82,6 +91,20 @@ export function PaymentDonut({ paymentMethods, isLoading }: PaymentDonutProps) {
                   </li>
                 );
               })}
+              <li className="flex items-center gap-2 border-t pt-2 text-sm">
+                <span className="min-w-0 flex-1 truncate font-medium">
+                  {t("dashboard.total", "Tổng")}
+                </span>
+                <span className="shrink-0 font-bold tabular-nums">{formatCurrency(total)}</span>
+                <span className="w-9 shrink-0" aria-hidden="true" />
+              </li>
+
+              {/* Dùng chung với trang Báo cáo — xem `components/payment-reconcile`. */}
+              <PaymentReconcile
+                paidTotal={total}
+                revenue={todayRevenue}
+                label={t("dashboard.todayRevenue", "Doanh thu hôm nay")}
+              />
             </ul>
           </div>
         ) : (

@@ -105,7 +105,7 @@ export function CartSidebar({
           <Button
             variant="ghost"
             size="sm"
-            className="h-10 px-3 text-sm text-destructive"
+            className="h-11 px-3 text-sm text-destructive"
             onClick={onClearCart}
           >
             {t("pos.clear")}
@@ -144,7 +144,7 @@ export function CartSidebar({
             placeholder={t("pos.enterCustomerName")}
             value={customerName}
             onChange={(e) => onCustomerNameChange(e.target.value)}
-            className="h-11 rounded-lg pl-9 text-base md:text-sm"
+            className="h-11 rounded-lg pl-9 text-base"
           />
         </div>
       </div>
@@ -180,7 +180,7 @@ export function CartSidebar({
                       </div>
                     )}
                     <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-semibold">{item.name}</p>
+                      <p className="truncate text-base font-semibold leading-snug">{item.name}</p>
                       <p className="text-xs text-muted-foreground">
                         {formatCurrency(item.unitPrice + modTotal)}
                         {lang === "vi" ? "" : " ea"}
@@ -189,7 +189,7 @@ export function CartSidebar({
                     <button
                       type="button"
                       onClick={() => onRemove(item.lineId)}
-                      className="-m-1 flex h-10 w-10 items-center justify-center text-muted-foreground transition-colors hover:text-destructive"
+                      className="-mr-1 flex h-11 w-11 shrink-0 items-center justify-center text-muted-foreground transition-colors hover:text-destructive"
                     >
                       <Trash2 className="h-4.5 w-4.5" />
                     </button>
@@ -202,7 +202,7 @@ export function CartSidebar({
                           // Khoá kèm giá trị + vị trí: hai ly cùng tùy chọn khác số
                           // (9g / 15g) dùng chung `modifierId` nên khoá trần bị trùng.
                           key={`${mod.modifierId ?? "x"}-${mod.value ?? ""}-${mi}`}
-                          className="rounded bg-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+                          className="rounded bg-muted px-1.5 py-0.5 text-xs text-muted-foreground"
                         >
                           {modifierLabel(mod.name, mod.value, mod.unit)}
                           {mod.price > 0 && ` +${formatCurrency(mod.price)}`}
@@ -212,7 +212,7 @@ export function CartSidebar({
                   )}
 
                   {item.notes && (
-                    <p className="truncate pl-10 text-[11px] italic text-muted-foreground">
+                    <p className="truncate pl-10 text-xs italic text-muted-foreground">
                       {item.notes}
                     </p>
                   )}
@@ -222,16 +222,16 @@ export function CartSidebar({
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-10 w-10 rounded-lg"
+                        className="h-11 w-11 rounded-lg"
                         onClick={() => onUpdateQty(item.lineId, item.quantity - 1)}
                       >
                         <Minus className="h-4 w-4" />
                       </Button>
-                      <span className="w-8 text-center text-base font-bold">{item.quantity}</span>
+                      <span className="w-10 text-center text-lg font-bold tabular-nums">{item.quantity}</span>
                       <Button
                         variant="outline"
                         size="icon"
-                        className="h-10 w-10 rounded-lg"
+                        className="h-11 w-11 rounded-lg"
                         onClick={() => onUpdateQty(item.lineId, item.quantity + 1)}
                       >
                         <Plus className="h-4 w-4" />
@@ -265,7 +265,7 @@ export function CartSidebar({
                               {item.modifiers.map((mod: any, mi: number) => (
                                 <span
                                   key={`${mod.modifierId ?? "x"}-${mi}`}
-                                  className="rounded border bg-background px-1.5 py-0.5 text-[10px] text-muted-foreground"
+                                  className="rounded border bg-background px-1.5 py-0.5 text-xs text-muted-foreground"
                                 >
                                   {/* Món đã gửi: tên do máy chủ ghép sẵn ("Đường 13g"). */}
                                   {mod.name}
@@ -275,7 +275,7 @@ export function CartSidebar({
                             </div>
                           )}
                           {item.notes && (
-                            <p className="mt-1 truncate text-[10px] italic text-muted-foreground">
+                            <p className="mt-1 truncate text-xs italic text-muted-foreground">
                               {item.notes}
                             </p>
                           )}
@@ -299,7 +299,7 @@ export function CartSidebar({
             placeholder={t("pos.notes")}
             value={orderNotes}
             onChange={(e) => onOrderNotesChange(e.target.value)}
-            className="h-11 rounded-lg text-base md:text-sm"
+            className="h-11 rounded-lg text-base"
           />
         </div>
       )}
@@ -351,7 +351,7 @@ export function CartSidebar({
               Tạm tính
             </Button>
           <Button
-            className="flex h-11 min-w-0 items-center justify-center gap-1.5 bg-emerald-600 px-2 text-xs font-semibold text-white hover:bg-emerald-700"
+            className="flex h-11 min-w-0 items-center justify-center gap-1.5 bg-emerald-600 px-2 text-sm font-semibold text-white hover:bg-emerald-700"
             disabled={isPending}
             onClick={onPayUnpaidOrders}
           >

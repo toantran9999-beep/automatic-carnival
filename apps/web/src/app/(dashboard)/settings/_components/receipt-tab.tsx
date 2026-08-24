@@ -466,7 +466,7 @@ export function ReceiptTab() {
                 <div className="space-y-2">
                   <Label>{t("settings.receiptHeader", "Dòng chữ đầu phiếu (dưới tên quán, mỗi dòng 1 hàng)")}</Label>
                   <textarea
-                    className="w-full min-h-[70px] rounded-md border bg-transparent px-3 py-2 text-base md:text-sm"
+                    className="w-full min-h-[70px] rounded-md border bg-transparent px-3 py-2 text-base"
                     placeholder={t("settings.receiptHeaderPh", "VD: Chi nhánh Quận 1\nHotline: 0909 999 999")}
                     value={form.headerText}
                     onChange={(e) => set({ headerText: e.target.value })}
@@ -475,7 +475,7 @@ export function ReceiptTab() {
                 <div className="space-y-2">
                   <Label>{t("settings.receiptFooter", "Dòng chữ cuối phiếu (mỗi dòng 1 hàng)")}</Label>
                   <textarea
-                    className="w-full min-h-[70px] rounded-md border bg-transparent px-3 py-2 text-base md:text-sm"
+                    className="w-full min-h-[70px] rounded-md border bg-transparent px-3 py-2 text-base"
                     placeholder={t("settings.receiptFooterPh", "VD: Cảm ơn quý khách!\nWifi: TODA - Pass: 12345678")}
                     value={form.footerText}
                     onChange={(e) => set({ footerText: e.target.value })}
@@ -508,7 +508,7 @@ export function ReceiptTab() {
                 <div className="space-y-2">
                   <Label>{t("settings.kitchenFooterLabel", "Dòng chữ cuối phiếu (mỗi dòng 1 hàng)")}</Label>
                   <textarea
-                    className="w-full min-h-[50px] rounded-md border bg-transparent px-3 py-2 text-base md:text-sm"
+                    className="w-full min-h-[50px] rounded-md border bg-transparent px-3 py-2 text-base"
                     placeholder="Toda Cafe"
                     value={form.kitchenFooterText}
                     onChange={(e) => set({ kitchenFooterText: e.target.value })}

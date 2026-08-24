@@ -471,7 +471,7 @@ export function PosPaymentDialog({
             <div className="space-y-1.5">
               <Label className="font-semibold">{lang === "vi" ? "Loại chứng từ" : "Invoice Type"}</Label>
               <Select value={docType} onValueChange={handleDocTypeChange}>
-                <SelectTrigger className="h-10">
+                <SelectTrigger className="h-11">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -772,7 +772,7 @@ export function PosPaymentDialog({
 
             <Button
               variant="ghost"
-              className="h-10 w-full"
+              className="h-11 w-full"
               onClick={() => onOpenChange(false)}
               disabled={processing}
             >

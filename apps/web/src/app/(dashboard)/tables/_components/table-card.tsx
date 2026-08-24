@@ -17,6 +17,7 @@ import {
   ArrowRightLeft,
   Clock,
 } from "lucide-react";
+import { ActionsMenu, type ActionItem } from "@/components/actions-menu";
 import { cn, formatCurrency, formatElapsed } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
 
@@ -152,6 +153,26 @@ export function TableCard({
     { value: "maintenance", label: t("tables.maintenance") },
   ];
 
+  // Chỉ giữ đúng những mục thao tác được — thứ tự theo tần suất dùng trong ca.
+  const actions: ActionItem[] = [
+    ...(hideQr ? [] : [{ key: "qr", label: "QR bàn", icon: QrCode, onSelect: () => onQr(table) }]),
+    { key: "history", label: t("tables.history"), icon: History, onSelect: () => onHistory(table) },
+    ...(waiterAssignmentEnabled
+      ? [{ key: "assign", label: t("tables.assign"), icon: UserPlus, onSelect: () => onAssign(table) }]
+      : []),
+    ...(table.activeSession && onOperations && canOperate
+      ? [{
+          key: "ops",
+          label: lang === "vi" ? "Chuyển / gộp / tách bàn" : "Move / merge / split",
+          icon: ArrowRightLeft,
+          onSelect: () => onOperations(table),
+        }]
+      : []),
+    ...(canManage
+      ? [{ key: "delete", label: t("common.delete"), icon: Trash2, onSelect: () => onDelete(table), destructive: true }]
+      : []),
+  ];
+
   return (
     <div
       onClick={() => canOperate && onCardClick?.(table)}
@@ -224,33 +245,13 @@ export function TableCard({
         </div>
       )}
 
-      {/* Actions row */}
-      <div className="flex items-center gap-1 mt-auto" onClick={(e) => e.stopPropagation()}>
-        {!hideQr && (
-          <IconBtn icon={<QrCode className="h-4 w-4" />} title="QR" onClick={() => onQr(table)} />
-        )}
-        <IconBtn icon={<History className="h-4 w-4" />} title={t("tables.history")} onClick={() => onHistory(table)} />
-        {waiterAssignmentEnabled && (
-          <IconBtn icon={<UserPlus className="h-4 w-4" />} title={t("tables.assign")} onClick={() => onAssign(table)} />
-        )}
-        {table.activeSession && onOperations && canOperate && (
-          <IconBtn
-            icon={<ArrowRightLeft className="h-4 w-4" />}
-            title="Chuyển / gộp / tách bàn"
-            onClick={() => onOperations(table)}
-          />
-        )}
-
-        <div className="flex-1" />
-
-        {canManage && (
-          <IconBtn
-            icon={<Trash2 className="h-4 w-4" />}
-            title={t("common.delete")}
-            onClick={() => onDelete(table)}
-            destructive
-          />
-        )}
+      {/* Thao tác phụ — gom vào một nút ⋮.
+          ⚠️ Trước đây là hàng tối đa 5 nút icon trần 28×28. Thẻ bàn ở 1280px chỉ
+          rộng ~166px sau khi trừ đệm, nên KHÔNG có cách nào nhồi 5 vùng bấm đủ
+          chuẩn 44px (=220px) vào đó — phóng to là tràn, giữ nguyên là bấm trượt.
+          Gom lại thì vừa đủ to, vừa có chữ đi kèm thay cho icon trần đoán mò. */}
+      <div className="flex items-center justify-end -mr-1 -my-1 mt-auto" onClick={(e) => e.stopPropagation()}>
+        <ActionsMenu label={t("common.actions")} items={actions} triggerClassName="text-foreground/70 hover:bg-white/60 dark:hover:bg-white/10" />
       </div>
 
       {/* Primary actions: theo trạng thái đơn.
@@ -266,14 +267,14 @@ export function TableCard({
           <button
             type="button"
             onClick={() => onVoid?.(table)}
-            className="text-xs font-semibold px-3 py-2 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+            className="h-11 shrink-0 text-sm font-semibold px-3 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
           >
             {lang === "vi" ? "Hủy bàn" : "Void"}
           </button>
           <button
             type="button"
             onClick={() => onPay?.(table)}
-            className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+            className="h-11 flex-1 text-sm font-bold px-3 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
           >
             {/* Không lặp lại số tiền: nó đã nằm to rõ màu vàng ở khối giữa thẻ —
                 chỗ đọc được từ xa khi lướt cả dãy bàn. */}
@@ -286,13 +287,13 @@ export function TableCard({
             <button
               type="button"
               onClick={() => onCardClick?.(table)}
-              className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+              className="h-11 flex-1 text-sm font-bold px-3 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
             >
               {lang === "vi" ? "Mở bàn" : "Open"}
             </button>
           )}
           <Select value={table.status} onValueChange={(v) => onStatusChange(table.id, v)}>
-            <SelectTrigger className="h-9 w-auto text-xs bg-white/50 dark:bg-white/5 border-0 shadow-none">
+            <SelectTrigger className="h-11 w-auto text-sm bg-white/50 dark:bg-white/5 border-0 shadow-none">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -309,35 +310,5 @@ export function TableCard({
         </div>
       )}
     </div>
-  );
-}
-
-function IconBtn({
-  icon,
-  title,
-  onClick,
-  destructive,
-}: {
-  icon: React.ReactNode;
-  title: string;
-  onClick: () => void;
-  destructive?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      title={title}
-      className={cn(
-        // ⚠️ KHÔNG dùng text-muted-foreground: màu chữ phụ này tính cho nền trắng,
-        // đặt lên thẻ bàn có khách (nền xanh đậm) là mờ tịt, gần như không thấy.
-        "p-1.5 rounded-lg transition-colors",
-        destructive
-          ? "text-foreground/60 hover:text-destructive hover:bg-destructive/10"
-          : "text-foreground/70 hover:text-foreground hover:bg-white/60 dark:hover:bg-white/10"
-      )}
-    >
-      {icon}
-    </button>
   );
 }

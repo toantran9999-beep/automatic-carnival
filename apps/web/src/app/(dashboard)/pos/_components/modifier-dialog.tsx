@@ -248,9 +248,9 @@ export function ModifierDialog({
                     onClick={() =>
                       setOpenGroups((prev) => ({ ...prev, [group.id]: !isOpen }))
                     }
-                    className="flex items-center justify-between w-full mb-2"
+                    className="flex min-h-11 w-full items-center justify-between mb-1"
                   >
-                    <p className="text-sm font-semibold">
+                    <p className="text-base font-semibold">
                       {group.name}
                       {group.is_required && (
                         <span className="ml-1.5 text-xs font-normal text-destructive">
@@ -295,7 +295,7 @@ export function ModifierDialog({
                             <button
                               type="button"
                               onClick={() => toggleModifier(group.id, mod.id, group.max_selections, isSingle)}
-                              className={`w-full flex min-h-12 items-center justify-between rounded-lg border px-3 py-3 text-base transition-colors md:text-sm ${
+                              className={`w-full flex min-h-12 items-center justify-between rounded-lg border px-3 py-3 text-base transition-colors ${
                                 isSelected
                                   ? "border-primary bg-primary/5"
                                   : "border-border hover:border-primary/40"
@@ -342,7 +342,7 @@ export function ModifierDialog({
                                     mod.default_value != null ? String(parseFloat(mod.default_value)) : "0"
                                   }
                                   className={cn(
-                                    "h-11 w-24 text-base font-semibold tabular-nums md:text-sm",
+                                    "h-11 w-24 text-base font-semibold tabular-nums",
                                     badValue && "border-destructive",
                                   )}
                                 />
@@ -375,7 +375,7 @@ export function ModifierDialog({
                 placeholder={t("pos.notesPlaceholder")}
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                className="h-11 text-base md:text-sm"
+                className="h-11 text-base"
               />
             </div>
           </div>

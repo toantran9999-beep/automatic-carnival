@@ -74,7 +74,7 @@ export function CustomItemDialog({
               placeholder={vi ? "VD: Trà tắc đặc biệt" : "e.g. Special drink"}
               value={name}
               onChange={(e) => setName(e.target.value)}
-              className="h-11 text-base md:text-sm"
+              className="h-11 text-base"
             />
           </div>
 
@@ -87,7 +87,7 @@ export function CustomItemDialog({
               placeholder={vi ? "VD: 25000" : "e.g. 25000"}
               value={priceText}
               onChange={(e) => setPriceText(e.target.value)}
-              className="h-11 text-base md:text-sm"
+              className="h-11 text-base"
             />
             {priceVnd > 0 && (
               <p className="mt-1 text-xs text-muted-foreground">
@@ -104,7 +104,7 @@ export function CustomItemDialog({
               placeholder={vi ? "Tùy chọn" : "Optional"}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
-              className="h-11 text-base md:text-sm"
+              className="h-11 text-base"
             />
           </div>
         </div>

@@ -656,8 +656,8 @@ export default function TablesPage() {
             ref={zoneScrollRef}
             className="flex items-center overflow-x-auto pr-6 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
           >
-            <TabsList className="h-11 shrink-0">
-              <TabsTrigger value={TAKEAWAY_TAB} className="h-9 gap-1.5 px-4 text-sm font-semibold">
+            <TabsList className="h-12 shrink-0">
+              <TabsTrigger value={TAKEAWAY_TAB} className="h-10 gap-1.5 px-4 text-sm font-semibold">
                 <ShoppingBag className="h-4 w-4" />
                 {lang === "vi" ? "Mang về" : "Takeaway"}
                 {/* Số đơn hiện ngay trên nhãn để đứng ở khu nào cũng biết còn đơn chưa thu tiền */}
@@ -667,7 +667,7 @@ export default function TablesPage() {
                   </span>
                 )}
               </TabsTrigger>
-              <TabsTrigger value="all" className="h-9 px-4 text-sm font-semibold">
+              <TabsTrigger value="all" className="h-10 px-4 text-sm font-semibold">
                 {t("tables.all")}
               </TabsTrigger>
               {zoneOptions.map((zone) => (
@@ -675,7 +675,7 @@ export default function TablesPage() {
                   key={zone.id}
                   value={zone.id}
                   data-zone-tab={zone.id}
-                  className="h-9 gap-1.5 px-4 text-sm font-semibold"
+                  className="h-10 gap-1.5 px-4 text-sm font-semibold"
                 >
                   {zone.name}
                   <span className="text-xs font-medium tabular-nums opacity-70">
@@ -765,7 +765,7 @@ export default function TablesPage() {
                         <button
                           type="button"
                           onClick={() => router.push(`/pos?takeout=1&addToOrderId=${o.id}`)}
-                          className="w-full rounded-lg border border-primary/40 px-3 py-2 text-xs font-semibold text-primary transition-colors hover:bg-primary/10"
+                          className="h-11 w-full rounded-lg border border-primary/40 px-3 text-sm font-semibold text-primary transition-colors hover:bg-primary/10"
                         >
                           + {lang === "vi" ? "Thêm món" : "Add items"}
                         </button>
@@ -773,14 +773,14 @@ export default function TablesPage() {
                           <button
                             type="button"
                             onClick={() => setTakeawayVoid(o)}
-                            className="text-xs font-semibold px-3 py-2 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
+                            className="h-11 shrink-0 text-sm font-semibold px-3 rounded-lg border border-destructive/40 text-destructive hover:bg-destructive/10 transition-colors"
                           >
                             {lang === "vi" ? "Hủy" : "Void"}
                           </button>
                           <button
                             type="button"
                             onClick={() => setTakeawayPay(o)}
-                            className="flex-1 text-xs font-bold px-3 py-2 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+                            className="h-11 flex-1 text-sm font-bold px-3 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
                           >
                             {lang === "vi" ? "Thanh toán" : "Pay"}
                           </button>

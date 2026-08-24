@@ -35,7 +35,7 @@ import { useTranslation } from "@/stores/lang-store";
 import { CategoryDialog } from "./category-dialog";
 import { ProductDialog } from "./product-dialog";
 import { ImageUploadButton } from "./image-upload-button";
-import { ActionsMenu, type ActionItem } from "./actions-menu";
+import { ActionsMenu, type ActionItem } from "@/components/actions-menu";
 
 function Skeleton({ className }: { className?: string }) {
   return (

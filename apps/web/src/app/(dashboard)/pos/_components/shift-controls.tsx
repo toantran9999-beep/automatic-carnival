@@ -306,7 +306,7 @@ export function PosShiftControl() {
           type="button"
           onClick={() => setOpenOpen(true)}
           title={vi ? "Mở ca làm việc" : "Open shift"}
-          className="inline-flex items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-900/40"
+          className="tap-44 inline-flex min-h-9 items-center gap-1.5 rounded-full border border-amber-300 bg-amber-50 px-3 text-sm font-semibold text-amber-800 transition-colors hover:bg-amber-100 dark:border-amber-800/60 dark:bg-amber-950/30 dark:text-amber-300 dark:hover:bg-amber-900/40"
         >
           <LockOpen className="h-3.5 w-3.5" />
           {vi ? "Mở ca" : "Open shift"}
@@ -328,7 +328,7 @@ export function PosShiftControl() {
         onClick={handleClosePress}
         disabled={!canManage}
         title={vi ? "Ca làm việc" : "Shift"}
-        className="inline-flex items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-2.5 py-1 text-xs font-medium text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-default disabled:opacity-90 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
+        className="tap-44 inline-flex min-h-9 items-center gap-1.5 rounded-full border border-emerald-300 bg-emerald-50 px-3 text-sm font-medium text-emerald-800 transition-colors hover:bg-emerald-100 disabled:cursor-default disabled:opacity-90 dark:border-emerald-800/60 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-900/40"
       >
         <span className="h-2 w-2 rounded-full bg-emerald-500" />
         <span className="tabular-nums">{openedTime}</span>

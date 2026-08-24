@@ -591,7 +591,7 @@ export default function PosPage() {
       )}
 
       <Sheet open={cartSheetOpen} onOpenChange={setCartSheetOpen}>
-        <SheetContent side="bottom" className="h-[88vh] flex flex-col p-4 md:hidden">
+        <SheetContent side="bottom" className="h-[88dvh] flex flex-col p-4 md:hidden">
           <SheetHeader className="mb-2">
             <SheetTitle className="flex items-center gap-2">
               <ShoppingCart className="h-5 w-5" />

@@ -566,7 +566,7 @@ export default function CartPage({
               <div className="mt-3">
                 <Input
                   placeholder={t("customer.notesPlaceholder")}
-                  className="text-base md:text-sm h-9"
+                  className="text-base h-9"
                   value={notes[lineKey] || ""}
                   onChange={(e) => setNotes({ ...notes, [lineKey]: e.target.value })}
                 />
@@ -658,7 +658,7 @@ export default function CartPage({
                       placeholder={t("loyalty.couponCode")}
                       value={couponCode}
                       onChange={(e) => { setCouponCode(e.target.value.toUpperCase()); setCouponError(null); }}
-                      className="text-base md:text-sm h-9 font-mono"
+                      className="text-base h-9 font-mono"
                     />
                     <Button
                       size="sm"

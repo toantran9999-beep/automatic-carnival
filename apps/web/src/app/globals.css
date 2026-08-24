@@ -151,3 +151,31 @@
   backdrop-filter: none !important;
   scroll-behavior: auto !important;
 }
+
+/* Nới vùng bấm lên tối thiểu 44×44 mà KHÔNG chiếm thêm chỗ nhìn thấy được.
+
+   Máy quầy bấm bằng ngón tay (CONVENTIONS.md → "Vùng bấm trên máy POS"). Hình
+   nút giữ nguyên cỡ cũ để bố cục không xô; phần nới nằm ở lớp giả TRONG SUỐT
+   phủ ra ngoài — bấm trúng nó vẫn tính là bấm vào nút, vì lớp giả là một phần
+   của chính phần tử đó. Cùng thủ pháp `Switch` đang dùng, chỉ khác là không
+   phải bọc thêm thẻ nên gắn được vào mọi nút.
+
+   ⚠️ Hai chỗ nó KHÔNG cứu được, phải tăng kích thước thật:
+   1. Nút nằm trong khung `overflow-hidden` → phần nới bị cắt.
+   2. Hai nút sát nhau mà khoảng cách nhỏ hơn phần nới → vùng chồng lấn thuộc
+      về nút đứng SAU, bấm mép nút trước lại ra nút sau. */
+@utility tap-44 {
+  position: relative;
+
+  &::after {
+    content: "";
+    position: absolute;
+    left: 50%;
+    top: 50%;
+    transform: translate(-50%, -50%);
+    width: 100%;
+    height: 100%;
+    min-width: 44px;
+    min-height: 44px;
+  }
+}

@@ -178,14 +178,14 @@ export function ProductGrid({
               placeholder={t("pos.searchPlaceholder")}
               value={search}
               onChange={(e) => onSearchChange(e.target.value)}
-              className="h-11 rounded-lg border-border/70 bg-card pl-9 pr-11 text-base shadow-sm md:text-sm"
+              className="h-11 rounded-lg border-border/70 bg-card pl-9 pr-11 text-base shadow-sm"
             />
             {search && (
               <button
                 type="button"
                 aria-label="Clear search"
                 onClick={() => onSearchChange("")}
-                className="absolute right-1 top-1/2 flex h-10 w-10 -translate-y-1/2 items-center justify-center text-muted-foreground hover:text-foreground"
+                className="absolute right-0.5 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center text-muted-foreground hover:text-foreground"
               >
                 <X className="h-4.5 w-4.5" />
               </button>
@@ -216,12 +216,12 @@ export function ProductGrid({
                 key={cat.id}
                 variant={selectedCategory === cat.id ? "default" : "outline"}
                 size="sm"
-                className="h-10 shrink-0 gap-1.5 rounded-lg px-4 text-sm font-semibold"
+                className="h-11 shrink-0 gap-1.5 rounded-lg px-4 text-sm font-semibold"
                 onClick={() => onCategoryChange(cat.id)}
               >
                 {isBest && <Flame className="h-4 w-4 shrink-0 text-amber-500" />}
                 <span className="max-w-36 truncate">{cat.name}</span>
-                <span className="rounded-full bg-black/15 px-1.5 text-[11px] font-bold tabular-nums dark:bg-white/15">
+                <span className="rounded-full bg-black/15 px-1.5 text-xs font-bold tabular-nums dark:bg-white/15">
                   {isBest ? bestSellerItems.length : countByCategory.get(cat.id) ?? 0}
                 </span>
               </Button>
@@ -285,8 +285,8 @@ export function ProductGrid({
                     )}
                   </div>
 
-                  <div className="flex min-h-[44px] items-center p-2">
-                    <p className="line-clamp-2 text-[13px] font-semibold leading-snug">
+                  <div className="flex min-h-[48px] items-center p-2">
+                    <p className="line-clamp-2 text-sm font-semibold leading-snug">
                       {item.name}
                     </p>
                   </div>

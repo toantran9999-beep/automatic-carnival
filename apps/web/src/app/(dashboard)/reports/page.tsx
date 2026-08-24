@@ -231,7 +231,7 @@ export default function ReportsPage() {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 active:translate-y-px active:scale-[0.98]"
+          className="active:translate-y-px active:scale-[0.98]"
           onClick={() => applyRange(getTodayRange())}
         >
           {t("reports.today")}
@@ -240,7 +240,7 @@ export default function ReportsPage() {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 active:translate-y-px active:scale-[0.98]"
+          className="active:translate-y-px active:scale-[0.98]"
           onClick={() => applyRange(getLastDaysRange(7))}
         >
           {t("reports.last7days")}
@@ -249,7 +249,7 @@ export default function ReportsPage() {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 active:translate-y-px active:scale-[0.98]"
+          className="active:translate-y-px active:scale-[0.98]"
           onClick={() => applyRange(getLastDaysRange(30))}
         >
           {t("reports.last30days")}
@@ -258,7 +258,7 @@ export default function ReportsPage() {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 active:translate-y-px active:scale-[0.98]"
+          className="active:translate-y-px active:scale-[0.98]"
           onClick={() => applyRange(getCurrentMonthRange())}
         >
           {t("reports.thisMonth")}
@@ -269,7 +269,7 @@ export default function ReportsPage() {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 active:translate-y-px active:scale-[0.98]"
+          className="active:translate-y-px active:scale-[0.98]"
           onClick={() => applyRange(getLastMonthsRange(3))}
         >
           {t("reports.last3months")}
@@ -278,7 +278,7 @@ export default function ReportsPage() {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 active:translate-y-px active:scale-[0.98]"
+          className="active:translate-y-px active:scale-[0.98]"
           onClick={() => applyRange(getLastMonthsRange(12))}
         >
           {t("reports.last12months")}
@@ -287,7 +287,7 @@ export default function ReportsPage() {
           type="button"
           variant="outline"
           size="sm"
-          className="h-8 active:translate-y-px active:scale-[0.98]"
+          className="active:translate-y-px active:scale-[0.98]"
           onClick={() => applyRange(getAllTimeRange())}
         >
           {t("reports.allTime")}
@@ -297,7 +297,7 @@ export default function ReportsPage() {
             type="button"
             variant={allBranches ? "default" : "outline"}
             size="sm"
-            className="h-8 ml-auto active:translate-y-px active:scale-[0.98]"
+            className="ml-auto active:translate-y-px active:scale-[0.98]"
             onClick={() => setAllBranches((v) => !v)}
           >
             <Store className="h-4 w-4" />

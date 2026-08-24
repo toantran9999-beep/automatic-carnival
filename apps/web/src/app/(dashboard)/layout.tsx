@@ -399,11 +399,11 @@ export default function DashboardLayout({
         {/* Collapse toggle */}
         <button
           onClick={() => setCollapsed(!collapsed)}
-          className="absolute -right-3 top-20 z-10 flex h-6 w-6 items-center justify-center rounded-full border bg-background shadow-sm text-muted-foreground hover:text-foreground transition-colors"
+          className="tap-44 absolute -right-4 top-20 z-10 flex h-8 w-8 items-center justify-center rounded-full border bg-background shadow-sm text-muted-foreground hover:text-foreground transition-colors"
         >
           <ChevronLeft
             className={cn(
-              "h-3 w-3 transition-transform",
+              "h-4 w-4 transition-transform",
               collapsed && "rotate-180"
             )}
           />

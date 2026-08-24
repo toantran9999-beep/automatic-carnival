@@ -162,8 +162,37 @@ và `tables/page.tsx` — sửa dần khi đụng vào.
 ### Vùng bấm trên máy POS
 
 Máy quầy bấm bằng **ngón tay**, không phải chuột. Mọi thứ bấm được phải có vùng
-bấm **tối thiểu 44×44px**. Nút gạt cũ chỉ cao 24px nên nhân viên bấm trượt thật —
-`Switch` mới giữ hình 24×44 nhưng nới vùng bấm ra 44×44 bằng lớp đệm trong suốt.
+bấm **tối thiểu 44×44px**.
+
+⚠️ **Từ 24/08/2026 mặc định đã đạt chuẩn — đừng ghi đè `h-11` nữa.** Trước đó luật
+này chỉ sống ở nơi ai đó *nhớ* ghi đè, vì bản thân component dùng chung không size
+nào đạt (`Button` 36/32/40/36, `Input` 36, `SelectTrigger` 36, `TabsList` 36). Nay:
+
+| Component | Hình nút | Vùng bấm |
+|---|---|---|
+| `Button` default / sm / lg / icon | 40 / 36 / 44 / 40 | **44** (nhờ `tap-44`) |
+| `Input` | 44, chữ **16px mọi khổ màn** | 44 |
+| `SelectTrigger` / `SelectItem` | 44 | 44 |
+| `TabsList` / `TabsTrigger` | 48 / 40 | 40 |
+
+**`tap-44`** (khai ở `globals.css`) nới vùng bấm lên 44×44 bằng lớp giả `::after`
+**trong suốt**, nên hình nút và bố cục y nguyên. Đây là bản dùng lại được của thủ
+pháp `Switch` (24×44 nhìn thấy, 44×44 bấm được).
+
+Hai chỗ `tap-44` **không** cứu được, phải tăng kích thước THẬT:
+1. Nút nằm trong khung `overflow-hidden` → phần nới bị cắt.
+2. Hai nút sát nhau mà khoảng cách **nhỏ hơn** phần nới → vùng chồng lấn thuộc về
+   nút đứng **sau**, bấm mép nút trước lại ra nút sau. Vì thế các tab dính liền
+   nhau dùng `h-10` thật chứ không dùng `tap-44`.
+
+⚠️ Chỗ chật không nhét đủ nút to thì **gom lại**, đừng thu nhỏ. Thẻ bàn chỉ rộng
+~166px, 5 nút icon 44px = 220px là tràn — nên 5 nút icon trần đã gom vào một nút
+⋮ (`components/actions-menu.tsx`, dùng chung với trang Thực đơn), mỗi mục có cả
+icon lẫn **chữ**.
+
+⚠️ **Đừng viết `text-base md:text-sm` cho ô nhập.** Ý gốc là chống iOS tự phóng to
+khi gõ (Safari chỉ phóng khi chữ < 16px), nhưng `md:` đo màn hình nên hệ quả là
+**máy POS màn to lại có chữ nhỏ hơn điện thoại**. Để `text-base` là xong cả hai.
 
 ---
 

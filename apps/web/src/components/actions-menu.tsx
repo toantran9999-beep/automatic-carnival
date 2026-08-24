@@ -29,6 +29,10 @@ interface ActionsMenuProps {
  * Menu thao tác dạng nút ⋮ LUÔN HIỆN (thay cho kiểu chỉ hiện khi rê chuột).
  * Điện thoại không rê chuột được nên mọi thao tác Sửa/Ẩn/Xóa phải bấm thẳng được.
  * Dựng trên Popover có sẵn (dự án chưa có DropdownMenu).
+ *
+ * Dùng chung cho trang Thực đơn và thẻ bàn ở trang Bàn ăn. Ở thẻ bàn nó thay
+ * cho hàng 5 nút icon 28×28 cũ: thẻ chỉ rộng ~166px nên nhồi 5 nút đủ chuẩn
+ * 44px (=220px) là tràn — gom vào một nút thì vừa đủ to, vừa có CHỮ đi kèm.
  */
 export function ActionsMenu({ items, label, triggerClassName, align = "end" }: ActionsMenuProps) {
   const [open, setOpen] = React.useState(false);
@@ -42,11 +46,11 @@ export function ActionsMenu({ items, label, triggerClassName, align = "end" }: A
           aria-label={label}
           onClick={(e) => e.stopPropagation()}
           className={cn(
-            "inline-flex h-9 w-9 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+            "inline-flex h-11 w-11 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
             triggerClassName,
           )}
         >
-          <MoreVertical className="h-4 w-4" />
+          <MoreVertical className="h-5 w-5" />
         </button>
       </PopoverTrigger>
       <PopoverContent align={align} className="w-52 p-1" onClick={(e) => e.stopPropagation()}>
@@ -71,7 +75,7 @@ export function ActionsMenu({ items, label, triggerClassName, align = "end" }: A
                   item.onSelect();
                 }}
                 className={cn(
-                  "flex min-h-10 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
+                  "flex min-h-11 w-full items-center gap-2.5 rounded-md px-2.5 py-2 text-left text-sm transition-colors",
                   "hover:bg-muted disabled:pointer-events-none disabled:opacity-40",
                   item.destructive ? "text-destructive hover:bg-destructive/10" : "text-foreground",
                   needsDivider && "mt-1 border-t pt-2.5",

@@ -233,6 +233,44 @@ nữa và bắn `payment:mismatch` cho thu ngân.
 thì quên một chỗ là lỗi quay lại, mà quên chỗ nào cũng không ai biết cho tới lúc có
 khách chuyển tiền hụt.
 
+### 🖨️ Đường in phải có XÁC NHẬN — cấm `return true` khi chưa biết kết quả
+
+Máy bấm đơn KHÔNG in phiếu. Máy chủ phát `order:new`, **Trạm quầy** nghe rồi tự
+in. Cả chuỗi đó đi qua WebSocket + Redis pub/sub: **không lưu lịch sử, không
+hàng đợi, không thử lại**. Rớt một nhịp là mất phiếu vĩnh viễn.
+
+**Sáng 03/09/2026** mất phiếu cả hai kiểu (mất hẳn đơn; đơn 3 ly ra 1 tờ) mà
+**không truy được đơn nào**, vì chẳng có chỗ nào ghi lại. Ba luật rút ra:
+
+1. **Ghi lại mọi lượt in.** Trạm quầy in xong phải gọi
+   `POST /api/orders/:id/print-ack`, **kể cả khi hỏng**. Không có dòng trong
+   `order_prints` = **chưa in**.
+2. ⚠️ **Không hàm in nào được `return true` khi chưa biết giấy có chạy ra không.**
+   Bản cũ của cầu in USB khai `printBase64` là `void` rồi vứt kết quả — mất máy
+   in, mất quyền USB, gửi lỗi đều chỉ hiện Toast 2 giây rồi thôi, còn web thì
+   luôn tin là đã in. Đó là gốc của toàn bộ sự im lặng.
+   Cầu in nay trả `boolean`; **`undefined` = APK cũ, phải coi là thành công**,
+   kẻo máy chưa cài bản mới bị coi như hỏng hết rồi rơi xuống in trình duyệt.
+3. **Có lưới an toàn, đừng tin đường phát tin.** `GET /api/orders/unprinted` +
+   vòng đòi phiếu 45 giây ở trạm quầy. Chống trùng dựa vào **sổ ở máy chủ**,
+   KHÔNG phải tập trong RAM — F5 một cái là tập kia trắng.
+   ⚠️ Luôn có **chặn trên theo thời gian** (đang để 20 phút). Sổ trống không có
+   nghĩa là chưa in: thiếu chặn trên là lần deploy đầu máy quầy in xối xả cả
+   trăm phiếu từ đầu ca.
+
+Kèm hai bẫy cùng họ:
+
+- Trạm quầy chống in trùng theo `reprintToken || addOnId || orderId`. Muốn phát
+  lại một phiếu thì **phải có khóa mới** — dùng lại `orderId` là bị nuốt im
+  lặng. Và **đừng mượn `addOnId`**: nó làm phiếu in ra ghi "THÊM MÓN" sai sự thật.
+- Máy chủ cho client vào phòng của **MỌI chi nhánh trong token**
+  (`ws/handlers.ts`). Gói tin in phải kèm `branchId` và trạm quầy phải tự lọc,
+  kẻo quầy chi nhánh này in luôn phiếu chi nhánh kia.
+
+Báo lỗi in **không được dùng toast** — máy quầy không có ai ngồi canh màn hình.
+Phải là khối chặn ngang, bấm mới tắt.
+
+
 ### `sm:` / `md:` đo MÀN HÌNH, không đo khung chứa
 
 Trong hộp thoại, thẻ, ngăn bên — chúng là **sai công cụ**. `DialogFooter` xếp nút

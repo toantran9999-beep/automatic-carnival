@@ -46,8 +46,12 @@ public class MainActivity extends Activity {
     private static final String POS_URL = "https://pos.14.225.212.172.nip.io";
     private static final String ACTION_USB_PERMISSION = "vn.toda.pos.USB_PERMISSION";
 
+    /** Khoảng nghỉ tối thiểu giữa hai tờ phiếu (ms). */
+    private static final long PRINT_GAP_MS = 300;
+
     private WebView webView;
     private UsbManager usbManager;
+    private volatile long lastPrintAt = 0L;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -160,7 +164,27 @@ public class MainActivity extends Activity {
     };
 
     /** Ghi ESC/POS thô ra máy in qua USB bulk OUT. */
+    /**
+     * Gửi một tờ phiếu xuống máy in.
+     *
+     * ⚠️ `synchronized` + nghỉ giữa hai lượt: chế độ "mỗi ly một phiếu" bắn 2-3
+     * lệnh in liên tiếp không nghỉ. Máy in còn đang nhả tờ trước thì tờ sau rớt,
+     * mà bên web lại tưởng in xong hết — đó chính là kiểu mất phiếu "đơn 3 ly ra
+     * 1 tờ" gặp sáng 03/09/2026.
+     */
     private synchronized boolean writeToPrinter(byte[] data) {
+        long since = System.currentTimeMillis() - lastPrintAt;
+        if (since < PRINT_GAP_MS) {
+            try { Thread.sleep(PRINT_GAP_MS - since); } catch (InterruptedException ignored) {}
+        }
+        try {
+            return writeToPrinterOnce(data);
+        } finally {
+            lastPrintAt = System.currentTimeMillis();
+        }
+    }
+
+    private boolean writeToPrinterOnce(byte[] data) {
         UsbDevice d = findPrinter();
         if (d == null) { toast("Không thấy máy in USB"); return false; }
         if (!usbManager.hasPermission(d)) {
@@ -196,7 +220,13 @@ public class MainActivity extends Activity {
                 byte[] buf = new byte[len];
                 System.arraycopy(data, offset, buf, 0, len);
                 int sent = conn.bulkTransfer(out, buf, len, 5000);
-                if (sent < 0) { toast("Gửi máy in lỗi"); return false; }
+                if (sent < 0) {
+                    // Thử lại một lần: máy in bận nhả tờ trước là hay trượt đúng
+                    // nhịp này. Trượt lần hai mới thực sự là hỏng.
+                    try { Thread.sleep(400); } catch (InterruptedException ignored) {}
+                    sent = conn.bulkTransfer(out, buf, len, 5000);
+                }
+                if (sent < 0) { toast("Gửi máy in lỗi — phiếu KHÔNG ra"); return false; }
                 offset += len;
             }
             return true;
@@ -211,28 +241,39 @@ public class MainActivity extends Activity {
     }
 
     private void toast(final String msg) {
-        runOnUiThread(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_SHORT).show());
+        runOnUiThread(() -> Toast.makeText(MainActivity.this, msg, Toast.LENGTH_LONG).show());
     }
 
-    /** Cầu JS: web gọi window.TodaPrintBridge.printBase64(...) */
+    /**
+     * Cầu JS: web gọi window.TodaPrintBridge.printBase64(...)
+     *
+     * ⚠️ TRẢ VỀ boolean, và web PHẢI đọc giá trị đó.
+     *
+     * Bản cũ khai `void` rồi vứt luôn kết quả `writeToPrinter`: không thấy máy
+     * in, chưa có quyền USB, gửi lỗi — tất cả chỉ hiện Toast 2 giây rồi thôi,
+     * còn web thì mặc định coi như đã in. Suốt thời gian đó không ai biết phiếu
+     * nào không ra giấy. Đây là gốc của sự im lặng.
+     */
     class PrintBridge {
         @JavascriptInterface
-        public void printBase64(String b64) {
+        public boolean printBase64(String b64) {
             try {
                 byte[] data = Base64.decode(b64, Base64.DEFAULT);
-                writeToPrinter(data);
+                return writeToPrinter(data);
             } catch (Exception e) {
                 toast("In lỗi: " + e.getMessage());
+                return false;
             }
         }
 
         @JavascriptInterface
-        public void print(String json) {
+        public boolean print(String json) {
             try {
                 JSONObject o = new JSONObject(json);
-                printBase64(o.optString("data"));
+                return printBase64(o.optString("data"));
             } catch (Exception e) {
                 toast("In lỗi: " + e.getMessage());
+                return false;
             }
         }
 

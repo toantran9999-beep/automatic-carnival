@@ -61,6 +61,20 @@ export interface WsOrderPayload {
    * khóa riêng này thì món thêm bị bỏ qua, ÂM THẦM không ra phiếu.
    */
   addOnId?: string;
+  /**
+   * Có = đây là một lần IN LẠI phiếu gốc (nút "In lại phiếu đặt món").
+   *
+   * ⚠️ Trạm quầy chống in trùng theo `reprintToken || addOnId || orderId`, nên
+   * in lại phải mang khóa MỚI, nếu không bị bỏ qua im lặng. Cố ý tách khỏi
+   * `addOnId`: mượn khóa đó là phiếu in ra ghi "THÊM MÓN" sai sự thật.
+   */
+  reprintToken?: string;
+  /**
+   * Chi nhánh của đơn. Trạm quầy tự vào phòng của MỌI chi nhánh trong token
+   * (`ws/handlers.ts`), nên phải có trường này để bỏ qua phiếu chi nhánh khác —
+   * kẻo quầy chi nhánh chính in luôn phiếu Chi nhánh 2.
+   */
+  branchId?: string;
   /** ISO time đơn được tạo. */
   createdAt?: string;
   /** dine_in | takeout */

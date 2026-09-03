@@ -46,6 +46,7 @@ interface GridViewProps {
   onCardClick?: (table: any) => void;
   onPay?: (table: any) => void;
   onVoid?: (table: any) => void;
+  onReprint?: (table: any) => void;
 }
 
 export function GridView({
@@ -66,6 +67,7 @@ export function GridView({
   onCardClick,
   onPay,
   onVoid,
+  onReprint,
 }: GridViewProps) {
   // 1 đồng hồ chung cho mọi card (hiện thời gian ngồi), tick mỗi 30s
   const now = useNow();
@@ -99,6 +101,7 @@ export function GridView({
               onCardClick={onCardClick}
               onPay={onPay}
               onVoid={onVoid}
+              onReprint={onReprint}
             />
           ))}
     </div>

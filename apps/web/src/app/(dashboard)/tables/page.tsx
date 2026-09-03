@@ -34,6 +34,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useTranslation } from "@/stores/lang-store";
 import type { WsMessage } from "@restai/types";
 import { toast } from "sonner";
+import { apiFetch } from "@/lib/fetcher";
 import {
   useTables,
   useUpdateTableStatus,
@@ -157,6 +158,30 @@ export default function TablesPage() {
   const handlePay = useCallback((table: any) => {
     router.push(`/pos?tableId=${table.id}&tableNumber=${table.number}&pay=1`);
   }, [router]);
+
+  /**
+   * In lại phiếu đặt món của cả bàn — lệnh đi ra TRẠM QUẦY, không in trên máy này.
+   *
+   * Trước đây không có đường nào lấy lại phiếu đặt món đã mất: máy quầy rớt mạng
+   * hay máy in nuốt tờ giấy là coi như xong, chỉ còn cách vào màn Bếp bấm in trên
+   * đúng máy có máy in.
+   */
+  const handleReprint = useCallback(async (table: any) => {
+    const sessionId = table?.activeSession?.id;
+    if (!sessionId) return;
+    try {
+      const res = await apiFetch<{ orders: number }>(`/api/orders/session/${sessionId}/reprint`, {
+        method: "POST",
+      });
+      toast.success(
+        lang === "vi"
+          ? `Đã gửi ${res?.orders ?? 0} phiếu ra Trạm quầy`
+          : `Sent ${res?.orders ?? 0} ticket(s) to the counter station`,
+      );
+    } catch (e: any) {
+      toast.error(e?.message || "Error");
+    }
+  }, [lang]);
 
   const handleVoidConfirm = () => {
     const sessionId = voidConfirm?.activeSession?.id;
@@ -824,6 +849,7 @@ export default function TablesPage() {
             onCardClick={handleCardClick}
             onPay={handlePay}
             onVoid={setVoidConfirm}
+            onReprint={handleReprint}
           />
         )}
       </Tabs>

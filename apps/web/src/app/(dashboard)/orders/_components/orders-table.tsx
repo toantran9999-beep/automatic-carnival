@@ -3,7 +3,7 @@
 import { Card, CardContent } from "@restai/ui/components/card";
 import { Badge } from "@restai/ui/components/badge";
 import { Button } from "@restai/ui/components/button";
-import { ChevronLeft, ChevronRight, DollarSign, Printer } from "lucide-react";
+import { ChevronLeft, ChevronRight, ClipboardList, DollarSign, Printer } from "lucide-react";
 import { formatCurrency, formatDate } from "@/lib/utils";
 import { useTranslation } from "@/stores/lang-store";
 
@@ -60,6 +60,8 @@ interface OrdersTableProps {
   activeChargeOrderId?: string | null;
   onUpdateStatus: (id: string, status: string) => void;
   onPrintReceipt: (order: any) => void;
+  /** In lại PHIẾU ĐẶT MÓN qua Trạm quầy (khác hóa đơn — hóa đơn in tại máy này). */
+  onReprintTicket?: (order: any) => void;
   onCharge?: (order: any) => void;
   /** Bấm vào dòng để xem chi tiết đơn (ai order, giờ order, món kèm tùy chọn). */
   onRowClick?: (order: any) => void;
@@ -78,6 +80,7 @@ export function OrdersTable({
   activeChargeOrderId,
   onUpdateStatus,
   onPrintReceipt,
+  onReprintTicket,
   onCharge,
   onRowClick,
 }: OrdersTableProps) {
@@ -240,6 +243,17 @@ export function OrdersTable({
                                     {t("orders.charge")}
                                   </>
                                 )}
+                              </Button>
+                            )}
+                            {onReprintTicket && (
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="h-10 w-10 p-0"
+                                onClick={() => onReprintTicket(order)}
+                                title="In lại phiếu đặt món (ra Trạm quầy)"
+                              >
+                                <ClipboardList className="h-4.5 w-4.5" />
                               </Button>
                             )}
                             <Button

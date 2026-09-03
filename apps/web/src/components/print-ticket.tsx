@@ -1392,16 +1392,30 @@ function currentPrintDriver(branchSettings: any): PrintDriver {
   return "browser_print";
 }
 
+/**
+ * Đọc kết quả cầu in Android trả về.
+ *
+ * ⚠️ APK CŨ khai `printBase64` là `void` nên JS nhận `undefined` — phải coi là
+ * THÀNH CÔNG, kẻo máy quầy chưa cài bản mới là mọi lệnh in đều bị coi như hỏng
+ * rồi rơi hết xuống in trình duyệt (hộp thoại in trên máy không có máy in).
+ *
+ * APK mới trả `boolean` thật từ `writeToPrinter` — có mất máy in, mất quyền USB
+ * hay `bulkTransfer` lỗi thì bên này mới biết được.
+ */
+function bridgeResult(r: unknown): boolean {
+  return r === undefined || r === null ? true : !!r;
+}
+
 async function printEscPosWithBridge(bytes: number[]): Promise<boolean> {
   const base64 = bytesToBase64(bytes);
   const bridge = (window as any).TodaPrintBridge || (window as any).AndroidPrintBridge;
   if (bridge?.printBase64) {
-    bridge.printBase64(base64);
-    return true;
+    return bridgeResult(bridge.printBase64(base64));
   }
   if (bridge?.print) {
-    bridge.print(JSON.stringify({ encoding: "base64", format: "escpos", data: base64 }));
-    return true;
+    return bridgeResult(
+      bridge.print(JSON.stringify({ encoding: "base64", format: "escpos", data: base64 })),
+    );
   }
 
   // Local print bridge (cổng 18180) — có timeout để KHÔNG treo nếu không có bridge.
@@ -1571,10 +1585,26 @@ function splitItemsPerUnit(items: OrderItem[]): OrderItem[] {
  * - "per_item": mỗi LY/PHẦN một phiếu (2 ly cà phê + 1 bánh -> 3 phiếu), đánh số
  *   "1/3", "2/3"... và in lần lượt.
  */
+/** Kết quả một lượt in: bao nhiêu tờ đáng lẽ phải ra, bao nhiêu tờ ra thật. */
+export interface KitchenPrintResult {
+  total: number;
+  ok: number;
+}
+
+/** Máy này có cầu in USB native không (APK "TODA POS Quầy"). */
+export function hasPrintBridge(): boolean {
+  if (typeof window === "undefined") return false;
+  const b = (window as any).TodaPrintBridge || (window as any).AndroidPrintBridge;
+  return !!(b?.printBase64 || b?.print);
+}
+
 export function usePrintKitchenTicket() {
   const { data: branchSettings } = useBranchSettings();
 
-  return useCallback(async (input: KitchenTicketData, mode: PrintMode = "combined") => {
+  return useCallback(async (
+    input: KitchenTicketData,
+    mode: PrintMode = "combined",
+  ): Promise<KitchenPrintResult> => {
     // Tên nhân viên đi thẳng từ `input.staffName` (người bấm đơn, máy chủ gửi kèm).
     // KHÔNG lấy tên người mở ca hay tài khoản của máy in đè lên — xem ghi chú ở
     // `KitchenTicketData.staffName`.
@@ -1591,22 +1621,36 @@ export function usePrintKitchenTicket() {
           }))
         : [data];
 
-    // Thử in qua ESC/POS (RawBT / bridge). Nếu MỌI phiếu in ok thì xong;
-    // nếu lỗi/không có driver → tự lùi về in trình duyệt cho cả lô.
+    // Thử in qua ESC/POS (RawBT / bridge). Chỉ NHỮNG TỜ HỎNG mới lùi về in
+    // trình duyệt.
+    //
+    // ⚠️ Bản cũ hỏng ở tờ thứ k thì `break` rồi in lại CẢ LÔ bằng trình duyệt:
+    // trên máy Android gắn máy in USB, in trình duyệt không ra gì — kết quả là
+    // tờ 1 đã ra giấy còn tờ 2, 3 mất luôn, không một tiếng báo.
+    let remaining = tickets;
     if (driver !== "browser_print") {
-      let allOk = true;
+      const failed: typeof tickets = [];
       for (const ticket of tickets) {
         const bytes = cfg.utf8Bitmap
           ? buildKitchenRasterEscPos(ticket, cfg) ?? buildKitchenEscPos(ticket, cfg)
           : buildKitchenEscPos(ticket, cfg);
-        if (!(await printEscPos(bytes, driver))) {
-          allOk = false;
-          break;
-        }
+        if (await printEscPos(bytes, driver)) continue;
+        failed.push(ticket);
       }
-      if (allOk) return;
+      if (!failed.length) return { total: tickets.length, ok: tickets.length };
+      remaining = failed;
     }
-    await printHtmlSequential(tickets.map((ticket) => buildKitchenTicketHtml(ticket, cfg)));
+
+    // Cầu in USB có mà từ chối in thì in trình duyệt cũng vô nghĩa (máy POS
+    // không có máy in hệ thống). Ném lỗi để trạm quầy BÁO ĐỘNG, đừng im lặng.
+    if (driver === "android_bridge" && hasPrintBridge()) {
+      throw new Error(
+        `Máy in từ chối ${remaining.length}/${tickets.length} phiếu — kiểm dây USB, giấy và nguồn máy in.`,
+      );
+    }
+
+    await printHtmlSequential(remaining.map((ticket) => buildKitchenTicketHtml(ticket, cfg)));
+    return { total: tickets.length, ok: tickets.length - remaining.length };
   }, [branchSettings]);
 }
 

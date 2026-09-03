@@ -13,6 +13,7 @@ import { OrdersTable } from "./_components/orders-table";
 import { OrderDetailDialog } from "./_components/order-detail-dialog";
 import { PaymentDialog } from "../payments/_components/payment-dialog";
 import { useTranslation } from "@/stores/lang-store";
+import { toast } from "sonner";
 
 const PAGE_SIZE = 20;
 
@@ -73,6 +74,22 @@ export default function OrdersPage() {
     }
   };
 
+  /**
+   * In lại PHIẾU ĐẶT MÓN — lệnh đi ra TRẠM QUẦY, không in trên máy đang bấm.
+   *
+   * Khác hẳn nút in hóa đơn ngay bên cạnh (cái đó in cục bộ). Đây là đường duy
+   * nhất lấy lại phiếu cho đơn MANG VỀ — đơn mang về không có bàn nên không lên
+   * được thẻ bàn.
+   */
+  const handleReprintTicket = async (order: any) => {
+    try {
+      await apiFetch(`/api/orders/${order.id}/reprint`, { method: "POST" });
+      toast.success(`Đã gửi phiếu #${order.order_number ?? ""} ra Trạm quầy`);
+    } catch (e: any) {
+      toast.error(e?.message || "Error");
+    }
+  };
+
   const orders: any[] = data?.orders ?? [];
   const pagination = data?.pagination ?? { page: 1, limit: PAGE_SIZE, total: 0, totalPages: 1 };
 
@@ -123,6 +140,7 @@ export default function OrdersPage() {
         activeChargeOrderId={chargeOrderId}
         onUpdateStatus={(id, status) => updateStatus.mutate({ id, status })}
         onPrintReceipt={handlePrintReceipt}
+        onReprintTicket={handleReprintTicket}
         onCharge={(order) => setChargeOrderId(order.id)}
         onRowClick={(order) => setDetailOrderId(order.id)}
       />

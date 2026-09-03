@@ -8,6 +8,7 @@ import {
   boolean,
   timestamp,
   index,
+  uniqueIndex,
 } from "drizzle-orm/pg-core";
 import {
   orderTypeEnum,
@@ -115,3 +116,37 @@ export const orderItemModifiers = pgTable("order_item_modifiers", {
    */
   input_value: numeric("input_value", { precision: 10, scale: 3 }),
 });
+
+/**
+ * Sổ ghi nhận đã in phiếu — máy quầy xác nhận về sau MỖI lần in, kể cả khi hỏng.
+ *
+ * ⚠️ Trước bảng này việc in là "bắn đi rồi quên": không có cách nào biết một đơn
+ * đã ra giấy hay chưa. Sáng 03/09/2026 mất phiếu cả hai kiểu mà không truy được
+ * đơn nào. Từ nay: không có dòng nào ở đây = **chưa in**, và máy quầy tự đòi lại.
+ *
+ * `status = 'partial'` là trường hợp thật hay gặp nhất: chi nhánh để chế độ mỗi
+ * ly một phiếu, đơn 3 ly mà máy in nuốt mất tờ 2 thì `tickets_ok = 2/3`.
+ */
+export const orderPrints = pgTable("order_prints", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  order_id: uuid("order_id")
+    .notNull()
+    .references(() => orders.id, { onDelete: "cascade" }),
+  /**
+   * Lô món thêm (`addOnId`); chuỗi RỖNG = phiếu gốc của đơn.
+   * ⚠️ Không dùng null: null không so bằng được nên ràng buộc UNIQUE mất tác dụng.
+   */
+  add_on_id: varchar("add_on_id", { length: 120 }).notNull().default(""),
+  /** 'kitchen' | 'receipt' | 'transfer' */
+  kind: varchar("kind", { length: 16 }).notNull(),
+  /** 'ok' | 'partial' | 'failed' */
+  status: varchar("status", { length: 16 }).notNull(),
+  tickets_total: integer("tickets_total").notNull().default(1),
+  tickets_ok: integer("tickets_ok").notNull().default(0),
+  device_label: text("device_label"),
+  error: text("error"),
+  printed_at: timestamp("printed_at", { withTimezone: true }).defaultNow().notNull(),
+}, (table) => [
+  index("idx_order_prints_order").on(table.order_id),
+  uniqueIndex("uq_order_prints_job").on(table.order_id, table.add_on_id, table.kind),
+]);

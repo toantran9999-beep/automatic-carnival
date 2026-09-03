@@ -16,6 +16,8 @@ import {
   BellRing,
   ArrowRightLeft,
   Clock,
+  Printer,
+  PrinterCheck,
 } from "lucide-react";
 import { ActionsMenu, type ActionItem } from "@/components/actions-menu";
 import { cn, formatCurrency, formatElapsed } from "@/lib/utils";
@@ -51,6 +53,8 @@ interface TableCardProps {
   onCardClick?: (table: any) => void;
   onPay?: (table: any) => void;
   onVoid?: (table: any) => void;
+  /** In lại phiếu đặt món của cả bàn qua Trạm quầy. */
+  onReprint?: (table: any) => void;
 }
 
 /**
@@ -122,6 +126,7 @@ export function TableCard({
   onCardClick,
   onPay,
   onVoid,
+  onReprint,
 }: TableCardProps) {
   const { t, lang } = useTranslation();
   const meta = STATUS_METADATA[table.status] || STATUS_METADATA.available;
@@ -168,10 +173,22 @@ export function TableCard({
           onSelect: () => onOperations(table),
         }]
       : []),
+    ...(table.activeSession && onReprint && canOperate
+      ? [{
+          key: "reprint",
+          label: lang === "vi" ? "In lại phiếu đặt món" : "Reprint order ticket",
+          icon: Printer,
+          onSelect: () => onReprint(table),
+        }]
+      : []),
     ...(canManage
       ? [{ key: "delete", label: t("common.delete"), icon: Trash2, onSelect: () => onDelete(table), destructive: true }]
       : []),
   ];
+
+  // 'missing' = chưa có tờ phiếu nào ra giấy · 'partial' = ra thiếu tờ.
+  // Máy chủ chỉ báo sau khi đơn đã quá 45 giây, nên đây không phải cảnh báo hớt hải.
+  const printIssue: "none" | "missing" | "partial" = table.activeSession?.printIssue ?? "none";
 
   return (
     <div
@@ -192,6 +209,16 @@ export function TableCard({
           {table.number}
         </p>
         <div className="flex flex-col items-end gap-1">
+          {printIssue !== "none" && (
+            // ⚠️ Thứ này phải ĐẬP VÀO MẮT: mất phiếu là khách ngồi chờ ly nước
+            // không ai pha. Trước khi có nó, chỉ biết khi khách hỏi.
+            <span className="inline-flex items-center gap-1 rounded-full bg-destructive px-2 py-0.5 text-[11px] font-bold text-destructive-foreground">
+              <PrinterCheck className="h-3 w-3" />
+              {printIssue === "missing"
+                ? lang === "vi" ? "CHƯA IN" : "NOT PRINTED"
+                : lang === "vi" ? "IN THIẾU" : "PARTIAL"}
+            </span>
+          )}
           <span className={cn("text-[11px] font-semibold px-2 py-0.5 rounded-full bg-white/60 dark:bg-white/10", meta.text)}>
             {statusLabel}
           </span>

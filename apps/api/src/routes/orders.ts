@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, desc, sql, inArray, getTableColumns } from "drizzle-orm";
+import { eq, and, desc, sql, isNull, or, ne, lt, inArray, getTableColumns } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import {
   createOrderSchema,
@@ -19,6 +19,7 @@ import { wsManager } from "../ws/manager.js";
 import { z } from "zod";
 import { createOrder, addItemsToOrder, handleOrderCompletion, loadItemModifiers, OrderValidationError } from "../services/order.service.js";
 import { signCustomerToken } from "../lib/jwt.js";
+import { buildOrderTicketPayload, orderTicketEnvelope } from "../services/ticket.service.js";
 
 const orders = new Hono<AppEnv>();
 
@@ -251,94 +252,16 @@ orders.post(
 
     const { order, items: createdItems } = result;
 
-    // Enrich the broadcast so the counter print-station can auto-print a full
-    // kitchen ticket from the WS event alone (no extra fetch needed):
-    //  - table number (from the session, if any)
-    //  - modifier names per item (e.g. "Cà phê đá (nhẹ, ít đường)")
-    let ticketTableNumber: number | null = null;
-    let ticketTableZone: string | null = null;
-    if (order.table_session_id) {
-      const [tbl] = await db
-        .select({ number: schema.tables.number, zone: schema.spaces.name })
-        .from(schema.tableSessions)
-        .innerJoin(schema.tables, eq(schema.tableSessions.table_id, schema.tables.id))
-        .leftJoin(schema.spaces, eq(schema.tables.space_id, schema.spaces.id))
-        .where(eq(schema.tableSessions.id, order.table_session_id))
-        .limit(1);
-      ticketTableNumber = tbl?.number ?? null;
-      ticketTableZone = tbl?.zone ?? null;
-    }
-
-    // Tên NGƯỜI BẤM ĐƠN để in lên phiếu đặt món.
-    //
-    // ⚠️ Phiếu KHÔNG do máy bấm đơn in ra: điện thoại chỉ gửi đơn lên đây, rồi
-    // Trạm quầy (máy POS gắn máy in) nghe `order:new` và tự in. Trạm quầy là máy
-    // dùng chung nên tài khoản đăng nhập trên nó KHÔNG phải người order — tên
-    // phải đi kèm trong gói tin này thì phiếu mới ghi đúng.
-    //
-    // Token chỉ có id (`sub`), không có tên → phải tra bảng users. Chạy sau khi
-    // đơn đã tạo xong, ngoài transaction; hỏng thì để trống chứ không chặn bán hàng.
-    let ticketStaffName: string | null = null;
-    if (user?.role !== "customer" && user?.sub) {
-      try {
-        const [staff] = await db
-          .select({ name: schema.users.name })
-          .from(schema.users)
-          .where(eq(schema.users.id, user.sub))
-          .limit(1);
-        ticketStaffName = staff?.name ?? null;
-      } catch {
-        ticketStaffName = null;
-      }
-    }
-
-    const createdItemIds = createdItems.map((i) => i.id);
-    const itemModifiers = createdItemIds.length
-      ? await db
-          .select({
-            order_item_id: schema.orderItemModifiers.order_item_id,
-            name: schema.orderItemModifiers.name,
-          })
-          .from(schema.orderItemModifiers)
-          .where(inArray(schema.orderItemModifiers.order_item_id, createdItemIds))
-      : [];
-    const modsByItem = new Map<string, string[]>();
-    for (const m of itemModifiers) {
-      const arr = modsByItem.get(m.order_item_id) ?? [];
-      arr.push(m.name);
-      modsByItem.set(m.order_item_id, arr);
-    }
-
-    // Broadcast new order to branch and kitchen
-    const orderPayload = {
-      type: "order:new",
-      payload: {
-        orderId: order.id,
-        orderNumber: order.order_number,
-        status: order.status,
-        tableNumber: ticketTableNumber,
-        tableZone: ticketTableZone,
-        customerName: order.customer_name,
-        // Người bấm đơn — trạm quầy in đúng tên này lên dòng "Nhân viên".
-        staffName: ticketStaffName,
-        createdAt: order.created_at,
-        orderType: order.type,
-        items: createdItems.map((i) => {
-          const mods = modsByItem.get(i.id) ?? [];
-          return {
-            id: i.id,
-            name: i.name,
-            // Topping/tùy chọn tách riêng để phiếu in mỗi topping 1 dòng
-            modifiers: mods,
-            quantity: i.quantity,
-            status: i.status,
-            notes: i.notes,
-            unit: i.unit ?? null,
-          };
-        }),
-      },
-      timestamp: Date.now(),
-    };
+    // Phiếu đặt món do TRẠM QUẦY in, không phải máy bấm đơn — nên gói tin phải
+    // mang sẵn số bàn, tên người bấm đơn và tên tùy chọn từng món. Xem
+    // `services/ticket.service.ts`.
+    const ticket = await buildOrderTicketPayload({
+      order: order as any,
+      items: createdItems as any,
+      branchId: tenant.branchId,
+      staffUserId: user?.role === "customer" ? null : user?.sub ?? null,
+    });
+    const orderPayload = orderTicketEnvelope(ticket);
     await wsManager.publish(`branch:${tenant.branchId}`, orderPayload);
     await wsManager.publish(`branch:${tenant.branchId}:kitchen`, orderPayload);
 
@@ -379,83 +302,357 @@ orders.post(
 
     const { order, addedItems } = result;
 
-    let ticketStaffName: string | null = null;
-    if (user?.role !== "customer" && user?.sub) {
-      try {
-        const [staff] = await db
-          .select({ name: schema.users.name })
-          .from(schema.users)
-          .where(eq(schema.users.id, user.sub))
-          .limit(1);
-        ticketStaffName = staff?.name ?? null;
-      } catch {
-        ticketStaffName = null;
-      }
-    }
-
-    const addedIds = addedItems.map((i) => i.id);
-    const itemModifiers = addedIds.length
-      ? await db
-          .select({
-            order_item_id: schema.orderItemModifiers.order_item_id,
-            name: schema.orderItemModifiers.name,
-          })
-          .from(schema.orderItemModifiers)
-          .where(inArray(schema.orderItemModifiers.order_item_id, addedIds))
-      : [];
-    const modsByItem = new Map<string, string[]>();
-    for (const m of itemModifiers) {
-      const arr = modsByItem.get(m.order_item_id) ?? [];
-      arr.push(m.name);
-      modsByItem.set(m.order_item_id, arr);
-    }
-
-    let ticketTableNumber: number | null = null;
-    let ticketTableZone: string | null = null;
-    if (order.table_session_id) {
-      const [tbl] = await db
-        .select({ number: schema.tables.number, zone: schema.spaces.name })
-        .from(schema.tableSessions)
-        .innerJoin(schema.tables, eq(schema.tableSessions.table_id, schema.tables.id))
-        .leftJoin(schema.spaces, eq(schema.tables.space_id, schema.spaces.id))
-        .where(eq(schema.tableSessions.id, order.table_session_id))
-        .limit(1);
-      ticketTableNumber = tbl?.number ?? null;
-      ticketTableZone = tbl?.zone ?? null;
-    }
-
     // ⚠️ PHẢI có `addOnId`: trạm quầy chống in trùng bằng `orderId`, nên phát tin
     // với cùng orderId là nó bỏ qua, món thêm ÂM THẦM không tới quầy. `addOnId` là
     // khóa riêng của lô thêm này. Phiếu chỉ gồm MÓN VỪA THÊM và có chữ "THÊM MÓN".
-    const orderPayload = {
-      type: "order:new",
-      payload: {
-        orderId: order.id,
-        addOnId: `${order.id}:${addedIds[0] ?? Date.now()}`,
-        orderNumber: order.order_number,
-        status: order.status,
-        tableNumber: ticketTableNumber,
-        tableZone: ticketTableZone,
-        customerName: order.customer_name,
-        staffName: ticketStaffName,
-        createdAt: new Date().toISOString(),
-        orderType: order.type,
-        items: addedItems.map((i) => ({
-          id: i.id,
-          name: i.name,
-          modifiers: modsByItem.get(i.id) ?? [],
-          quantity: i.quantity,
-          status: i.status,
-          notes: i.notes,
-          unit: i.unit ?? null,
-        })),
-      },
-      timestamp: Date.now(),
-    };
+    const addOnId = `${order.id}:${addedItems[0]?.id ?? Date.now()}`;
+    const ticket = await buildOrderTicketPayload({
+      order: order as any,
+      items: addedItems as any,
+      branchId: tenant.branchId,
+      staffUserId: user?.role === "customer" ? null : user?.sub ?? null,
+      addOnId,
+      // Giờ trên phiếu là giờ GỌI THÊM, không phải giờ mở đơn.
+      createdAt: new Date().toISOString(),
+    });
+    const orderPayload = orderTicketEnvelope(ticket);
     await wsManager.publish(`branch:${tenant.branchId}`, orderPayload);
     await wsManager.publish(`branch:${tenant.branchId}:kitchen`, orderPayload);
 
     return c.json({ success: true, data: { ...order, addedItems } }, 201);
+  },
+);
+
+/* ------------------------------------------------------------------------- *
+ * SỔ GHI NHẬN IN PHIẾU
+ *
+ * ⚠️ Trước đây việc in là "bắn đi rồi quên": máy chủ đẩy `order:new` qua
+ * WebSocket, Trạm quầy nghe được thì in, không nghe được thì thôi — và KHÔNG AI
+ * BIẾT. Sáng 03/09/2026 mất phiếu cả hai kiểu (mất hẳn đơn khi máy quầy rớt
+ * mạng; đơn nhiều ly ra thiếu tờ khi cầu in USB nuốt việc) mà không truy được
+ * đơn nào, vì không có chỗ nào ghi lại.
+ *
+ * Ba đường dưới đây đóng vòng lặp: quầy in xong thì XÁC NHẬN, cái gì chưa xác
+ * nhận thì quầy tự ĐÒI LẠI, và người ta IN LẠI được bằng tay.
+ * ------------------------------------------------------------------------- */
+
+const printAckSchema = z.object({
+  /** Lô món thêm; bỏ trống = phiếu gốc của đơn. */
+  addOnId: z.string().max(120).optional().nullable(),
+  kind: z.enum(["kitchen", "receipt", "transfer"]).default("kitchen"),
+  status: z.enum(["ok", "partial", "failed"]),
+  ticketsTotal: z.number().int().min(1).max(200).default(1),
+  ticketsOk: z.number().int().min(0).max(200).default(0),
+  deviceLabel: z.string().max(120).optional().nullable(),
+  error: z.string().max(500).optional().nullable(),
+});
+
+// POST /:id/print-ack — Trạm quầy báo về kết quả in (kể cả khi HỎNG).
+orders.post(
+  "/:id/print-ack",
+  requirePermission("orders:read"),
+  zValidator("param", idParamSchema),
+  zValidator("json", printAckSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const body = c.req.valid("json");
+    const tenant = c.get("tenant") as any;
+
+    const [order] = await db
+      .select({ id: schema.orders.id })
+      .from(schema.orders)
+      .where(and(eq(schema.orders.id, id), eq(schema.orders.branch_id, tenant.branchId)))
+      .limit(1);
+    if (!order) {
+      return c.json(
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
+        404,
+      );
+    }
+
+    // Để ràng buộc UNIQUE làm việc chống trùng — đừng SELECT rồi mới INSERT, kiểu
+    // đó vừa thua đường đua vừa ném 500 khi quầy gửi lại xác nhận cùng lúc.
+    //
+    // ⚠️ Lần in TỐT HƠN không được để lần xấu đè: in lại thành công sau một lần
+    // hỏng phải nâng dòng lên 'ok'; hỏng thêm lần nữa thì giữ nguyên 'ok' cũ.
+    await db
+      .insert(schema.orderPrints)
+      .values({
+        order_id: id,
+        add_on_id: body.addOnId ?? "",
+        kind: body.kind,
+        status: body.status,
+        tickets_total: body.ticketsTotal,
+        tickets_ok: body.ticketsOk,
+        device_label: body.deviceLabel ?? null,
+        error: body.error ?? null,
+      })
+      .onConflictDoUpdate({
+        target: [schema.orderPrints.order_id, schema.orderPrints.add_on_id, schema.orderPrints.kind],
+        set: {
+          status: sql`CASE WHEN order_prints.tickets_ok >= excluded.tickets_ok
+                           THEN order_prints.status ELSE excluded.status END`,
+          tickets_ok: sql`GREATEST(order_prints.tickets_ok, excluded.tickets_ok)`,
+          tickets_total: sql`GREATEST(order_prints.tickets_total, excluded.tickets_total)`,
+          device_label: sql`excluded.device_label`,
+          error: sql`CASE WHEN excluded.status = 'ok' THEN NULL ELSE excluded.error END`,
+          printed_at: sql`now()`,
+        },
+      });
+
+    return c.json({ success: true, data: { ok: true } });
+  },
+);
+
+// GET /unprinted — đơn của ca đang mở mà Trạm quầy CHƯA xác nhận in xong.
+//
+// Đây là lưới an toàn cho lúc máy quầy rớt mạng / tắt tab: lệnh in phát trong
+// lúc đó mất vĩnh viễn (Redis pub/sub không lưu lịch sử), nên quầy phải tự quay
+// lại hỏi "còn phiếu nào tôi chưa in không".
+//
+// ⚠️ Chỉ soi phiếu GỐC của đơn. Lô món thêm mất thì phải bấm "In lại" bằng tay —
+// không dựng lại được lô nào gồm món nào từ dữ liệu.
+orders.get("/unprinted", requirePermission("orders:read"), async (c) => {
+  const tenant = c.get("tenant") as any;
+
+  const [shift] = await db
+    .select({ id: schema.registerShifts.id })
+    .from(schema.registerShifts)
+    .where(
+      and(
+        eq(schema.registerShifts.branch_id, tenant.branchId),
+        eq(schema.registerShifts.status, "open"),
+      ),
+    )
+    .limit(1);
+  // Chưa mở ca thì không có gì để in — trả rỗng, không phải lỗi.
+  if (!shift) return c.json({ success: true, data: [] });
+
+  const rows = await db
+    .select({
+      id: schema.orders.id,
+      order_number: schema.orders.order_number,
+      status: schema.orders.status,
+      customer_name: schema.orders.customer_name,
+      type: schema.orders.type,
+      table_session_id: schema.orders.table_session_id,
+      created_at: schema.orders.created_at,
+      created_by: schema.orders.created_by,
+    })
+    .from(schema.orders)
+    .leftJoin(
+      schema.orderPrints,
+      and(
+        eq(schema.orderPrints.order_id, schema.orders.id),
+        eq(schema.orderPrints.kind, "kitchen"),
+        eq(schema.orderPrints.add_on_id, ""),
+      ),
+    )
+    .where(
+      and(
+        eq(schema.orders.branch_id, tenant.branchId),
+        eq(schema.orders.register_shift_id, shift.id),
+        ne(schema.orders.status, "cancelled"),
+        // Chờ 30 giây rồi mới coi là thiếu: đủ để lượt in vừa phát đi kịp xác
+        // nhận về, khỏi in lại ngay tờ đang chạy ra khỏi máy.
+        lt(schema.orders.created_at, sql`now() - interval '30 seconds'`),
+        or(isNull(schema.orderPrints.id), ne(schema.orderPrints.status, "ok")),
+      ),
+    )
+    .orderBy(schema.orders.created_at)
+    .limit(30);
+
+  if (!rows.length) return c.json({ success: true, data: [] });
+
+  const items = await db
+    .select({
+      id: schema.orderItems.id,
+      order_id: schema.orderItems.order_id,
+      name: schema.orderItems.name,
+      quantity: schema.orderItems.quantity,
+      status: schema.orderItems.status,
+      notes: schema.orderItems.notes,
+      unit: schema.orderItems.unit,
+    })
+    .from(schema.orderItems)
+    .where(
+      inArray(
+        schema.orderItems.order_id,
+        rows.map((r) => r.id),
+      ),
+    );
+
+  const byOrder = new Map<string, typeof items>();
+  for (const it of items) {
+    const arr = byOrder.get(it.order_id) ?? [];
+    arr.push(it);
+    byOrder.set(it.order_id, arr);
+  }
+
+  const payloads = [];
+  for (const row of rows) {
+    const list = byOrder.get(row.id) ?? [];
+    if (!list.length) continue; // đơn rỗng thì không có gì để in
+    payloads.push(
+      await buildOrderTicketPayload({
+        order: row as any,
+        items: list as any,
+        branchId: tenant.branchId,
+        staffUserId: row.created_by,
+      }),
+    );
+  }
+
+  return c.json({ success: true, data: payloads });
+});
+
+// POST /:id/reprint — in lại phiếu đặt món qua Trạm quầy.
+//
+// Trước đây KHÔNG có đường nào lấy lại phiếu đặt món: mất là mất, chỉ còn cách
+// vào màn Bếp bấm in trên đúng máy có máy in.
+orders.post(
+  "/:id/reprint",
+  requirePermission("orders:read"),
+  blockLiveOps,
+  zValidator("param", idParamSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const tenant = c.get("tenant") as any;
+
+    const [order] = await db
+      .select()
+      .from(schema.orders)
+      .where(and(eq(schema.orders.id, id), eq(schema.orders.branch_id, tenant.branchId)))
+      .limit(1);
+    if (!order) {
+      return c.json(
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
+        404,
+      );
+    }
+
+    const items = await db
+      .select({
+        id: schema.orderItems.id,
+        name: schema.orderItems.name,
+        quantity: schema.orderItems.quantity,
+        status: schema.orderItems.status,
+        notes: schema.orderItems.notes,
+        unit: schema.orderItems.unit,
+      })
+      .from(schema.orderItems)
+      .where(eq(schema.orderItems.order_id, id));
+
+    if (!items.length) {
+      return c.json(
+        { success: false, error: { code: "BAD_REQUEST", message: "Đơn không có món để in." } },
+        400,
+      );
+    }
+
+    const ticket = await buildOrderTicketPayload({
+      order: order as any,
+      items: items as any,
+      branchId: tenant.branchId,
+      staffUserId: order.created_by,
+      // ⚠️ Khóa MỚI mỗi lần bấm: quầy chống in trùng theo khóa này, dùng lại
+      // `orderId` là lần in lại bị bỏ qua im lặng. Và KHÔNG mượn `addOnId` —
+      // nó làm phiếu in ra chữ "THÊM MÓN" trong khi đây là phiếu gốc.
+      reprintToken: `${order.id}:reprint:${Date.now()}`,
+    });
+    const envelope = orderTicketEnvelope(ticket);
+    await wsManager.publish(`branch:${tenant.branchId}`, envelope);
+    await wsManager.publish(`branch:${tenant.branchId}:kitchen`, envelope);
+
+    return c.json({ success: true, data: { ok: true } });
+  },
+);
+
+// POST /session/:id/reprint — in lại phiếu của CẢ BÀN (mọi đơn của phiên).
+//
+// Thẻ bàn không cầm id từng đơn (đường mặc định cố ý không tải chi tiết đơn về
+// máy), nên nút "In lại phiếu" ở đó gọi một lượt duy nhất thay vì bắt máy POS
+// hỏi đường vòng rồi bắn N lệnh trên đường truyền chập chờn.
+orders.post(
+  "/session/:id/reprint",
+  requirePermission("orders:read"),
+  blockLiveOps,
+  zValidator("param", idParamSchema),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const tenant = c.get("tenant") as any;
+
+    const rows = await db
+      .select({
+        id: schema.orders.id,
+        order_number: schema.orders.order_number,
+        status: schema.orders.status,
+        customer_name: schema.orders.customer_name,
+        type: schema.orders.type,
+        table_session_id: schema.orders.table_session_id,
+        created_at: schema.orders.created_at,
+        created_by: schema.orders.created_by,
+      })
+      .from(schema.orders)
+      .where(
+        and(
+          eq(schema.orders.branch_id, tenant.branchId),
+          eq(schema.orders.table_session_id, id),
+          ne(schema.orders.status, "cancelled"),
+        ),
+      )
+      .orderBy(schema.orders.created_at);
+
+    if (!rows.length) {
+      return c.json(
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
+        404,
+      );
+    }
+
+    const items = await db
+      .select({
+        id: schema.orderItems.id,
+        order_id: schema.orderItems.order_id,
+        name: schema.orderItems.name,
+        quantity: schema.orderItems.quantity,
+        status: schema.orderItems.status,
+        notes: schema.orderItems.notes,
+        unit: schema.orderItems.unit,
+      })
+      .from(schema.orderItems)
+      .where(
+        inArray(
+          schema.orderItems.order_id,
+          rows.map((r) => r.id),
+        ),
+      );
+
+    const byOrder = new Map<string, typeof items>();
+    for (const it of items) {
+      const arr = byOrder.get(it.order_id) ?? [];
+      arr.push(it);
+      byOrder.set(it.order_id, arr);
+    }
+
+    let sent = 0;
+    for (const row of rows) {
+      const list = byOrder.get(row.id) ?? [];
+      if (!list.length) continue;
+      const ticket = await buildOrderTicketPayload({
+        order: row as any,
+        items: list as any,
+        branchId: tenant.branchId,
+        staffUserId: row.created_by,
+        reprintToken: `${row.id}:reprint:${Date.now()}`,
+      });
+      const envelope = orderTicketEnvelope(ticket);
+      await wsManager.publish(`branch:${tenant.branchId}`, envelope);
+      await wsManager.publish(`branch:${tenant.branchId}:kitchen`, envelope);
+      sent++;
+    }
+
+    return c.json({ success: true, data: { orders: sent } });
   },
 );
 

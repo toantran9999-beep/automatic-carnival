@@ -150,10 +150,11 @@ tables.get("/", requirePermission("tables:read"), async (c) => {
         id: schema.orders.id,
         table_session_id: schema.orders.table_session_id,
         total: schema.orders.total,
+        // Luôn lấy: cần để biết đơn đã đủ cũ để coi là "chưa in" hay chưa.
+        created_at: schema.orders.created_at,
         ...(withItems
           ? {
               order_number: schema.orders.order_number,
-              created_at: schema.orders.created_at,
               created_by_name: schema.users.name,
             }
           : {}),
@@ -197,6 +198,34 @@ tables.get("/", requirePermission("tables:read"), async (c) => {
     }
   }
 
+  /**
+   * Phiếu đặt món của bàn này đã ra giấy chưa.
+   *
+   * ⚠️ Không có dòng trong `order_prints` = CHƯA IN. Trước khi có sổ này thì mất
+   * phiếu là chuyện chỉ biết khi khách hỏi nước đâu — sáng 03/09/2026 mất cả hai
+   * kiểu (mất hẳn đơn, và đơn nhiều ly ra thiếu tờ) mà không truy được đơn nào.
+   *
+   * Chờ 45 giây rồi mới kêu: đơn vừa bấm xong thì phiếu còn đang chạy ra khỏi
+   * máy in, kêu ngay là kêu oan cả ngày rồi không ai thèm nhìn nữa.
+   */
+  const orderIdsAll = ordersList.map((o) => o.id);
+  const printRows = orderIdsAll.length
+    ? await db
+        .select({
+          order_id: schema.orderPrints.order_id,
+          status: schema.orderPrints.status,
+        })
+        .from(schema.orderPrints)
+        .where(
+          and(
+            inArray(schema.orderPrints.order_id, orderIdsAll),
+            eq(schema.orderPrints.kind, "kitchen"),
+            eq(schema.orderPrints.add_on_id, ""),
+          ),
+        )
+    : [];
+  const printByOrder = new Map(printRows.map((r) => [r.order_id, r.status]));
+
   // Một truy vấn cho tùy chọn của TOÀN BỘ món của mọi bàn — không N+1 theo bàn.
   const modsByItem = withItems
     ? await loadItemModifiers(orderItemsList.map((i) => i.id))
@@ -234,12 +263,23 @@ tables.get("/", requirePermission("tables:read"), async (c) => {
       .map(([name, qty]) => `${qty}x ${name}`)
       .join(", ");
 
+    const printCutoff = Date.now() - 45_000;
+    let printIssue: "none" | "missing" | "partial" = "none";
+    for (const o of orders) {
+      if (new Date(o.created_at).getTime() > printCutoff) continue;
+      const st = printByOrder.get(o.id);
+      if (!st) { printIssue = "missing"; break; }
+      if (st !== "ok") printIssue = "partial";
+    }
+
     tableSessionMap.set(session.table_id, {
       id: session.id,
       customerName: session.customer_name,
       startedAt: session.started_at,
       total,
       itemSummary,
+      /** 'missing' = chưa có phiếu nào ra giấy · 'partial' = ra thiếu tờ */
+      printIssue,
       ...(withItems
         ? {
             orders: orders.map((o) => ({

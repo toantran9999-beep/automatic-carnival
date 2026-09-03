@@ -263,10 +263,17 @@ tables.get("/", requirePermission("tables:read"), async (c) => {
       .map(([name, qty]) => `${qty}x ${name}`)
       .join(", ");
 
-    const printCutoff = Date.now() - 45_000;
+    // Chỉ soi đơn trong khoảng 45 giây tới 20 phút:
+    //  - dưới 45 giây: phiếu còn đang chạy ra khỏi máy in, kêu là kêu oan;
+    //  - trên 20 phút: hoặc đã phục vụ xong, hoặc là đơn có TRƯỚC khi có sổ này
+    //    (sổ trống không có nghĩa là chưa in) — treo huy hiệu đỏ cả ngày thì
+    //    hôm sau không ai thèm nhìn nó nữa.
+    const printNewest = Date.now() - 45_000;
+    const printOldest = Date.now() - 20 * 60_000;
     let printIssue: "none" | "missing" | "partial" = "none";
     for (const o of orders) {
-      if (new Date(o.created_at).getTime() > printCutoff) continue;
+      const at = new Date(o.created_at).getTime();
+      if (at > printNewest || at < printOldest) continue;
       const st = printByOrder.get(o.id);
       if (!st) { printIssue = "missing"; break; }
       if (st !== "ok") printIssue = "partial";

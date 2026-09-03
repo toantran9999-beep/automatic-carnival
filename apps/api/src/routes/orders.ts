@@ -456,11 +456,19 @@ orders.get("/unprinted", requirePermission("orders:read"), async (c) => {
         // Chờ 30 giây rồi mới coi là thiếu: đủ để lượt in vừa phát đi kịp xác
         // nhận về, khỏi in lại ngay tờ đang chạy ra khỏi máy.
         lt(schema.orders.created_at, sql`now() - interval '30 seconds'`),
+        // ⚠️ VÀ không quá 20 phút. Không có chặn trên này thì mọi đơn cũ trong ca
+        // đều tính là "chưa in" — riêng lần deploy đầu, khi sổ còn trống, máy quầy
+        // vừa tải lại là in xối xả cả trăm phiếu từ đầu ca. Quá 20 phút thì khách
+        // đã về hoặc đã được phục vụ rồi, in ra chỉ tổ rác giấy: cần thì bấm "In
+        // lại phiếu đặt món".
+        sql`${schema.orders.created_at} > now() - interval '20 minutes'`,
         or(isNull(schema.orderPrints.id), ne(schema.orderPrints.status, "ok")),
       ),
     )
     .orderBy(schema.orders.created_at)
-    .limit(30);
+    // Cửa 20 phút nên danh sách vốn đã ngắn; chặn thêm để không bao giờ có
+    // chuyện máy in nhả một tràng phiếu liên tục.
+    .limit(10);
 
   if (!rows.length) return c.json({ success: true, data: [] });
 

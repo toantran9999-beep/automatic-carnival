@@ -28,6 +28,9 @@ const SPEECH_ALIASES: Array<[RegExp, string]> = [
   [/\bcacao\b/gi, "ca cao"],
   [/\bsoda\b/gi, "xô đa"],
   [/\btopping\b/gi, "thêm"],
+  // Tùy chọn "gõ số" ghép thẳng đơn vị vào tên ("Đường 13g", "Sữa 30ml").
+  [/(\d)\s*ml\b/gi, "$1 mi li lít"],
+  [/(\d)\s*g\b/gi, "$1 gam"],
 ];
 
 const DON_VI = ["không", "một", "hai", "ba", "bốn", "năm", "sáu", "bảy", "tám", "chín"];
@@ -64,6 +67,12 @@ function sanitize(text: string): string {
   for (const [re, rep] of SPEECH_ALIASES) out = out.replace(re, rep);
   out = out
     .replace(/[^\p{L}\p{N} .,:;!?%/()+-]/gu, " ")
+    // Số còn sót (thường từ tên tùy chọn gõ tay) cũng đọc thành chữ, để không
+    // phải đoán xem service đọc "13" ra "mười ba" hay "một ba".
+    .replace(/\d+/g, (m) => {
+      const n = Number(m);
+      return n <= 999 ? docSo(n) : m;
+    })
     .replace(/\s+/g, " ")
     .trim();
   return out.slice(0, 300);
@@ -78,7 +87,8 @@ export function docSoPhieu(orderNumber: string): string {
 }
 
 export interface SpeechOrderLike {
-  orderNumber: string;
+  /** Chỉ còn dùng cho câu báo lỗi/thanh toán — câu đọc phiếu KHÔNG đọc số nữa. */
+  orderNumber?: string;
   tableNumber?: number | null;
   addOnId?: string | null;
   items?: Array<{
@@ -89,13 +99,20 @@ export interface SpeechOrderLike {
   }> | null;
 }
 
-/** Dựng câu đọc cho một phiếu đặt món. `off` hoặc thiếu dữ liệu → null. */
+/**
+ * Dựng câu đọc cho một phiếu đặt món. `off` hoặc thiếu dữ liệu → null.
+ *
+ * ⚠️ CỐ Ý KHÔNG đọc số phiếu (chủ quán chốt 17/09/2026): người pha cần biết
+ * **pha gì, cho bàn nào**, còn số phiếu thì đã nằm trên tờ giấy vừa in — đọc
+ * thêm chỉ làm câu dài ra và loãng phần quan trọng. Số phiếu chỉ còn xuất hiện
+ * ở câu báo LỖI và câu báo đã thanh toán, vì hai chỗ đó là để tra cứu.
+ */
 export function buildOrderSpeech(p: SpeechOrderLike, mode: SpeechMode): string | null {
-  if (mode === "off" || !p?.orderNumber) return null;
+  if (mode === "off") return null;
 
   const dau = p.addOnId ? "Thêm món. " : "";
-  const cho = p.tableNumber != null ? `bàn ${docSo(p.tableNumber)}` : "mang về";
-  const head = `${dau}Phiếu ${docSoPhieu(p.orderNumber)}, ${cho}.`;
+  const cho = p.tableNumber != null ? `Bàn ${docSo(p.tableNumber)}` : "Mang về";
+  const head = `${dau}${cho}.`;
   if (mode === "short") return sanitize(head);
 
   const items = (p.items ?? []).map((i) => {

@@ -33,8 +33,8 @@ function speakStation(build: (mode: "short" | "full") => string | null) {
     const st = useStationStore.getState();
     if (!st.isStation || st.speechMode === "off") return;
     setSpeechVoice(st.speechVoice);
-    // Dồn đơn thì rút gọn: đọc đủ 3 phiếu liền là mất gần nửa phút, người pha
-    // chỉ cần biết có phiếu nào đang chờ.
+    // Dồn đơn thì rút gọn còn bàn/mang về: đọc đủ 3 phiếu liền là mất gần nửa
+    // phút, lúc đó người pha chỉ cần biết còn phiếu đang chờ.
     const mode = st.speechMode === "full" && speechQueueLength() <= 2 ? "full" : "short";
     speak(build(mode));
   } catch {

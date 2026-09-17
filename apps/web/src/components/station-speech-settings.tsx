@@ -50,8 +50,8 @@ export function StationSpeechSettings() {
         </p>
         <p className="text-xs text-muted-foreground">
           {vi
-            ? "Loa máy quầy đọc đơn mới trong lúc máy in đang ra giấy — người pha nghe được mà không phải cầm phiếu lên."
-            : "The counter speaker announces new orders while the ticket prints."}
+            ? "Loa máy quầy đọc đơn mới trong lúc máy in đang ra giấy: bàn mấy (hay mang về) rồi tới từng món kèm tùy chọn. Số phiếu không đọc — đã có trên tờ giấy."
+            : "The counter speaker announces new orders while the ticket prints: table (or takeaway), then each item with its options."}
         </p>
       </div>
 
@@ -59,7 +59,7 @@ export function StationSpeechSettings() {
         {(
           [
             ["off", vi ? "Tắt" : "Off"],
-            ["short", vi ? "Số phiếu" : "Number only"],
+            ["short", vi ? "Bàn / Mang về" : "Where only"],
             ["full", vi ? "Đọc cả món" : "Full order"],
           ] as Array<[SpeechMode, string]>
         ).map(([value, label]) => (
@@ -104,7 +104,7 @@ export function StationSpeechSettings() {
           onClick={() => {
             primeAudio();
             setSpeechVoice(speechVoice);
-            speak("Phiếu hai mươi bảy, mang về. Hai bạc xỉu nóng, ít đường.");
+            speak("Mang về. Hai bạc xỉu nóng, ít đường. Một trà đào cam sả.");
           }}
         >
           {vi ? "Nghe thử" : "Test voice"}
@@ -113,7 +113,7 @@ export function StationSpeechSettings() {
 
       <p className="text-xs text-muted-foreground">
         {vi
-          ? "Chỉ hai giọng đầu là giọng miền Nam. Lúc dồn nhiều đơn, máy tự rút gọn còn số phiếu để đọc kịp."
+          ? "Chỉ hai giọng đầu là giọng miền Nam. Lúc dồn nhiều đơn, máy tự rút gọn còn bàn/mang về để đọc kịp."
           : "Only the first two voices are southern. When orders pile up, announcements shorten automatically."}
       </p>
     </div>

@@ -32,6 +32,7 @@ import { useAuthStore } from "@/stores/auth-store";
 import { useStationStore } from "@/stores/station-store";
 import { useTranslation } from "@/stores/lang-store";
 import { PageHeader } from "@/components/page-header";
+import { StationSpeechSettings } from "@/components/station-speech-settings";
 
 function formatDate(dateStr: string, lang: string) {
   const d = new Date(dateStr);
@@ -165,6 +166,9 @@ function StationSection() {
             </div>
             <Toggle checked={soundEnabled} onChange={() => setSound(!soundEnabled)} />
           </div>
+          {/* Cấu hình đọc nằm ở ĐÂY chứ không chỉ trong Cài đặt: máy quầy đăng
+              nhập bằng tài khoản thu ngân, mà thu ngân không vào được /settings. */}
+          <StationSpeechSettings />
           <div className="flex items-center gap-2 rounded-lg border p-4">
             <Usb className={cn("h-4 w-4", bridgeReady ? "text-emerald-600" : "text-muted-foreground")} />
             <p className="text-sm">

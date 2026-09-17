@@ -40,6 +40,13 @@ data: { <tên số nhiều>: [...], pagination: { page, limit, total, totalPages
 
 `totalPages` **luôn có**, kể cả khi rỗng (`0`) — đừng để bên gọi phải tự đoán.
 
+### Ngoại lệ duy nhất: dữ liệu nhị phân
+
+`POST /api/tts/speak` trả thẳng một khối WAV (`audio/wav`) cho loa trạm quầy —
+trình duyệt cần đúng khối tiếng, không bọc JSON được. **Lỗi thì vẫn trả vỏ JSON
+bình thường.** Bên web gọi bằng `apiFetchBlob` (cùng file `fetcher.ts`, cùng
+đường token + tự làm mới phiên), **không** tự `fetch` tay.
+
 ---
 
 ## 2. Báo lỗi

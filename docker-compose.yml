@@ -76,6 +76,10 @@ services:
       # về được, nên KHÔNG dùng được localhost hay tên service nội bộ.
       PUBLIC_API_URL: https://${API_DOMAIN}
       PUBLIC_WEB_URL: https://${WEB_DOMAIN}
+      # Dịch vụ đọc tiếng Việt tự host (VieNeu-TTS) cho loa trạm quầy. Container
+      # `read_book_tts` của stack read-book đã nằm sẵn trên network này nên gọi
+      # thẳng bằng tên. Bỏ trống thì tính năng đọc tự tắt, POS không ảnh hưởng.
+      TTS_URL: ${TTS_URL:-http://read_book_tts:8080}
     volumes:
       - uploadsdata:/app/apps/web/public/uploads
     depends_on:

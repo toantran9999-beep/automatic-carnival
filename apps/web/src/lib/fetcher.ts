@@ -88,3 +88,47 @@ export async function apiFetch<T = any>(path: string, options?: ApiFetchOptions)
   }
   return json.data as T;
 }
+
+/**
+ * Như `apiFetch` nhưng trả về khối nhị phân (dùng cho WAV của loa đọc phiếu).
+ *
+ * Vẫn đi qua đúng đường token + tự làm mới phiên như `apiFetch` — tự `fetch` tay
+ * là mất hết những thứ đó (mục 4 CONVENTIONS).
+ */
+export async function apiFetchBlob(path: string, options?: ApiFetchOptions): Promise<Blob> {
+  const { accessToken, selectedBranchId } = useAuthStore.getState();
+  const {
+    includeBranchHeader = true,
+    headers: customHeaders,
+    ...requestOptions
+  } = options ?? {};
+
+  const makeRequest = async (token: string | null) => {
+    return fetch(`${API_URL}${path}`, {
+      ...requestOptions,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(includeBranchHeader && selectedBranchId
+          ? { "x-branch-id": selectedBranchId }
+          : {}),
+        ...customHeaders,
+      },
+    });
+  };
+
+  let res = await makeRequest(accessToken);
+
+  if (res.status === 401 && accessToken) {
+    if (!refreshPromise) {
+      refreshPromise = refreshAccessToken().finally(() => {
+        refreshPromise = null;
+      });
+    }
+    const newToken = await refreshPromise;
+    if (newToken) res = await makeRequest(newToken);
+  }
+
+  if (!res.ok) throw new Error(`Lỗi API ${res.status}`);
+  return res.blob();
+}

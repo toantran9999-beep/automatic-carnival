@@ -88,6 +88,14 @@ export interface WsOrderItemPayload {
   quantity: number;
   status: string;
   notes?: string;
+  /**
+   * Tùy chọn/topping đã chốt của món (chỉ TÊN — phiếu bếp không in tiền).
+   *
+   * ⚠️ Máy chủ vẫn gửi trường này từ đầu (`ticket.service.ts`), nhưng kiểu ở đây
+   * lại thiếu nên trạm quầy phải ép `as any` mới in được dòng "- Nhẹ". Khai ra
+   * cho đúng sự thật.
+   */
+  modifiers?: string[];
   /** Đơn vị tính (Ly, Phần...) — cho phiếu bếp. */
   unit?: string | null;
 }

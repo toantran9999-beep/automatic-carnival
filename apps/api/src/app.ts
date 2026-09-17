@@ -30,6 +30,7 @@ import { uploads } from "./routes/uploads.js";
 import { coupons } from "./routes/coupons.js";
 import { aiImages } from "./routes/ai-images.js";
 import { shifts } from "./routes/shifts.js";
+import { tts } from "./routes/tts.js";
 
 const CORS_ORIGINS = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",")
@@ -57,6 +58,9 @@ app.onError(errorHandler);
 app.use("*", rateLimiter(100, 60_000, "global"));
 app.use("/api/auth/*", rateLimiter(20, 60_000, "auth"));
 app.use("/api/customer/*", rateLimiter(30, 60_000, "customer"));
+// Mỗi phiếu đọc tốn vài giây CPU trên máy 2 nhân đang bán hàng — chặn trước khi
+// một máy quầy kẹt vòng lặp kéo sập cả POS.
+app.use("/api/tts/*", rateLimiter(60, 60_000, "tts"));
 
 // Public routes
 app.route("/health", health);
@@ -82,6 +86,7 @@ app.route("/api/uploads", uploads);
 app.route("/api/coupons", coupons);
 app.route("/api/ai-images", aiImages);
 app.route("/api/shifts", shifts);
+app.route("/api/tts", tts);
 
 export type AppType = typeof app;
 export { app };

@@ -5,11 +5,15 @@ import type { WsMessage } from "@restai/types";
 export function useWebSocket(
   rooms: string[],
   onMessage: (msg: WsMessage) => void,
-  token?: string
+  token?: string,
+  /** Báo mở/đứt đường truyền — trạm quầy dùng để cảnh báo khi mất kết nối lâu. */
+  onStatus?: (connected: boolean) => void,
 ) {
   const wsRef = useRef<WebSocket | null>(null);
   const onMessageRef = useRef(onMessage);
   onMessageRef.current = onMessage;
+  const onStatusRef = useRef(onStatus);
+  onStatusRef.current = onStatus;
 
   const roomsKey = rooms.join(",");
 
@@ -35,6 +39,7 @@ export function useWebSocket(
       };
 
       ws.onopen = () => {
+        onStatusRef.current?.(true);
         if (token) {
           ws.send(JSON.stringify({ type: "auth", token }));
         }
@@ -77,6 +82,7 @@ export function useWebSocket(
 
       ws.onclose = () => {
         stopHeartbeat();
+        onStatusRef.current?.(false);
         if (!cancelled) {
           setTimeout(attemptConnect, 3000);
         }

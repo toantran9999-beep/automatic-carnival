@@ -20,6 +20,27 @@ import { useBranchSettings, useOrgSettings } from "@/hooks/use-settings";
 import { apiFetch } from "@/lib/fetcher";
 import { useTranslation } from "@/stores/lang-store";
 import { beep } from "@/lib/beep";
+import { buildOrderSpeech, docSoPhieu, setSpeechVoice, speak, speechQueueLength } from "@/lib/speech";
+
+/**
+ * Đọc một câu qua loa quầy — tự lấy cấu hình theo máy, tự im khi tắt.
+ *
+ * ⚠️ Luôn gọi SAU khi đã in và đã gửi xác nhận in. Tiếng nói không được phép
+ * chen vào đường in: nó là lớp phụ trợ, hỏng thì quầy chạy như cũ.
+ */
+function speakStation(build: (mode: "short" | "full") => string | null) {
+  try {
+    const st = useStationStore.getState();
+    if (!st.isStation || st.speechMode === "off") return;
+    setSpeechVoice(st.speechVoice);
+    // Dồn đơn thì rút gọn: đọc đủ 3 phiếu liền là mất gần nửa phút, người pha
+    // chỉ cần biết có phiếu nào đang chờ.
+    const mode = st.speechMode === "full" && speechQueueLength() <= 2 ? "full" : "short";
+    speak(build(mode));
+  } catch {
+    // Đọc hỏng không bao giờ được thành lỗi của trạm quầy.
+  }
+}
 
 /**
  * Chạy nền trong layout dashboard. Chỉ thiết bị được đặt làm "Trạm quầy"
@@ -87,6 +108,8 @@ export function StationProvider() {
       const key = p.paymentRequestId || p.orderId;
       if (!key || printedReceiptRef.current.has(key)) return;
       printedReceiptRef.current.add(key);
+
+      speakStation(() => `Phiếu ${docSoPhieu(p.orderNumber ?? "")} đã thanh toán.`);
 
       const org = orgSettings as any;
       printReceipt({
@@ -243,7 +266,7 @@ export function StationProvider() {
             createdAt: p.createdAt || new Date().toISOString(),
             items: (p.items ?? []).map((i) => ({
               name: i.name,
-              modifiers: (i as any).modifiers ?? undefined,
+              modifiers: i.modifiers ?? undefined,
               quantity: i.quantity,
               unit_price: 0,
               total: 0,
@@ -270,10 +293,28 @@ export function StationProvider() {
             where,
             message: `Chỉ ra ${res.ok}/${res.total} phiếu — thiếu ${res.total - res.ok} tờ.`,
           });
+          // Khối đỏ chỉ ăn thua khi có người nhìn màn hình — nói ra loa mới chắc.
+          speakStation(() => `Thiếu phiếu in, đơn số ${docSoPhieu(p.orderNumber)}. Kiểm tra máy in.`);
           return;
         }
 
         if (useStationStore.getState().soundEnabled) beep();
+        speakStation((mode) =>
+          buildOrderSpeech(
+            {
+              orderNumber: p.orderNumber,
+              tableNumber: p.tableNumber,
+              addOnId: p.addOnId,
+              items: (p.items ?? []).map((i) => ({
+                name: i.name,
+                quantity: i.quantity,
+                modifiers: i.modifiers ?? [],
+                notes: i.notes,
+              })),
+            },
+            mode,
+          ),
+        );
         const kind = p.addOnId
           ? lang === "vi" ? "Thêm món" : "Added items"
           : lang === "vi" ? "Đơn mới" : "New order";
@@ -288,6 +329,7 @@ export function StationProvider() {
           error: String(e?.message || e).slice(0, 400),
         });
         setPrintAlarm({ orderNumber: p.orderNumber, where, message: e?.message || "Không in được." });
+        speakStation(() => `Lỗi in phiếu, đơn số ${docSoPhieu(p.orderNumber)}. Kiểm tra máy in.`);
       }
     },
     [branchSettings, printKitchenTicket, lang, sendPrintAck],
@@ -319,10 +361,39 @@ export function StationProvider() {
     [printOrderTicket, selectedBranchId, handlePaymentConfirmed, handlePrintTransfer]
   );
 
+  /**
+   * Mất kết nối LÂU thì nói ra loa.
+   *
+   * ⚠️ Không nói ngay lúc đứt: hook tự nối lại sau 3 giây, mà mạng quán chập
+   * chờn cả chục lần một ngày — nói mỗi lần đứt là thành máy lải nhải. Chỉ lên
+   * tiếng khi đã đứt liền một phút, và chỉ nói MỘT lần cho tới khi nối lại được.
+   */
+  const offlineTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const offlineSpokenRef = useRef(false);
+  const handleWsStatus = useCallback((connected: boolean) => {
+    if (connected) {
+      if (offlineTimerRef.current) clearTimeout(offlineTimerRef.current);
+      offlineTimerRef.current = null;
+      offlineSpokenRef.current = false;
+      return;
+    }
+    if (offlineTimerRef.current || offlineSpokenRef.current) return;
+    offlineTimerRef.current = setTimeout(() => {
+      offlineTimerRef.current = null;
+      offlineSpokenRef.current = true;
+      speakStation(() => "Trạm quầy mất kết nối. Kiểm tra mạng.");
+    }, 60_000);
+  }, []);
+
+  useEffect(() => () => {
+    if (offlineTimerRef.current) clearTimeout(offlineTimerRef.current);
+  }, []);
+
   useWebSocket(
     selectedBranchId && isStation ? [`branch:${selectedBranchId}`] : [],
     handleWsMessage,
-    accessToken || undefined
+    accessToken || undefined,
+    handleWsStatus,
   );
 
   /**

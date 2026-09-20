@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { Input } from "@restai/ui/components/input";
+import { PasswordInput } from "@restai/ui/components/password-input";
 import { Label } from "@restai/ui/components/label";
 import { Button } from "@restai/ui/components/button";
 import {
@@ -90,11 +91,11 @@ export function CreateStaffDialog({ open, onOpenChange }: CreateStaffDialogProps
           </div>
           <div className="space-y-2">
             <Label>{t("staff.password")}</Label>
-            <Input
-              type="password"
+            <PasswordInput
               value={form.password}
               onChange={(e) => setForm({ ...form, password: e.target.value })}
               placeholder={t("staff.passwordHelp")}
+              autoComplete="new-password"
             />
           </div>
           <div className="space-y-2">

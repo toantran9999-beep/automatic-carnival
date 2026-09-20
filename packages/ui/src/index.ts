@@ -15,6 +15,9 @@ export {
 export { Input } from "./components/input";
 export type { InputProps } from "./components/input";
 
+export { PasswordInput } from "./components/password-input";
+export type { PasswordInputProps } from "./components/password-input";
+
 export { Label } from "./components/label";
 export type { LabelProps } from "./components/label";
 

@@ -6,6 +6,7 @@ import { loginSchema, type LoginInput } from "@restai/validators";
 import { Button } from "@restai/ui/components/button";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@restai/ui/components/card";
 import { Input } from "@restai/ui/components/input";
+import { PasswordInput } from "@restai/ui/components/password-input";
 import { Label } from "@restai/ui/components/label";
 import { useAuth } from "@/hooks/use-auth";
 import { useState } from "react";
@@ -70,9 +71,8 @@ export default function LoginPage() {
           </div>
           <div className="space-y-2">
             <Label htmlFor="password">{t("login.password")}</Label>
-            <Input
+            <PasswordInput
               id="password"
-              type="password"
               placeholder="********"
               {...register("password")}
             />

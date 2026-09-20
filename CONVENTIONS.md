@@ -269,6 +269,40 @@ Không đặt nút có hậu quả vật lý **sát** nút vô hại cùng cỡ 
 là không đủ.
 
 
+### 🔒 Giấu dữ liệu nhạy cảm: chặn theo ĐƯỜNG DẪN, không cắt quyền, không giấu ở giao diện
+
+Ba luật rút ra khi khoá tab Đơn hàng (20/09/2026):
+
+1. ⚠️ **Đừng cắt quyền trong `PERMISSIONS` cho gọn.** Một quyền thường gánh
+   nhiều việc: `orders:read` đang đỡ cả `/tables/takeaway`, `/orders/unprinted`,
+   `/kitchen/orders`, `reprint`, `print-ack`. Cắt nó khỏi `cashier` là **chết
+   POS**. Muốn chặn một màn hình thì viết **middleware theo từng đường dẫn**,
+   đúng kiểu `blockLiveOps` / `requireOrdersGate`, rồi gắn lên đúng route đó.
+2. ⚠️ **Giấu ở giao diện là KHÔNG giấu gì cả.** `GET /api/orders` trả nguyên cục
+   `getTableColumns(orders)` — ẩn tab hay lọc ở client thì dữ liệu vẫn về tới
+   máy, mở tab Network là đọc. `allowedPaths` và route guard trong
+   `(dashboard)/layout.tsx` chỉ là **tiện lợi**, không phải bảo vệ.
+3. **Hai bên phải khớp nhau.** Máy chủ miễn cho ai thì giao diện cũng phải miễn
+   đúng người đó (ở đây: `MANAGER_ROLES`), và chưa bật thì cả hai cùng nằm im.
+   Lệch nhau là ra cái cửa gõ gì cũng qua — tệ hơn không có cửa, vì nó dạy nhân
+   viên rằng khoá ở đây là đồ giả.
+
+Khi làm cơ chế "nhập mã để mở":
+
+- Mã **băm** (`hashPassword`, argon2), **không bao giờ** lưu mã thật, và thêm
+  vào khuôn che của `branch-secrets.ts` để nó không rời máy chủ.
+- Đường **đặt mã** phải ở quyền CAO HƠN người bị khoá. Đừng nhét vào
+  `PATCH /settings/branch` — `settings:update` thì `branch_manager` cũng có.
+- Vé mở khoá là **vé riêng, ngắn hạn**, claim có `purpose` và **phải kiểm
+  `purpose`** — cùng một khoá ký thì access token thường cũng lọt qua cửa.
+  Đừng nhét claim vào access token: nó làm mới mỗi 15 phút, claim sẽ rụng.
+- Vé giữ ở đâu = luật vận hành. **Trong RAM** = mỗi lần vào phải nhập lại;
+  `persist` xuống localStorage = nhớ theo thiết bị. Chọn rồi thì ghi rõ lý do,
+  đừng để người sau "tiện tay" thêm `persist`.
+- **Chống dò mã đếm theo TỪNG NGƯỜI, không theo IP** — cả quán chung một địa
+  chỉ mạng, đếm theo IP là một người gõ sai vài lần thì khoá cả quán.
+
+
 ### 🖨️ Đường in phải có XÁC NHẬN — cấm `return true` khi chưa biết kết quả
 
 Máy bấm đơn KHÔNG in phiếu. Máy chủ phát `order:new`, **Trạm quầy** nghe rồi tự

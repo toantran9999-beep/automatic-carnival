@@ -34,6 +34,15 @@ export function maskBranchSecrets<T extends { settings?: unknown }>(branch: T): 
       }
     }
   }
+
+  // Mã mở khoá tab Đơn hàng — nằm ở nhánh cấp một chứ không dưới `payment`,
+  // nên phải che riêng. Giao diện chỉ cần biết ĐÃ ĐẶT hay chưa.
+  const gate = settings.orders_gate;
+  if (gate && typeof gate === "object") {
+    gate.code_set = Boolean(gate.code_hash);
+    delete gate.code_hash;
+  }
+
   return { ...branch, settings };
 }
 
@@ -65,6 +74,18 @@ export function mergeBranchSecrets(incoming: unknown, existing: unknown): Record
       if (previous) nextCfg[field] = previous;
       else delete nextCfg[field];
     }
+  }
+
+  // Mã mở khoá chỉ đổi được qua đường riêng (`PUT /settings/orders-gate`, quyền
+  // `org:update`). Ở đây luôn giữ nguyên bản đang lưu — nếu không thì mỗi lần
+  // quản lý chi nhánh bấm Lưu ở trang Cài đặt là mã bay mất, cửa mở toang.
+  if (next.orders_gate && typeof next.orders_gate === "object") {
+    delete next.orders_gate.code_set;
+    delete next.orders_gate.code_hash;
+  }
+  const prevHash = prev.orders_gate?.code_hash;
+  if (prevHash) {
+    next.orders_gate = { ...(next.orders_gate ?? {}), code_hash: prevHash };
   }
 
   return next;

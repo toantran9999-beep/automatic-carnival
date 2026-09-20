@@ -7,6 +7,11 @@ import { updateOrgSettingsSchema, updateBranchSettingsSchema } from "@restai/val
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { rateLimiter } from "../middleware/rate-limit.js";
+import { hashPassword, verifyPassword } from "../lib/hash.js";
+import { signOrdersGateToken } from "../lib/jwt.js";
+import { logger } from "../lib/logger.js";
+import { z } from "zod";
 import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
 import { maskBranchSecrets, mergeBranchSecrets } from "../lib/branch-secrets.js";
@@ -132,5 +137,146 @@ settings.patch("/branch", requirePermission("settings:update"), zValidator("json
 
   return c.json({ success: true, data: maskBranchSecrets(updated) });
 });
+
+/* ------------------------------------------------------------------------- *
+ * MÃ MỞ KHOÁ TAB ĐƠN HÀNG
+ *
+ * Nhân viên tọc mạch đơn cũ (tên khách, tiền từng đơn, ai bấm đơn, từng lần thu
+ * tiền). Từ nay muốn xem phải nhập mã của chủ quán.
+ *
+ * ⚠️ Mã lưu dạng BĂM argon2, không bao giờ lưu mã thật, và `maskBranchSecrets`
+ * xoá nó khỏi mọi đường trả chi nhánh về trình duyệt — giao diện chỉ thấy cờ
+ * `orders_gate.code_set`.
+ * ------------------------------------------------------------------------- */
+
+const ordersGateCodeSchema = z.object({
+  /** Để trống = XOÁ mã, tức mở khoá tab cho mọi người như trước. */
+  code: z.string().max(64),
+});
+
+/**
+ * PUT /orders-gate — đặt/đổi/xoá mã.
+ *
+ * ⚠️ Quyền `org:update` chứ KHÔNG phải `settings:update`: `settings:update` thì
+ * `branch_manager` cũng có (cố ý, xem PATCH /branch), mà để quản lý chi nhánh
+ * tự đổi được mã đang khoá chính họ thì cái khoá vô nghĩa.
+ */
+settings.put(
+  "/orders-gate",
+  requirePermission("org:update"),
+  zValidator("json", ordersGateCodeSchema),
+  async (c) => {
+    const tenant = c.get("tenant") as any;
+    if (!tenant.branchId) {
+      return c.json(
+        { success: false, error: { code: "BAD_REQUEST", message: t(c, "branch_header_required") } },
+        400,
+      );
+    }
+
+    const code = c.req.valid("json").code.trim();
+    if (code && code.length < 4) {
+      return c.json(
+        { success: false, error: { code: "BAD_REQUEST", message: "Mã phải từ 4 ký tự trở lên." } },
+        400,
+      );
+    }
+
+    const [branch] = await db
+      .select({ settings: schema.branches.settings })
+      .from(schema.branches)
+      .where(eq(schema.branches.id, tenant.branchId));
+    if (!branch) {
+      return c.json(
+        { success: false, error: { code: "NOT_FOUND", message: t(c, "branch_not_found") } },
+        404,
+      );
+    }
+
+    const next: any = branch.settings && typeof branch.settings === "object"
+      ? structuredClone(branch.settings)
+      : {};
+    if (code) {
+      next.orders_gate = { code_hash: await hashPassword(code) };
+    } else {
+      delete next.orders_gate;
+    }
+
+    const [updated] = await db
+      .update(schema.branches)
+      .set({ settings: next, updated_at: new Date() })
+      .where(eq(schema.branches.id, tenant.branchId))
+      .returning();
+
+    const user = c.get("user") as any;
+    logger.info("orders-gate: doi ma mo khoa", {
+      branchId: tenant.branchId,
+      userId: user?.sub,
+      enabled: Boolean(code),
+    });
+
+    return c.json({ success: true, data: maskBranchSecrets(updated) });
+  },
+);
+
+/**
+ * POST /orders-gate/verify — đổi mã lấy VÉ 5 phút.
+ *
+ * ⚠️ Đếm số lần thử theo TỪNG NGƯỜI, không theo IP: cả quán chung một địa chỉ
+ * mạng, đếm theo IP là một người gõ sai vài lần thì khoá cả quán.
+ */
+settings.post(
+  "/orders-gate/verify",
+  rateLimiter(10, 5 * 60_000, "orders-gate", (c) => (c.get("user") as any)?.sub),
+  zValidator("json", z.object({ code: z.string().min(1).max(64) })),
+  async (c) => {
+    const tenant = c.get("tenant") as any;
+    const user = c.get("user") as any;
+    if (!tenant.branchId) {
+      return c.json(
+        { success: false, error: { code: "BAD_REQUEST", message: t(c, "branch_header_required") } },
+        400,
+      );
+    }
+
+    const [branch] = await db
+      .select({ settings: schema.branches.settings })
+      .from(schema.branches)
+      .where(eq(schema.branches.id, tenant.branchId));
+
+    const codeHash = (branch?.settings as any)?.orders_gate?.code_hash;
+    // Chưa đặt mã = chưa khoá: cấp vé luôn cho khỏi chặn oan.
+    if (!codeHash) {
+      return c.json({
+        success: true,
+        data: { ticket: await signOrdersGateToken({ sub: user.sub, branch: tenant.branchId }) },
+      });
+    }
+
+    // ⚠️ Thứ tự tham số là (hash, mã thật) — dễ viết ngược.
+    const ok = await verifyPassword(codeHash, c.req.valid("json").code);
+    if (!ok) {
+      logger.warn("orders-gate: nhap SAI ma mo khoa", {
+        branchId: tenant.branchId,
+        userId: user?.sub,
+        role: user?.role,
+      });
+      return c.json(
+        { success: false, error: { code: "BAD_CODE", message: "Mã không đúng." } },
+        403,
+      );
+    }
+
+    logger.info("orders-gate: da mo khoa tab Don hang", {
+      branchId: tenant.branchId,
+      userId: user?.sub,
+      role: user?.role,
+    });
+    return c.json({
+      success: true,
+      data: { ticket: await signOrdersGateToken({ sub: user.sub, branch: tenant.branchId }) },
+    });
+  },
+);
 
 export { settings };

@@ -1,4 +1,5 @@
 import { useAuthStore } from "@/stores/auth-store";
+import { useOrdersGateStore } from "@/stores/orders-gate-store";
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:3001";
 
@@ -40,6 +41,9 @@ export async function apiFetch<T = any>(path: string, options?: ApiFetchOptions)
   } = options ?? {};
 
   const makeRequest = async (token: string | null) => {
+    // Vé mở khoá tab Đơn hàng. Đọc tươi mỗi lượt gọi (vé chỉ sống 5 phút và có
+    // thể vừa bị xoá), y như cách hàm này đọc `useAuthStore` ở trên.
+    const gateTicket = useOrdersGateStore.getState().ticket;
     return fetch(`${API_URL}${path}`, {
       ...requestOptions,
       headers: {
@@ -48,6 +52,7 @@ export async function apiFetch<T = any>(path: string, options?: ApiFetchOptions)
         ...(includeBranchHeader && selectedBranchId
           ? { "x-branch-id": selectedBranchId }
           : {}),
+        ...(gateTicket ? { "x-orders-gate": gateTicket } : {}),
         ...customHeaders,
       },
     });
@@ -79,6 +84,12 @@ export async function apiFetch<T = any>(path: string, options?: ApiFetchOptions)
   }
 
   if (!res.ok || !json?.success) {
+    // Vé mở khoá hết hạn (5 phút) hoặc bị từ chối → vứt vé đi, để màn nhập mã
+    // hiện lại. Không có dòng này thì trang Đơn hàng cứ 5 giây lại nháy một lỗi
+    // đỏ khó hiểu mà không ai biết phải làm gì.
+    if (res.status === 403 && json?.error?.code === "ORDERS_GATE") {
+      useOrdersGateStore.getState().clearTicket();
+    }
     const message =
       json?.error?.message ||
       json?.message ||

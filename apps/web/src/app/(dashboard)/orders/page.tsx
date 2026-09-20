@@ -13,11 +13,25 @@ import { OrdersTable } from "./_components/orders-table";
 import { OrderDetailDialog } from "./_components/order-detail-dialog";
 import { PaymentDialog } from "../payments/_components/payment-dialog";
 import { useTranslation } from "@/stores/lang-store";
+import { OrdersGate } from "@/components/orders-gate";
 import { toast } from "sonner";
 
 const PAGE_SIZE = 20;
 
+/**
+ * ⚠️ Cửa khoá phải bọc TOÀN BỘ trang, kể cả khối báo lỗi: khi vé hết hạn thì
+ * `useOrders` ném lỗi, bọc thiếu là người dùng thấy một khối đỏ khó hiểu thay
+ * vì ô nhập mã.
+ */
 export default function OrdersPage() {
+  return (
+    <OrdersGate>
+      <OrdersPageInner />
+    </OrdersGate>
+  );
+}
+
+function OrdersPageInner() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);

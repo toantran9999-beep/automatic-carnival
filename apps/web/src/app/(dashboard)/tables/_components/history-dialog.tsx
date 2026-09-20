@@ -18,6 +18,7 @@ import { Clock, DollarSign, ShoppingCart } from "lucide-react";
 import { cn, formatCurrency } from "@/lib/utils";
 import { useTableHistory } from "@/hooks/use-tables";
 import { useTranslation } from "@/stores/lang-store";
+import { OrdersGate } from "@/components/orders-gate";
 
 function Skeleton({ className }: { className?: string }) {
   return <div className={cn("animate-pulse bg-muted rounded", className)} />;
@@ -29,15 +30,29 @@ interface HistoryDialogProps {
 }
 
 export function HistoryDialog({ table, onClose }: HistoryDialogProps) {
+  return (
+    <Dialog open={!!table} onOpenChange={(open) => { if (!open) onClose(); }}>
+      <DialogContent className="max-w-2xl max-h-[80dvh] overflow-y-auto overflow-x-hidden">
+        {/* Lịch sử bàn = đơn CŨ, cùng thứ tab Đơn hàng bày ra → cùng một cửa khoá.
+            Bọc ở đây chứ không bọc trong ruột: `useTableHistory` chạy ngay khi
+            hộp thoại mở, bọc muộn là dữ liệu đã bay về máy rồi. */}
+        <OrdersGate>
+          <HistoryDialogInner table={table} onClose={onClose} />
+        </OrdersGate>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function HistoryDialogInner({ table, onClose }: HistoryDialogProps) {
   const { t, lang } = useTranslation();
   const [historyFrom, setHistoryFrom] = useState<string | undefined>();
   const [historyTo, setHistoryTo] = useState<string | undefined>();
   const { data: historyData, isLoading: historyLoading } = useTableHistory(table?.id, historyFrom, historyTo);
 
   return (
-    <Dialog open={!!table} onOpenChange={(open) => { if (!open) { setHistoryFrom(undefined); setHistoryTo(undefined); onClose(); } }}>
-      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
+    <>
+      <DialogHeader>
           <DialogTitle>
             {t("tables.history")} - {t("tables.title")} {table?.number}
           </DialogTitle>
@@ -157,12 +172,11 @@ export function HistoryDialog({ table, onClose }: HistoryDialogProps) {
             )}
           </div>
         )}
-        <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
-            {t("common.cancel")}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <DialogFooter>
+        <Button variant="outline" onClick={onClose}>
+          {t("common.cancel")}
+        </Button>
+      </DialogFooter>
+    </>
   );
 }

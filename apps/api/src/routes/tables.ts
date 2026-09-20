@@ -13,7 +13,7 @@ import { z } from "zod";
 import { TABLE_STATUS_TRANSITIONS } from "@restai/config";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
-import { requirePermission, blockLiveOps } from "../middleware/rbac.js";
+import { requirePermission, blockLiveOps, requireOrdersGate } from "../middleware/rbac.js";
 import { generateQrCode } from "../lib/id.js";
 import { signCustomerToken } from "../lib/jwt.js";
 import { wsManager } from "../ws/manager.js";
@@ -1799,9 +1799,12 @@ tables.get(
 );
 
 // GET /:id/history - Table history with sessions and orders
+// ⚠️ Cùng dữ liệu đơn CŨ như tab Đơn hàng — khoá mỗi tab kia mà bỏ đường này
+// thì bịt cửa trước còn cửa sau mở toang.
 tables.get(
   "/:id/history",
   requirePermission("tables:read"),
+  requireOrdersGate,
   zValidator("param", idParamSchema),
   async (c) => {
     const { id } = c.req.valid("param");

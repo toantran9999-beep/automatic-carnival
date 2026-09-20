@@ -15,7 +15,19 @@ setInterval(() => {
   }
 }, 5 * 60 * 1000);
 
-export function rateLimiter(maxRequests = 100, windowMs = 60_000, prefix = "global") {
+/**
+ * `keyFn` — đổi thứ dùng làm khoá đếm, mặc định là IP.
+ *
+ * ⚠️ Cả quán dùng chung MỘT địa chỉ mạng. Với những đường dễ bị dò (ví dụ nhập
+ * mã mở khoá tab Đơn hàng), đếm theo IP nghĩa là một người gõ sai vài lần là
+ * KHOÁ CẢ QUÁN. Chỗ đó phải đếm theo từng người: `(c) => c.get("user")?.sub`.
+ */
+export function rateLimiter(
+  maxRequests = 100,
+  windowMs = 60_000,
+  prefix = "global",
+  keyFn?: (c: any) => string | undefined,
+) {
   return createMiddleware(async (c, next) => {
     // Lấy IP phần TỬ CUỐI của X-Forwarded-For — giá trị do reverse proxy (Caddy) của
     // ta thêm vào là đáng tin; phần tử đầu do client tự gửi nên spoof được.
@@ -26,7 +38,7 @@ export function rateLimiter(maxRequests = 100, windowMs = 60_000, prefix = "glob
       c.req.header("x-real-ip") ||
       "unknown";
 
-    const key = `${prefix}:${ip}`;
+    const key = `${prefix}:${keyFn?.(c) || ip}`;
     const now = Date.now();
     let entry = store.get(key);
 

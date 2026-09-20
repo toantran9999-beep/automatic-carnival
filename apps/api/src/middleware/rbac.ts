@@ -1,6 +1,7 @@
 import { createMiddleware } from "hono/factory";
 import { PERMISSIONS } from "@restai/config";
 import type { AppEnv } from "../types.js";
+import { verifyOrdersGateToken } from "../lib/jwt.js";
 
 export function requirePermission(permission: string) {
   return createMiddleware<AppEnv>(async (c, next) => {
@@ -75,6 +76,52 @@ export const blockLiveOps = createMiddleware<AppEnv>(async (c, next) => {
       403,
     );
   }
+  return next();
+});
+
+/**
+ * Đòi VÉ MỞ KHOÁ trước khi cho đọc ĐƠN CŨ.
+ *
+ * ⚠️ Vì sao không cắt quyền `orders:read` cho gọn: quyền đó đang gánh cả
+ * `GET /tables/takeaway`, `/orders/unprinted`, `/kitchen/orders`, `reprint`,
+ * `print-ack`. Cắt là CHẾT POS. Nên chặn theo TỪNG ĐƯỜNG, cùng họ `blockLiveOps`.
+ *
+ * ⚠️ Và vì sao chặn ở máy chủ chứ không giấu tab: `GET /orders` trả nguyên cục
+ * `getTableColumns(orders)`, giấu ở giao diện thì dữ liệu vẫn nằm sẵn trong bộ
+ * nhớ trình duyệt — mở tab Network là đọc được.
+ */
+export const requireOrdersGate = createMiddleware<AppEnv>(async (c, next) => {
+  const user = c.get("user") as any;
+
+  // Quản lý trở lên miễn: mã là của họ, và họ vốn xem được Báo cáo.
+  if (user && MANAGER_ROLES.includes(user.role)) return next();
+
+  const refuse = () =>
+    c.json(
+      {
+        success: false,
+        error: {
+          code: "ORDERS_GATE",
+          message: "Cần mã mở khoá của chủ quán để xem đơn hàng.",
+        },
+      },
+      403,
+    );
+
+  const ticket = c.req.header("x-orders-gate");
+  if (!ticket) return refuse();
+
+  try {
+    const payload = await verifyOrdersGateToken(ticket);
+    const tenant = c.get("tenant") as any;
+    // Vé của chi nhánh nào chỉ mở chi nhánh đó, và của người nào chỉ người đó
+    // dùng — không đưa vé cho nhau được.
+    if (payload.sub !== user?.sub) return refuse();
+    if (tenant?.branchId && payload.branch !== tenant.branchId) return refuse();
+  } catch {
+    return refuse();
+  }
+
   return next();
 });
 

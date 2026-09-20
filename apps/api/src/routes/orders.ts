@@ -13,7 +13,7 @@ import {
 import { ORDER_STATUS_TRANSITIONS, ORDER_ITEM_STATUS_TRANSITIONS } from "@restai/config";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
-import { requirePermission, blockLiveOps } from "../middleware/rbac.js";
+import { requirePermission, blockLiveOps, requireOrdersGate } from "../middleware/rbac.js";
 import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
 import { z } from "zod";
@@ -28,7 +28,10 @@ orders.use("*", tenantMiddleware);
 orders.use("*", requireBranch);
 
 // GET / - List orders
-orders.get("/", requirePermission("orders:read"), zValidator("query", orderQuerySchema), async (c) => {
+// ⚠️ `requireOrdersGate`: nhân viên phải nhập mã của chủ quán mới đọc được đơn
+// cũ. KHÔNG cắt quyền `orders:read` để chặn — quyền đó còn gánh danh sách mang
+// về, phiếu chưa in, in lại phiếu, màn bếp; cắt là chết POS.
+orders.get("/", requirePermission("orders:read"), requireOrdersGate, zValidator("query", orderQuerySchema), async (c) => {
   const tenant = c.get("tenant") as any;
   const { status, page, limit } = c.req.valid("query");
   const offset = (page - 1) * limit;
@@ -689,9 +692,12 @@ orders.post(
 );
 
 // GET /:id - Get order with items
+// Đã kiểm: POS KHÔNG gọi đường này — chỉ trang Đơn hàng (hộp thoại chi tiết,
+// in hoá đơn) và trang Thanh toán của quản lý. Gắn khoá vào đây là an toàn.
 orders.get(
   "/:id",
   requirePermission("orders:read"),
+  requireOrdersGate,
   zValidator("param", idParamSchema),
   async (c) => {
     const { id } = c.req.valid("param");

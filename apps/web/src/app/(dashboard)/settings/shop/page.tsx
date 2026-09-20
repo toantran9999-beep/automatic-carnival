@@ -26,6 +26,7 @@ import {
   SettingRow,
   SettingsSaveBar,
 } from "@/components/settings/setting-row";
+import { OrdersGateSection } from "../_components/orders-gate-section";
 
 /**
  * "Quán" — mọi thứ nhận dạng quán: tên tổ chức, logo, và thông tin chi nhánh
@@ -244,6 +245,9 @@ export default function ShopSettingsPage() {
             />
           </SettingRow>
         </SettingSection>
+
+        {/* Có nút Lưu riêng — xem ghi chú trong component. */}
+        <OrdersGateSection />
       </div>
 
       <SettingsSaveBar

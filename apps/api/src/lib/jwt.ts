@@ -42,6 +42,35 @@ export async function signCustomerToken(payload: {
   );
 }
 
+/**
+ * Vé mở khoá tab Đơn hàng — sống 5 PHÚT.
+ *
+ * Nhân viên phải nhập mã của chủ quán mới lấy được vé này; mọi đường ĐỌC ĐƠN CŨ
+ * đều đòi nó (xem `requireOrdersGate`).
+ *
+ * ⚠️ Cố ý là vé RIÊNG, không nhét claim vào access token: access token làm mới
+ * mỗi 15 phút, nhét vào đó là claim rụng giữa chừng mà không ai hiểu vì sao.
+ *
+ * ⚠️ Cố ý KHÔNG lưu trạng thái ở máy chủ (bảng hay Redis): vé ngắn nên không cần
+ * thu hồi, và làm thế này thì API khởi động lại không đá văng người đang xem.
+ * Đánh đổi: đổi mã KHÔNG cắt ngay người đang mở dở — tối đa 5 phút sau là hết.
+ */
+export async function signOrdersGateToken(payload: { sub: string; branch: string }) {
+  const now = Math.floor(Date.now() / 1000);
+  return sign(
+    { ...payload, purpose: "orders_gate", iat: now, exp: now + 5 * 60 },
+    JWT_SECRET,
+  );
+}
+
+export async function verifyOrdersGateToken(token: string) {
+  const payload: any = await verify(token, JWT_SECRET, "HS256");
+  // Vé phải TỰ KHAI mục đích: không có dòng này thì một access token thường
+  // cũng lọt qua cửa, vì cùng ký bằng một khoá.
+  if (payload?.purpose !== "orders_gate") throw new Error("WRONG_PURPOSE");
+  return payload;
+}
+
 export async function verifyAccessToken(token: string) {
   return verify(token, JWT_SECRET, "HS256");
 }

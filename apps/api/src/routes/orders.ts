@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { AppEnv } from "../types.js";
 import { zValidator } from "@hono/zod-validator";
-import { eq, and, desc, sql, isNull, or, ne, lt, inArray, getTableColumns } from "drizzle-orm";
+import { eq, and, desc, sql, isNull, or, ne, lt, inArray, notInArray, getTableColumns } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import {
   createOrderSchema,
@@ -514,6 +514,21 @@ orders.get("/unprinted", requirePermission("orders:read"), async (c) => {
   return c.json({ success: true, data: payloads });
 });
 
+/**
+ * Phiếu đặt món chỉ có nghĩa khi LY NƯỚC CHƯA PHA. Đơn đã đóng thì nước đã ra,
+ * tiền đã thu — in lại chỉ làm quầy tưởng có đơn mới.
+ *
+ * ⚠️ Ra đời sau sự cố 20/09/2026 17:23: một máy đang lướt ngược trang Đơn hàng
+ * (trang 5→6→7, mỗi trang 2 giây) thì chạm nhầm nút "In lại phiếu đặt món" trên
+ * một đơn của HÔM TRƯỚC. Quầy nhả 2 tờ (trà chanh + trà tắc) và loa đọc to lên
+ * trong khi không ai gọi món — cả quán tưởng hệ thống tự đẻ đơn.
+ *
+ * Chặn ở MÁY CHỦ chứ không chỉ giấu nút: giao diện có thể đang mở bản cũ.
+ */
+const ORDER_CLOSED_MSG =
+  "Đơn đã xong — chỉ in lại được hóa đơn, không in phiếu đặt món.";
+const CLOSED_STATUSES = ["completed", "cancelled"];
+
 // POST /:id/reprint — in lại phiếu đặt món qua Trạm quầy.
 //
 // Trước đây KHÔNG có đường nào lấy lại phiếu đặt món: mất là mất, chỉ còn cách
@@ -536,6 +551,13 @@ orders.post(
       return c.json(
         { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
         404,
+      );
+    }
+
+    if (CLOSED_STATUSES.includes(order.status)) {
+      return c.json(
+        { success: false, error: { code: "ORDER_CLOSED", message: ORDER_CLOSED_MSG } },
+        400,
       );
     }
 
@@ -606,15 +628,17 @@ orders.post(
         and(
           eq(schema.orders.branch_id, tenant.branchId),
           eq(schema.orders.table_session_id, id),
-          ne(schema.orders.status, "cancelled"),
+          // Cùng luật với đường trên: đơn đã đóng thì không còn phiếu đặt món.
+          notInArray(schema.orders.status, CLOSED_STATUSES as any),
         ),
       )
       .orderBy(schema.orders.created_at);
 
+    // Bàn không còn đơn nào đang mở — nói đúng lý do, đừng báo "không tìm thấy".
     if (!rows.length) {
       return c.json(
-        { success: false, error: { code: "NOT_FOUND", message: t(c, "order_not_found") } },
-        404,
+        { success: false, error: { code: "ORDER_CLOSED", message: ORDER_CLOSED_MSG } },
+        400,
       );
     }
 

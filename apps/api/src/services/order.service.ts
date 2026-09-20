@@ -353,6 +353,43 @@ export async function loadItemModifiers(
  * Validates menu items and creates an order with its items.
  * Returns the created order and items, or throws an error if validation fails.
  */
+/**
+ * Cấp số phiếu theo ca: 01, 02… Mở ca mới là bản ghi ca mới nên tự về 01.
+ * Không có ca thì rơi về mã dạng cũ `YYMMDD-XXXX` của `generateOrderNumber()`.
+ *
+ * ⚠️ PHẢI gọi TRONG transaction, và PHẢI dùng `UPDATE … RETURNING` — TUYỆT ĐỐI
+ * không `SELECT max()+1`: quán bán bằng nhiều máy cùng lúc (máy POS quầy + điện
+ * thoại order), đọc rồi mới ghi thì hai đơn bấm cùng lúc nhận CÙNG một số. Lệnh
+ * này khoá dòng ca nên mỗi lượt gọi chắc chắn nhận một số khác nhau.
+ *
+ * Nằm trong transaction nên đơn hỏng giữa chừng (mã giảm giá không hợp lệ…) thì
+ * bộ đếm quay lui theo, không để lại lỗ số.
+ *
+ * Dùng chung cho đơn bán thường VÀ đơn sinh ra từ tách bàn — trước đây tách bàn
+ * cắm thẳng `generateOrderNumber()` nên phiếu in ra mang mã lạc loài `260919-ZFTF`
+ * giữa một ca toàn số 01, 02…
+ */
+export async function nextOrderNumber(
+  tx: any,
+  registerShiftId: string | null | undefined,
+): Promise<{ orderNumber: string; shiftSeq: number | null }> {
+  if (!registerShiftId) {
+    return { orderNumber: generateOrderNumber(), shiftSeq: null };
+  }
+
+  const [bumped] = await tx
+    .update(schema.registerShifts)
+    .set({
+      order_seq: sql`${schema.registerShifts.order_seq} + 1`,
+      updated_at: new Date(),
+    })
+    .where(eq(schema.registerShifts.id, registerShiftId))
+    .returning({ seq: schema.registerShifts.order_seq });
+
+  if (!bumped) return { orderNumber: generateOrderNumber(), shiftSeq: null };
+  return { orderNumber: String(bumped.seq).padStart(2, "0"), shiftSeq: bumped.seq };
+}
+
 export async function createOrder(params: CreateOrderParams): Promise<CreateOrderResult> {
   const {
     organizationId,
@@ -381,32 +418,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
   // Create order + items + coupon redemption in a transaction
   // Coupon validation is INSIDE the transaction to prevent race conditions on current_uses
   return await db.transaction(async (tx) => {
-    // Số thứ tự theo ca: 01, 02… Mở ca mới là bản ghi ca mới nên tự về 01.
-    //
-    // ⚠️ PHẢI dùng `UPDATE … RETURNING`, TUYỆT ĐỐI không `SELECT max()+1`: quán bán
-    // bằng nhiều máy cùng lúc (máy POS quầy + điện thoại order), đọc rồi mới ghi thì
-    // hai đơn bấm cùng lúc sẽ nhận CÙNG một số. Lệnh này khoá dòng ca nên mỗi lượt
-    // gọi chắc chắn nhận một số khác nhau.
-    //
-    // Nằm trong transaction nên đơn hỏng giữa chừng (mã giảm giá không hợp lệ…) thì
-    // bộ đếm quay lui theo, không để lại lỗ số.
-    let orderNumber = generateOrderNumber();
-    let shiftSeq: number | null = null;
-    if (registerShiftId) {
-      const [bumped] = await tx
-        .update(schema.registerShifts)
-        .set({
-          order_seq: sql`${schema.registerShifts.order_seq} + 1`,
-          updated_at: new Date(),
-        })
-        .where(eq(schema.registerShifts.id, registerShiftId))
-        .returning({ seq: schema.registerShifts.order_seq });
-
-      if (bumped) {
-        shiftSeq = bumped.seq;
-        orderNumber = String(bumped.seq).padStart(2, "0");
-      }
-    }
+    const { orderNumber, shiftSeq } = await nextOrderNumber(tx, registerShiftId);
 
     // Calculate coupon discount inside tx
     let discount = 0;

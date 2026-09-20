@@ -263,6 +263,9 @@ export function StationProvider() {
             // KHÔNG được lấy tài khoản đang đăng nhập ở đây làm tên trên phiếu.
             staffName: p.staffName ?? undefined,
             isAddOn: !!p.addOnId,
+            // Máy chủ gắn `reprintToken` cho MỌI lần in lại → tờ giấy đóng dấu
+            // "IN LẠI" để quầy không tưởng là đơn mới vừa gọi.
+            isReprint: !!p.reprintToken,
             createdAt: p.createdAt || new Date().toISOString(),
             items: (p.items ?? []).map((i) => ({
               name: i.name,
@@ -305,6 +308,7 @@ export function StationProvider() {
               orderNumber: p.orderNumber,
               tableNumber: p.tableNumber,
               addOnId: p.addOnId,
+              reprintToken: p.reprintToken,
               items: (p.items ?? []).map((i) => ({
                 name: i.name,
                 quantity: i.quantity,

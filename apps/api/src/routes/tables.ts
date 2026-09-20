@@ -14,11 +14,11 @@ import { TABLE_STATUS_TRANSITIONS } from "@restai/config";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission, blockLiveOps } from "../middleware/rbac.js";
-import { generateOrderNumber, generateQrCode } from "../lib/id.js";
+import { generateQrCode } from "../lib/id.js";
 import { signCustomerToken } from "../lib/jwt.js";
 import { wsManager } from "../ws/manager.js";
 import * as sessionService from "../services/session.service.js";
-import { loadItemModifiers } from "../services/order.service.js";
+import { loadItemModifiers, nextOrderNumber } from "../services/order.service.js";
 import { t } from "../lib/i18n.js";
 
 const tables = new Hono<AppEnv>();
@@ -1454,6 +1454,23 @@ tables.post(
         const taxRate = branch?.tax_rate ?? 1000;
 
         const sourceOrderIds = Array.from(new Set(sourceItems.map((row) => row.order.id)));
+
+        // Đơn tách bàn cũng là một đơn thật của ca — phải mang số phiếu theo ca
+        // (01, 02…) như mọi đơn khác. Trước đây chỗ này cắm thẳng
+        // `generateOrderNumber()` nên phiếu in ra mang mã lạc loài `260919-ZFTF`
+        // giữa một ca toàn số hai chữ số, chẳng ai hiểu nó từ đâu ra.
+        const [openShift] = await tx
+          .select({ id: schema.registerShifts.id })
+          .from(schema.registerShifts)
+          .where(
+            and(
+              eq(schema.registerShifts.branch_id, tenant.branchId),
+              eq(schema.registerShifts.status, "open"),
+            ),
+          )
+          .limit(1);
+        const numbering = await nextOrderNumber(tx, openShift?.id ?? null);
+
         const [targetOrder] = await tx
           .insert(schema.orders)
           .values({
@@ -1461,7 +1478,9 @@ tables.post(
             branch_id: tenant.branchId,
             table_session_id: targetSession.id,
             customer_id: null,
-            order_number: generateOrderNumber(),
+            order_number: numbering.orderNumber,
+            register_shift_id: openShift?.id ?? null,
+            shift_seq: numbering.shiftSeq,
             type: "dine_in",
             status: "pending",
             customer_name: targetSession.customer_name,
@@ -1472,6 +1491,21 @@ tables.post(
             notes: `Tach tu phien ${id}`,
           })
           .returning();
+
+        // ⚠️ Ghi SẴN dấu "đã in" cho đơn tách.
+        // Tách bàn chỉ là chuyển món sang bàn khác — NƯỚC ĐÃ PHA RỒI, in phiếu
+        // nữa là sai. Nhưng từ lúc đơn tách thuộc về ca, nó lọt vào
+        // `GET /orders/unprinted` và trạm quầy sẽ tự in. Đánh dấu sẵn ở đây là
+        // cách chặn trung thực nhất: tra lại sổ vẫn biết vì sao nó không có giấy.
+        await tx.insert(schema.orderPrints).values({
+          order_id: targetOrder.id,
+          add_on_id: "",
+          kind: "kitchen",
+          status: "ok",
+          tickets_total: 0,
+          tickets_ok: 0,
+          device_label: "tach-ban-khong-can-in",
+        });
 
         let targetTotal = 0;
         const movedItems: any[] = [];

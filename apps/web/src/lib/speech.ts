@@ -91,6 +91,8 @@ export interface SpeechOrderLike {
   orderNumber?: string;
   tableNumber?: number | null;
   addOnId?: string | null;
+  /** Có = phiếu này là BẢN IN LẠI của đơn cũ, không phải đơn vừa gọi. */
+  reprintToken?: string | null;
   items?: Array<{
     name: string;
     quantity: number;
@@ -110,7 +112,10 @@ export interface SpeechOrderLike {
 export function buildOrderSpeech(p: SpeechOrderLike, mode: SpeechMode): string | null {
   if (mode === "off") return null;
 
-  const dau = p.addOnId ? "Thêm món. " : "";
+  // ⚠️ Bản in lại phải được xướng rõ. Chiều 20/09/2026 có người chạm nhầm nút
+  // in lại trên đơn hôm trước: loa đọc y hệt một đơn mới nên cả quán tưởng máy
+  // tự đẻ đơn. Câu đọc phải nói đúng thứ đang cầm trên tay.
+  const dau = p.reprintToken ? "In lại. " : p.addOnId ? "Thêm món. " : "";
   const cho = p.tableNumber != null ? `Bàn ${docSo(p.tableNumber)}` : "Mang về";
   const head = `${dau}${cho}.`;
   if (mode === "short") return sanitize(head);

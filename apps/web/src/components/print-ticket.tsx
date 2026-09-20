@@ -128,6 +128,14 @@ interface KitchenTicketData {
    */
   isAddOn?: boolean;
   /**
+   * Phiếu này là BẢN IN LẠI của một đơn đã có, không phải đơn mới.
+   *
+   * ⚠️ Không có dòng này thì tờ giấy trông y hệt một đơn vừa gọi. Chiều
+   * 20/09/2026 có người chạm nhầm nút "In lại phiếu đặt món" trên một đơn của
+   * hôm trước; quầy nhả 2 tờ và loa đọc to lên, cả quán tưởng hệ thống tự đẻ đơn.
+   */
+  isReprint?: boolean;
+  /**
    * Tên in ở dòng "Nhân viên" = NGƯỜI BẤM ĐƠN, do máy chủ gửi kèm trong gói tin
    * `order:new` và trạm quầy truyền vào đây.
    *
@@ -466,6 +474,8 @@ function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAUL
     centered(subtitle, width),
     // Không có dòng này thì pha chế tưởng đơn mới, làm lại từ đầu cả đơn.
     data.isAddOn ? centered("*** THEM MON ***", width) : "",
+    // Tờ giấy phải tự khai là bản in lại, kẻo quầy tưởng có đơn mới.
+    data.isReprint ? centered("*** IN LAI ***", width) : "",
     data.ticketLabel ? centered(`Phieu ${data.ticketLabel}`, width) : "",
     SEP,
     cfg.kitchen.show.time ? twoCol(`Gio: ${time}`, `Ngay: ${date}`, width) : "",
@@ -837,6 +847,10 @@ function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): Ras
   if (data.isAddOn) {
     segs.push({ kind: "text", text: "*** THÊM MÓN ***", align: "center", bold: true });
   }
+  // Tờ giấy phải tự khai là bản in lại, kẻo quầy tưởng có đơn mới.
+  if (data.isReprint) {
+    segs.push({ kind: "text", text: "*** IN LẠI ***", align: "center", bold: true });
+  }
   if (data.ticketLabel) segs.push({ kind: "text", text: `Phiếu ${data.ticketLabel}`, align: "center" });
   segs.push({ kind: "sep" });
   if (cfg.kitchen.show.time) segs.push({ kind: "twoCol", left: `Giờ: ${time}`, right: `Ngày: ${date}` });
@@ -1175,6 +1189,7 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
   <div class="ticket-sub">${escapeHtml(subtitle)}</div>
   ${/* Không có dòng này thì pha chế tưởng đơn mới, làm lại từ đầu cả đơn. */ ""}
   ${data.isAddOn ? `<div class="ticket-sub">*** ${isVi ? "THÊM MÓN" : "ADDED ITEMS"} ***</div>` : ""}
+  ${data.isReprint ? `<div class="ticket-sub">*** ${isVi ? "IN LẠI" : "REPRINT"} ***</div>` : ""}
   ${data.ticketLabel ? `<div class="center bold" style="font-size:12px;margin-top:2px;">${t.ticket} ${data.ticketLabel}</div>` : ""}
   <table class="meta">
     ${cfg.kitchen.show.time ? `<tr>

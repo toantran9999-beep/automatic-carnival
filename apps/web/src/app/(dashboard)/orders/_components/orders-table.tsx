@@ -168,6 +168,24 @@ export function OrdersTable({
                     const itemCount = order.item_count ?? 0;
                     const createdAt = order.created_at || "";
                     const paymentStatus = order.payment_status || "unpaid";
+                    /**
+                     * Phiếu đặt món chỉ có nghĩa khi LY NƯỚC CHƯA PHA.
+                     *
+                     * ⚠️ Chiều 20/09/2026 có người lướt ngược trang Đơn hàng
+                     * (trang 5→6→7, mỗi trang 2 giây) rồi chạm nhầm nút in lại
+                     * trên một đơn của HÔM TRƯỚC: quầy nhả 2 tờ và loa đọc to
+                     * lên trong khi không ai gọi món. Nút nằm sát nút in hóa
+                     * đơn, cùng cỡ cùng màu, chỉ khác cái icon.
+                     *
+                     * Cách chữa là BỎ HẲN nút ở chỗ nó vô nghĩa, chứ không phải
+                     * thêm một câu hỏi xác nhận — lúc phiếu mất thật thì nhân
+                     * viên cần in lại NHANH. Máy chủ chặn lần nữa (`ORDER_CLOSED`)
+                     * phòng khi máy đang mở bản giao diện cũ.
+                     */
+                    const canReprintTicket =
+                      paymentStatus !== "paid" &&
+                      order.status !== "completed" &&
+                      order.status !== "cancelled";
                     const payConfig = paymentStatusConfig[paymentStatus] || paymentStatusConfig.unpaid;
                     const paymentLabel = t("payments.status_" + paymentStatus, paymentStatus);
                     const isUpdatingThisOrder = updateStatusPending && updatingOrderId === order.id;
@@ -245,7 +263,7 @@ export function OrdersTable({
                                 )}
                               </Button>
                             )}
-                            {onReprintTicket && (
+                            {onReprintTicket && canReprintTicket && (
                               <Button
                                 variant="ghost"
                                 size="sm"

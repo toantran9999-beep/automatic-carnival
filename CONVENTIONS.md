@@ -301,6 +301,14 @@ Khi làm cơ chế "nhập mã để mở":
   đừng để người sau "tiện tay" thêm `persist`.
 - **Chống dò mã đếm theo TỪNG NGƯỜI, không theo IP** — cả quán chung một địa
   chỉ mạng, đếm theo IP là một người gõ sai vài lần thì khoá cả quán.
+- ⚠️ **Thêm header mới ở `apiFetch` thì PHẢI khai vào `allowHeaders` của CORS**
+  (`apps/api/src/app.ts`). Trình duyệt hỏi trước rồi mới gửi; header lạ là nó
+  chặn **ngay tại máy**, không gói tin nào tới máy chủ — giao diện chỉ thấy
+  `Failed to fetch`, không có mã lỗi nào để lần ra.
+  ⚠️ **Thử bằng curl hay script chạy trên máy chủ sẽ KHÔNG bắt được lỗi này** vì
+  đường đó không đi qua CORS. Phải thử preflight thật:
+  `curl -X OPTIONS <url> -H "Origin: <web>" -H "Access-Control-Request-Headers: <header mới>"`
+  rồi soi `Access-Control-Allow-Headers` trong câu trả lời.
 
 
 ### 🖨️ Đường in phải có XÁC NHẬN — cấm `return true` khi chưa biết kết quả

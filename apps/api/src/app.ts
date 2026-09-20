@@ -47,7 +47,19 @@ app.use(
       return CORS_ORIGINS[0];
     },
     credentials: true,
-    allowHeaders: ["Content-Type", "Authorization", "X-Requested-With", "X-Branch-Id"],
+    // ⚠️ THÊM HEADER MỚI Ở `apiFetch` THÌ PHẢI KHAI VÀO ĐÂY.
+    // Trình duyệt hỏi trước (preflight) rồi mới gửi; header lạ là nó CHẶN NGAY
+    // TẠI MÁY, không có gói tin nào tới máy chủ — giao diện chỉ thấy
+    // "Failed to fetch" chứ không thấy mã lỗi nào để lần ra.
+    // Thử bằng curl/script chạy trên máy chủ sẽ KHÔNG bắt được lỗi này: đường đó
+    // không đi qua CORS. Đã trả giá 20/09/2026 với `x-orders-gate`.
+    allowHeaders: [
+      "Content-Type",
+      "Authorization",
+      "X-Requested-With",
+      "X-Branch-Id",
+      "X-Orders-Gate",
+    ],
     allowMethods: ["GET", "HEAD", "PUT", "POST", "DELETE", "PATCH", "OPTIONS"],
     maxAge: 86400,
   })

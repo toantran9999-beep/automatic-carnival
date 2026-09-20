@@ -6,6 +6,7 @@ import { Button } from "@restai/ui/components/button";
 import { Input } from "@restai/ui/components/input";
 import { apiFetch } from "@/lib/fetcher";
 import { useAuthStore } from "@/stores/auth-store";
+import { useBranchSettings } from "@/hooks/use-settings";
 import { useOrdersGateStore } from "@/stores/orders-gate-store";
 import { isManagerRole } from "@/lib/roles";
 
@@ -22,11 +23,17 @@ import { isManagerRole } from "@/lib/roles";
  */
 export function OrdersGate({ children }: { children: React.ReactNode }) {
   const { user } = useAuthStore();
+  const { data: branch } = useBranchSettings();
   const ticket = useOrdersGateStore((s) => s.ticket);
   const setTicket = useOrdersGateStore((s) => s.setTicket);
   const [code, setCode] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [checking, setChecking] = useState(false);
+
+  // Chủ quán chưa đặt mã = chưa khoá gì cả. Máy chủ cũng cho qua trong trường
+  // hợp này — hai bên phải khớp, kẻo hiện ô nhập mã mà gõ gì cũng lọt.
+  const isGated = Boolean((branch as any)?.settings?.orders_gate?.code_set);
+  if (!isGated) return <>{children}</>;
 
   // Quản lý trở lên đi thẳng — máy chủ cũng miễn cho họ, hai bên phải khớp nhau.
   if (user && isManagerRole(user.role)) return <>{children}</>;

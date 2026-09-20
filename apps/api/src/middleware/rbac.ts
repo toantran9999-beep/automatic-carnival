@@ -2,6 +2,8 @@ import { createMiddleware } from "hono/factory";
 import { PERMISSIONS } from "@restai/config";
 import type { AppEnv } from "../types.js";
 import { verifyOrdersGateToken } from "../lib/jwt.js";
+import { db, schema } from "@restai/db";
+import { eq } from "drizzle-orm";
 
 export function requirePermission(permission: string) {
   return createMiddleware<AppEnv>(async (c, next) => {
@@ -108,12 +110,29 @@ export const requireOrdersGate = createMiddleware<AppEnv>(async (c, next) => {
       403,
     );
 
+  const tenant = c.get("tenant") as any;
+
+  // CHƯA ĐẶT MÃ = TÍNH NĂNG NẰM IM. Không có nhánh này thì lúc vừa deploy, nhân
+  // viên gặp ô nhập mã mà chủ quán còn chưa đặt mã nào — gõ gì cũng qua, chỉ tổ
+  // dạy nhau rằng cái cửa này vô nghĩa.
+  //
+  // Đọc thêm một dòng `branches` mỗi lượt: chỉ chạy trên 3 đường bị khoá và chỉ
+  // với nhân viên, tra theo khoá chính — rẻ hơn nhiều so với việc ôm một bộ nhớ
+  // đệm rồi quên dọn khi chủ quán đổi mã.
+  if (tenant?.branchId) {
+    const [branch] = await db
+      .select({ settings: schema.branches.settings })
+      .from(schema.branches)
+      .where(eq(schema.branches.id, tenant.branchId))
+      .limit(1);
+    if (!(branch?.settings as any)?.orders_gate?.code_hash) return next();
+  }
+
   const ticket = c.req.header("x-orders-gate");
   if (!ticket) return refuse();
 
   try {
     const payload = await verifyOrdersGateToken(ticket);
-    const tenant = c.get("tenant") as any;
     // Vé của chi nhánh nào chỉ mở chi nhánh đó, và của người nào chỉ người đó
     // dùng — không đưa vé cho nhau được.
     if (payload.sub !== user?.sub) return refuse();

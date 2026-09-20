@@ -240,6 +240,35 @@ nữa và bắn `payment:mismatch` cho thu ngân.
 thì quên một chỗ là lỗi quay lại, mà quên chỗ nào cũng không ai biết cho tới lúc có
 khách chuyển tiền hụt.
 
+### Nút làm ra GIẤY hoặc TIẾNG ở quầy phải được đối xử như nút nguy hiểm
+
+Bấm một nút trên điện thoại mà **máy in ở quầy nhả giấy và loa đọc to lên** thì
+đó không còn là thao tác trong màn hình nữa — nó làm phiền cả quán.
+
+**Chiều 20/09/2026:** có người lướt ngược trang Đơn hàng (trang 5→6→7, mỗi trang
+2 giây) rồi chạm nhầm nút "In lại phiếu đặt món" trên một đơn của **hôm trước**.
+Quầy nhả 2 tờ, loa đọc to, không ai gọi món — cả quán tưởng hệ thống tự đẻ đơn.
+Nút đó nằm **sát** nút in hóa đơn, **cùng cỡ `h-10 w-10`, cùng kiểu `ghost`**,
+chỉ khác cái icon, và lời nhắc chỉ nằm ở `title` — màn cảm ứng không có chuột
+để rê.
+
+Ba luật:
+
+1. **Bỏ hẳn nút ở nơi nó vô nghĩa, đừng thêm câu hỏi xác nhận.** Phiếu đặt món
+   chỉ có nghĩa khi ly nước chưa pha; đơn đã thanh toán thì không hiện nút nữa.
+   Hộp thoại xác nhận nghe thì an toàn nhưng làm chậm đúng lúc cần nhanh (phiếu
+   mất thật), rồi nhân viên bấm bừa cho qua — che lỗi chứ không chữa.
+2. ⚠️ **Chặn ở MÁY CHỦ, không chỉ giấu nút.** Máy POS có thể đang mở bản giao
+   diện cũ. `POST /orders/:id/reprint` trả `400 ORDER_CLOSED` cho đơn đã đóng.
+3. **Tờ giấy phải tự khai nó là gì.** Có `isReprint` → in `*** IN LẠI ***`, có
+   `isAddOn` → `*** THÊM MÓN ***`. Sửa là phải sửa **cả ba** bộ dựng phiếu
+   (ESC/POS chữ · ESC/POS ảnh · HTML), thiếu một chỗ là máy in kiểu khác mất
+   dòng đó. Loa cũng phải xướng (`lib/speech.ts`).
+
+Không đặt nút có hậu quả vật lý **sát** nút vô hại cùng cỡ cùng màu. Khác icon
+là không đủ.
+
+
 ### 🖨️ Đường in phải có XÁC NHẬN — cấm `return true` khi chưa biết kết quả
 
 Máy bấm đơn KHÔNG in phiếu. Máy chủ phát `order:new`, **Trạm quầy** nghe rồi tự

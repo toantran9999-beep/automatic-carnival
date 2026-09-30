@@ -970,3 +970,158 @@ export class OrderValidationError extends Error {
     this.name = "OrderValidationError";
   }
 }
+
+/**
+ * HỦY một đơn đã bán (khách đổi ý, bấm nhầm món) để nhập lại đơn mới.
+ *
+ * ⚠️ KHÔNG xoá dòng khỏi DB. Đơn đổi sang `cancelled`, tiền sang `refunded` —
+ * mọi báo cáo và tiền ca vốn chỉ đếm `completed` nên tự loại ra, còn dấu vết
+ * (ai hủy, lúc nào, vì sao) vẫn nằm đó. Xoá cứng một đơn tiền mặt là mở đường
+ * cho chuyện thu tiền rồi xoá đơn bỏ túi mà không ai lần ra.
+ *
+ * ⚠️ CHỈ đơn thuộc CA ĐANG MỞ. Ca đã đóng lưu SỐ CHỐT cố định trong
+ * `register_shifts` (cash_sales, total_sales, expected_cash) — hủy đơn của ca
+ * cũ thì báo cáo đổi mà sổ ca không đổi, hai con số cãi nhau mãi.
+ *
+ * ⚠️ Hoàn kho theo ĐÚNG các dòng đã trừ, không tính lại theo công thức hiện tại
+ * (công thức có thể đã sửa sau lúc bán). Dòng trừ kho chỉ ghi `reference` =
+ * số phiếu, mà số phiếu đếm lại mỗi ca ("53" có mỗi ngày) — nên phải khoanh
+ * thêm theo chi nhánh của nguyên liệu và thời điểm từ lúc tạo đơn trở đi.
+ * Trong một ca đang mở, số phiếu là duy nhất, nên khoanh vậy là đủ chặt.
+ *
+ * Chốt nguyên tử bằng `UPDATE ... WHERE status <> 'cancelled' RETURNING` —
+ * cùng bài học ghi tiền hai lần: bấm đúp thì lần hai không làm gì.
+ */
+export async function voidOrder(params: {
+  orderId: string;
+  branchId: string;
+  userId: string;
+  userName: string;
+  reason: string;
+}): Promise<{ orderNumber: string; refunded: number; restocked: number }> {
+  const { orderId, branchId, userId, userName, reason } = params;
+
+  return await db.transaction(async (tx) => {
+    const [openShift] = await tx
+      .select({ id: schema.registerShifts.id })
+      .from(schema.registerShifts)
+      .where(
+        and(
+          eq(schema.registerShifts.branch_id, branchId),
+          eq(schema.registerShifts.status, "open"),
+        ),
+      )
+      .limit(1);
+
+    const [order] = await tx
+      .select()
+      .from(schema.orders)
+      .where(and(eq(schema.orders.id, orderId), eq(schema.orders.branch_id, branchId)))
+      .limit(1);
+
+    if (!order) throw new OrderValidationError("Không tìm thấy đơn.");
+    if (order.status === "cancelled") throw new OrderValidationError("Đơn này đã hủy rồi.");
+    if (!openShift || order.register_shift_id !== openShift.id) {
+      throw new OrderValidationError(
+        "Chỉ hủy được đơn của ca đang mở. Ca đã chốt thì số tiền đã khoá sổ.",
+      );
+    }
+
+    const vnTime = new Date(Date.now() + 7 * 3600_000).toISOString().slice(11, 16);
+    const stamp = `[ĐÃ HỦY ${vnTime} bởi ${userName}: ${reason}]`;
+
+    const [claimed] = await tx
+      .update(schema.orders)
+      .set({
+        status: "cancelled",
+        notes: order.notes ? `${order.notes}\n${stamp}` : stamp,
+        updated_at: new Date(),
+      })
+      .where(and(eq(schema.orders.id, orderId), sql`${schema.orders.status} <> 'cancelled'`))
+      .returning({ id: schema.orders.id });
+    if (!claimed) throw new OrderValidationError("Đơn này đã hủy rồi.");
+
+    const refundedRows = await tx
+      .update(schema.payments)
+      .set({ status: "refunded" })
+      .where(
+        and(eq(schema.payments.order_id, orderId), eq(schema.payments.status, "completed")),
+      )
+      .returning({ amount: schema.payments.amount });
+    const refunded = refundedRows.reduce((s, p) => s + p.amount, 0);
+
+    let restocked = 0;
+    if (order.inventory_deducted) {
+      const moves = await tx
+        .select({
+          item_id: schema.inventoryMovements.item_id,
+          quantity: schema.inventoryMovements.quantity,
+        })
+        .from(schema.inventoryMovements)
+        .innerJoin(
+          schema.inventoryItems,
+          eq(schema.inventoryItems.id, schema.inventoryMovements.item_id),
+        )
+        .where(
+          and(
+            eq(schema.inventoryItems.branch_id, branchId),
+            eq(schema.inventoryMovements.type, "consumption"),
+            eq(schema.inventoryMovements.reference, order.order_number),
+            sql`${schema.inventoryMovements.created_at} >= ${order.created_at}`,
+          ),
+        );
+
+      for (const m of moves) {
+        await tx
+          .update(schema.inventoryItems)
+          .set({ current_stock: sql`(${schema.inventoryItems.current_stock}::numeric + ${m.quantity})` })
+          .where(eq(schema.inventoryItems.id, m.item_id));
+        await tx.insert(schema.inventoryMovements).values({
+          item_id: m.item_id,
+          type: "adjustment",
+          quantity: m.quantity,
+          reference: order.order_number,
+          notes: `Hoàn kho: hủy đơn #${order.order_number}`,
+          created_by: userId,
+        });
+      }
+      restocked = moves.length;
+
+      await tx
+        .update(schema.orders)
+        .set({ inventory_deducted: false })
+        .where(eq(schema.orders.id, orderId));
+    }
+
+    // Trả lại điểm khách đã được cộng (hiện quán chưa dùng tích điểm, nhưng đơn
+    // có gắn khách thì không được để điểm ảo lại).
+    const [earned] = await tx
+      .select()
+      .from(schema.loyaltyTransactions)
+      .where(
+        and(
+          eq(schema.loyaltyTransactions.order_id, orderId),
+          eq(schema.loyaltyTransactions.type, "earned"),
+        ),
+      )
+      .limit(1);
+    if (earned && earned.points > 0) {
+      await tx
+        .update(schema.customerLoyalty)
+        .set({
+          points_balance: sql`${schema.customerLoyalty.points_balance} - ${earned.points}`,
+          total_points_earned: sql`${schema.customerLoyalty.total_points_earned} - ${earned.points}`,
+        })
+        .where(eq(schema.customerLoyalty.id, earned.customer_loyalty_id));
+      await tx.insert(schema.loyaltyTransactions).values({
+        customer_loyalty_id: earned.customer_loyalty_id,
+        order_id: orderId,
+        points: -earned.points,
+        type: "adjusted",
+        description: `Hủy đơn #${order.order_number}`,
+      });
+    }
+
+    return { orderNumber: order.order_number, refunded, restocked };
+  });
+}

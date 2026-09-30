@@ -17,7 +17,10 @@ import { requirePermission, blockLiveOps, requireOrdersGate } from "../middlewar
 import { t } from "../lib/i18n.js";
 import { wsManager } from "../ws/manager.js";
 import { z } from "zod";
-import { createOrder, addItemsToOrder, handleOrderCompletion, loadItemModifiers, OrderValidationError } from "../services/order.service.js";
+import { createOrder, addItemsToOrder, handleOrderCompletion, loadItemModifiers, OrderValidationError, voidOrder } from "../services/order.service.js";
+import { verifyPassword } from "../lib/hash.js";
+import { rateLimiter } from "../middleware/rate-limit.js";
+import { logger } from "../lib/logger.js";
 import { signCustomerToken } from "../lib/jwt.js";
 import { buildOrderTicketPayload, orderTicketEnvelope } from "../services/ticket.service.js";
 
@@ -759,6 +762,104 @@ orders.get(
       .orderBy(schema.payments.created_at);
 
     return c.json({ success: true, data: { ...order, items, payments } });
+  },
+);
+
+// POST /:id/void — HỦY đơn đã bán để nhập lại (khách đổi ý).
+//
+// ⚠️ LUÔN đòi gõ lại mã của chủ quán — kể cả đang cầm vé mở khoá tab Đơn hàng.
+// Vé cho XEM 5 phút; hủy đơn là rút tiền ra khỏi sổ, phải gõ mã cho từng lần.
+// Dùng CHUNG mã với khoá tab Đơn hàng (chủ quán chốt vậy).
+//
+// ⚠️ `blockLiveOps`: như mọi thao tác bán hàng, chỉ tài khoản chi nhánh ở quầy
+// làm được — tài khoản quản lý chỉ xem.
+//
+// Đếm số lần thử chung khoá "orders-gate" với đường mở khoá: tách riêng là kẻ
+// dò mã được gấp đôi số lần.
+orders.post(
+  "/:id/void",
+  requirePermission("orders:update"),
+  blockLiveOps,
+  rateLimiter(10, 5 * 60_000, "orders-gate", (c) => (c.get("user") as any)?.sub),
+  zValidator("param", idParamSchema),
+  zValidator(
+    "json",
+    z.object({
+      code: z.string().min(1).max(64),
+      reason: z.string().trim().min(2, "Ghi lý do hủy (ít nhất 2 ký tự).").max(200),
+    }),
+  ),
+  async (c) => {
+    const { id } = c.req.valid("param");
+    const { code, reason } = c.req.valid("json");
+    const tenant = c.get("tenant") as any;
+    const user = c.get("user") as any;
+
+    const [branch] = await db
+      .select({ settings: schema.branches.settings })
+      .from(schema.branches)
+      .where(eq(schema.branches.id, tenant.branchId))
+      .limit(1);
+    const codeHash = (branch?.settings as any)?.orders_gate?.code_hash;
+    // Khác với khoá tab: chưa đặt mã thì KHÔNG cho hủy. "Nằm im" ở đây nghĩa là
+    // ai cũng rút được tiền ra khỏi sổ.
+    if (!codeHash) {
+      return c.json(
+        {
+          success: false,
+          error: {
+            code: "NO_CODE",
+            message: "Chủ quán chưa đặt mã. Vào Cài đặt → Quán → Khoá tab Đơn hàng để đặt mã trước.",
+          },
+        },
+        400,
+      );
+    }
+    // ⚠️ Thứ tự tham số là (hash, mã thật).
+    if (!(await verifyPassword(codeHash, code))) {
+      logger.warn("order-void: nhap SAI ma", { branchId: tenant.branchId, userId: user?.sub, orderId: id });
+      return c.json({ success: false, error: { code: "BAD_CODE", message: "Mã không đúng." } }, 403);
+    }
+
+    const [me] = await db
+      .select({ name: schema.users.name })
+      .from(schema.users)
+      .where(eq(schema.users.id, user.sub))
+      .limit(1);
+
+    try {
+      const result = await voidOrder({
+        orderId: id,
+        branchId: tenant.branchId,
+        userId: user.sub,
+        userName: me?.name || "?",
+        reason,
+      });
+      logger.info("order-void: da huy don", {
+        branchId: tenant.branchId,
+        userId: user.sub,
+        orderId: id,
+        orderNumber: result.orderNumber,
+        refunded: result.refunded,
+        restocked: result.restocked,
+        reason,
+      });
+
+      const payload = {
+        type: "order:updated",
+        payload: { orderId: id, orderNumber: result.orderNumber, status: "cancelled" },
+        timestamp: Date.now(),
+      };
+      await wsManager.publish(`branch:${tenant.branchId}`, payload);
+      await wsManager.publish(`branch:${tenant.branchId}:kitchen`, payload);
+
+      return c.json({ success: true, data: result });
+    } catch (err) {
+      if (err instanceof OrderValidationError) {
+        return c.json({ success: false, error: { code: "BAD_REQUEST", message: err.message } }, 400);
+      }
+      throw err;
+    }
   },
 );
 

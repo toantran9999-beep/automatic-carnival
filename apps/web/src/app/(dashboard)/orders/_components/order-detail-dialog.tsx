@@ -13,6 +13,7 @@ import { formatCurrency, formatDate } from "@/lib/utils";
 import { useOrder } from "@/hooks/use-orders";
 import { OrderItemLines } from "@/components/order-item-lines";
 import { useTranslation } from "@/stores/lang-store";
+import { VoidOrderSection } from "./void-order-section";
 
 /** "14:35" theo giờ VN — dùng cho món gọi thêm, khỏi lặp lại cả ngày tháng. */
 function vnTime(iso: string | null): string {
@@ -31,7 +32,8 @@ function vnTime(iso: string | null): string {
  * Món nào do NGƯỜI KHÁC hoặc vào GIỜ KHÁC so với lúc mở đơn thì được ghi kèm
  * "14:35 · Tuấn" — đó chính là món khách gọi thêm giữa buổi.
  *
- * ⚠️ CHỈ XEM. Nút In / Thu tiền vẫn ở cột Hành động của bảng: quản lý bị
+ * ⚠️ CHỈ XEM, trừ một nút: "Hủy đơn để nhập lại" (`VoidOrderSection`, tự ẩn với
+ * quản lý). Nút In / Thu tiền vẫn ở cột Hành động của bảng: quản lý bị
  * `blockLiveOps` chặn ở máy chủ, bày nút thao tác ra là bấm vào ăn lỗi 403.
  *
  * ⚠️ Đơn tạo trước 30/07/2026 không có người bấm (hệ thống chưa từng lưu) → hiện
@@ -186,14 +188,22 @@ export function OrderDetailDialog({
                 <p className="text-sm text-muted-foreground">{L.noPayment}</p>
               ) : (
                 <ul className="space-y-1 text-sm">
-                  {order.payments.map((p) => (
-                    <li key={p.id} className="flex items-center justify-between gap-3">
-                      <span className="min-w-0 flex-1 truncate text-muted-foreground">
-                        {t("payments." + p.method, p.method)} · {vnTime(p.created_at)}
-                      </span>
-                      <span className="shrink-0 tabular-nums">{formatCurrency(p.amount)}</span>
-                    </li>
-                  ))}
+                  {order.payments.map((p) => {
+                    // Đơn đã hủy: khoản thu đổi sang "đã hoàn" — gạch đi chứ không giấu,
+                    // để nhìn là biết tiền này đã trả lại khách.
+                    const refunded = p.status === "refunded";
+                    return (
+                      <li key={p.id} className="flex items-center justify-between gap-3">
+                        <span className="min-w-0 flex-1 truncate text-muted-foreground">
+                          {t("payments." + p.method, p.method)} · {vnTime(p.created_at)}
+                          {refunded ? " · đã trả lại khách" : ""}
+                        </span>
+                        <span className={"shrink-0 tabular-nums" + (refunded ? " text-muted-foreground line-through" : "")}>
+                          {formatCurrency(p.amount)}
+                        </span>
+                      </li>
+                    );
+                  })}
                 </ul>
               )}
             </div>
@@ -203,8 +213,19 @@ export function OrderDetailDialog({
                 <p className="mb-1 text-xs font-medium uppercase tracking-wide text-muted-foreground">
                   {L.notes}
                 </p>
-                <p className="leading-snug text-foreground">{order.notes}</p>
+                <p className="whitespace-pre-line leading-snug text-foreground">{order.notes}</p>
               </div>
+            )}
+
+            {order.status !== "cancelled" && (
+              <VoidOrderSection
+                orderId={order.id}
+                orderNumber={order.order_number}
+                paidTotal={order.payments
+                  .filter((p) => p.status === "completed")
+                  .reduce((s, p) => s + p.amount, 0)}
+                onDone={() => onOpenChange(false)}
+              />
             )}
           </div>
         )}

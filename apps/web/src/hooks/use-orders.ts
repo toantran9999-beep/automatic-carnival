@@ -166,3 +166,24 @@ export function useUpdateOrderItemStatus() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["orders"] }),
   });
 }
+
+/**
+ * Hủy đơn đã bán để nhập lại. Máy chủ đòi mã của chủ quán MỖI LẦN (không dùng
+ * vé mở khoá tab), đổi tiền sang "đã hoàn" và cộng lại kho.
+ */
+export function useVoidOrder() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, code, reason }: { id: string; code: string; reason: string }) =>
+      apiFetch<{ orderNumber: string; refunded: number; restocked: number }>(
+        `/api/orders/${id}/void`,
+        { method: "POST", body: JSON.stringify({ code, reason }) },
+      ),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["orders"] });
+      qc.invalidateQueries({ queryKey: ["tables"] });
+      // Tiền ca đang mở tụt xuống ngay — màn chốt ca phải thấy số mới.
+      qc.invalidateQueries({ queryKey: ["shifts"] });
+    },
+  });
+}

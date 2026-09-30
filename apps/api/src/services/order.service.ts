@@ -1,4 +1,4 @@
-import { eq, and, inArray, sql, isNull } from "drizzle-orm";
+import { eq, and, inArray, sql, isNull, gte } from "drizzle-orm";
 import { db, schema } from "@restai/db";
 import { generateOrderNumber } from "../lib/id.js";
 import { logger } from "../lib/logger.js";
@@ -1067,7 +1067,8 @@ export async function voidOrder(params: {
             eq(schema.inventoryItems.branch_id, branchId),
             eq(schema.inventoryMovements.type, "consumption"),
             eq(schema.inventoryMovements.reference, order.order_number),
-            sql`${schema.inventoryMovements.created_at} >= ${order.created_at}`,
+            // ⚠️ `gte()` chứ đừng nhét Date vào sql`` thô — driver không tự đổi Date, nổ 500.
+            gte(schema.inventoryMovements.created_at, order.created_at),
           ),
         );
 

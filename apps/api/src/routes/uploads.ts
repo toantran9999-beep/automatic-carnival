@@ -3,7 +3,7 @@ import type { AppEnv } from "../types.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { storeUpload, deleteUpload } from "../lib/r2.js";
+import { storeUpload, deleteUpload, normalizeImage } from "../lib/r2.js";
 import { t } from "../lib/i18n.js";
 
 const ALLOWED_TYPES = new Set([
@@ -14,21 +14,6 @@ const ALLOWED_TYPES = new Set([
 ]);
 const MAX_SIZE = 5 * 1024 * 1024; // 5MB
 const ALLOWED_UPLOAD_TYPES = new Set(["menu", "logo", "category"]);
-
-function extFromMime(mime: string): string {
-  switch (mime) {
-    case "image/jpeg":
-      return "jpg";
-    case "image/png":
-      return "png";
-    case "image/webp":
-      return "webp";
-    case "image/gif":
-      return "gif";
-    default:
-      return "bin";
-  }
-}
 
 const uploads = new Hono<AppEnv>();
 uploads.use("*", authMiddleware, tenantMiddleware);
@@ -91,12 +76,13 @@ uploads.post("/", async (c) => {
     );
   }
 
-  const ext = extFromMime(file.type);
+  // Chuẩn hoá TRƯỚC khi đặt tên: ảnh ra WebP thì đuôi file phải là .webp, kẻo
+  // máy chủ tệp gửi sai Content-Type. Xem `normalizeImage`.
+  const normalized = await normalizeImage(new Uint8Array(await file.arrayBuffer()), file.type);
   const uuid = crypto.randomUUID();
-  const key = `${tenant.organizationId}/${uploadType}/${uuid}.${ext}`;
+  const key = `${tenant.organizationId}/${uploadType}/${uuid}.${normalized.ext}`;
 
-  const buffer = new Uint8Array(await file.arrayBuffer());
-  const url = await storeUpload(key, buffer, file.type);
+  const url = await storeUpload(key, normalized.bytes, normalized.contentType);
   return c.json({ success: true, data: { url, key } });
 });
 

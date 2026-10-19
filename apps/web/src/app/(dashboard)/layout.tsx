@@ -453,8 +453,10 @@ export default function DashboardLayout({
       {/* Main content area */}
       <div className="flex-1 flex flex-col overflow-hidden">
         {/* Header */}
+        {/* ⚠️ Nền ĐẶC, không `backdrop-blur`: làm mờ nền bắt GPU vẽ lại mỗi khung
+            hình khi cuộn — máy POS Android giá rẻ khựng thấy rõ. */}
         <header
-          className="sticky top-0 z-40 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60"
+          className="sticky top-0 z-40 border-b bg-background"
           style={{ paddingTop: "env(safe-area-inset-top)" }}
         >
           <div className="flex items-center justify-between h-12 px-4">

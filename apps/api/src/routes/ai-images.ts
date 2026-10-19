@@ -5,7 +5,7 @@ import type { AppEnv } from "../types.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware, requireBranch } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { storeUpload, hasR2Config } from "../lib/r2.js";
+import { storeUpload, hasR2Config, normalizeImage } from "../lib/r2.js";
 
 const generateMenuImageSchema = z.object({
   name: z.string().trim().min(1).max(120),
@@ -246,8 +246,10 @@ async function storeImage(
   organizationId: string,
   imageBytes: Buffer,
 ): Promise<{ url: string; key: string; storage: "r2" | "local" }> {
-  const key = `${organizationId}/menu/ai-${crypto.randomUUID()}.png`;
-  const url = await storeUpload(key, imageBytes, "image/png");
+  // Ảnh AI ra PNG 1024px ~1,3 MB — chuẩn hoá về WebP như ảnh tải lên.
+  const normalized = await normalizeImage(imageBytes, "image/png");
+  const key = `${organizationId}/menu/ai-${crypto.randomUUID()}.${normalized.ext}`;
+  const url = await storeUpload(key, normalized.bytes, normalized.contentType);
   return { url, key, storage: hasR2Config() ? "r2" : "local" };
 }
 

@@ -170,7 +170,8 @@ export function ProductGrid({
       </div>
 
       <div className="flex min-w-0 flex-1 flex-col md:pl-3">
-      <div className="sticky top-0 z-10 bg-background/95 pb-2 backdrop-blur supports-[backdrop-filter]:bg-background/80">
+      {/* ⚠️ Nền đặc, không `backdrop-blur` — xem ghi chú ở header `layout.tsx`. */}
+      <div className="sticky top-0 z-10 bg-background pb-2">
         <div className="flex gap-2">
           <div className="relative flex-1">
             <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
@@ -251,7 +252,10 @@ export function ProductGrid({
                   key={item.id}
                   type="button"
                   onClick={() => onItemClick(item)}
-                  className="group relative overflow-hidden rounded-lg border bg-card text-left shadow-sm transition-all duration-150 hover:-translate-y-0.5 hover:border-primary/55 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
+                  // ⚠️ Không hiệu ứng hover nhấc ô/phóng ảnh: màn cảm ứng không có
+                  // hover, chạm vào là nó KẸT ở trạng thái hover và vẽ lại vô ích.
+                  // Chỉ giữ `active:` cho cảm giác bấm.
+                  className="relative overflow-hidden rounded-lg border bg-card text-left shadow-sm transition-transform duration-100 active:scale-[0.97] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/60"
                   title={item.name}
                 >
                   <div className="relative h-24 overflow-hidden bg-muted md:h-[88px] xl:h-24">
@@ -262,11 +266,13 @@ export function ProductGrid({
                         loading="lazy"
                         decoding="async"
                         draggable={false}
+                        width={320}
+                        height={96}
                         onError={(e) => {
                           e.currentTarget.onerror = null;
                           e.currentTarget.src = item.image_url!;
                         }}
-                        className="h-full w-full object-cover transition-transform duration-200 group-hover:scale-105"
+                        className="h-full w-full object-cover"
                       />
                     ) : (
                       <BrandPlaceholder

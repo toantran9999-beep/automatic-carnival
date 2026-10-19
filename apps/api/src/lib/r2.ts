@@ -17,6 +17,8 @@ const R2_BUCKET_NAME = process.env.R2_BUCKET_NAME || "restai-images";
 const R2_PUBLIC_URL = process.env.R2_PUBLIC_URL!;
 
 const THUMB_WIDTH = 320;
+/** Cạnh dài nhất của ảnh gốc sau khi chuẩn hoá — đủ nét cho hộp thoại món, không hơn. */
+const MAX_IMAGE_EDGE = 1280;
 
 const s3 = new S3Client({
   region: "auto",
@@ -105,6 +107,36 @@ export function toThumbKey(key: string): string {
 
 export function isThumbKey(key: string): boolean {
   return /\.thumb\.[a-z0-9]+$/i.test(key);
+}
+
+/**
+ * Chuẩn hoá ảnh TRƯỚC khi lưu: xoay theo EXIF, thu về tối đa 1280px, xuất WebP.
+ *
+ * ⚠️ Vì sao bắt buộc: ảnh chụp điện thoại là 4032×3024 — khi hiện lên, WebView
+ * giải nén ra 4032×3024×4 byte = 47 MB RAM cho MỘT ô 152px. 12 ảnh như vậy từng
+ * làm máy POS Android đơ hẳn ở trang thực đơn (19/10/2026). Dung lượng tải chỉ là
+ * nửa câu chuyện; thứ giết máy rẻ là RAM giải nén, nên phải cắt CỠ ĐIỂM ẢNH.
+ *
+ * GIF giữ nguyên (có thể là ảnh động). Lỗi thì trả lại ảnh gốc — thà nặng còn
+ * hơn mất ảnh của chủ quán.
+ */
+export async function normalizeImage(
+  body: Uint8Array,
+  contentType: string,
+): Promise<{ bytes: Uint8Array; contentType: string; ext: string }> {
+  if (contentType === "image/gif") return { bytes: body, contentType, ext: "gif" };
+  try {
+    const bytes = await sharp(body)
+      .rotate()
+      .resize({ width: MAX_IMAGE_EDGE, height: MAX_IMAGE_EDGE, fit: "inside", withoutEnlargement: true })
+      .webp({ quality: 80 })
+      .toBuffer();
+    return { bytes, contentType: "image/webp", ext: "webp" };
+  } catch (err) {
+    console.error("[r2] Chuẩn hoá ảnh thất bại, giữ nguyên ảnh gốc:", err);
+    const ext = contentType.split("/")[1]?.replace("jpeg", "jpg") || "bin";
+    return { bytes: body, contentType, ext };
+  }
 }
 
 /** Sinh bản thu nhỏ ~320px, giữ định dạng gốc. Trả về null nếu lỗi (không được làm fail upload gốc). */

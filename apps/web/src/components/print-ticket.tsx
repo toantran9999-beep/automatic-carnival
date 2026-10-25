@@ -400,8 +400,12 @@ function textBytes(text: string): number[] {
 }
 
 function bytesToBase64(bytes: number[]): string {
+  // Ghép theo khúc 8 KB thay vì từng byte: ảnh phiếu ~60 KB, nối chuỗi 60 nghìn
+  // lần trên máy POS rẻ là thêm một quãng khựng ngay trước lúc in.
   let binary = "";
-  for (const byte of bytes) binary += String.fromCharCode(byte);
+  for (let i = 0; i < bytes.length; i += 8192) {
+    binary += String.fromCharCode.apply(null, bytes.slice(i, i + 8192));
+  }
   return btoa(binary);
 }
 
@@ -1421,9 +1425,60 @@ function bridgeResult(r: unknown): boolean {
   return r === undefined || r === null ? true : !!r;
 }
 
+/** Lệnh in đang chờ APK báo kết quả: jobId → resolve. */
+const pendingPrintJobs = new Map<string, (ok: boolean) => void>();
+let printJobSeq = 0;
+
+/** Quá lâu không thấy APK báo về thì coi là KHÔNG in được — không bao giờ đoán là in rồi. */
+const ASYNC_PRINT_TIMEOUT_MS = 60_000;
+
+/**
+ * In qua `printAsync` (APK versionCode ≥ 2): trang KHÔNG đứng chờ USB.
+ *
+ * ⚠️ Vì sao: mọi hàm `@JavascriptInterface` là lời gọi đồng bộ — `printBase64` bắt
+ * trang đứng im tới khi máy in nuốt hết ảnh phiếu. Máy quầy vừa bán vừa là trạm in,
+ * quán in mỗi ly một phiếu, nên giờ cao điểm thu ngân chạm gì cũng "không ăn"
+ * (đo 25/10/2026: máy chủ trả trong 26–78 ms, chậm hoàn toàn nằm ở đây).
+ *
+ * Hết giờ chờ → trả `false` để sổ `order_prints` + vòng đòi phiếu 45 s lo phần
+ * in bù, như mọi lần in hỏng khác.
+ */
+function printViaAsyncBridge(bridge: any, base64: string): Promise<boolean> {
+  const w = window as any;
+  if (!w.__todaPrintDone) {
+    w.__todaPrintDone = (id: string, ok: boolean) => {
+      const done = pendingPrintJobs.get(id);
+      if (!done) return;
+      pendingPrintJobs.delete(id);
+      done(!!ok);
+    };
+  }
+  const id = `p${Date.now()}_${++printJobSeq}`;
+  return new Promise<boolean>((resolve) => {
+    const timer = setTimeout(() => {
+      if (pendingPrintJobs.delete(id)) resolve(false);
+    }, ASYNC_PRINT_TIMEOUT_MS);
+    pendingPrintJobs.set(id, (ok) => {
+      clearTimeout(timer);
+      resolve(ok);
+    });
+    try {
+      bridge.printAsync(base64, id);
+    } catch {
+      pendingPrintJobs.delete(id);
+      clearTimeout(timer);
+      resolve(false);
+    }
+  });
+}
+
 async function printEscPosWithBridge(bytes: number[]): Promise<boolean> {
   const base64 = bytesToBase64(bytes);
   const bridge = (window as any).TodaPrintBridge || (window as any).AndroidPrintBridge;
+  // APK mới: in không chặn trang. APK cũ chưa cài lại thì đi đường đồng bộ bên dưới.
+  if (bridge?.printAsync) {
+    return printViaAsyncBridge(bridge, base64);
+  }
   if (bridge?.printBase64) {
     return bridgeResult(bridge.printBase64(base64));
   }
@@ -1646,6 +1701,9 @@ export function usePrintKitchenTicket() {
     if (driver !== "browser_print") {
       const failed: typeof tickets = [];
       for (const ticket of tickets) {
+        // Nhường luồng giữa các phiếu: vẽ canvas phiếu 2, 3… không dính liền một
+        // cục, giao diện kịp nhận cú chạm của thu ngân giữa chừng.
+        await new Promise((r) => setTimeout(r, 0));
         const bytes = cfg.utf8Bitmap
           ? buildKitchenRasterEscPos(ticket, cfg) ?? buildKitchenEscPos(ticket, cfg)
           : buildKitchenEscPos(ticket, cfg);

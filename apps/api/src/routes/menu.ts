@@ -769,6 +769,87 @@ menu.delete(
   },
 );
 
+/**
+ * Nhóm tùy chọn (kèm từng tùy chọn) của NHIỀU món một lúc: `itemId → group[]`.
+ * Món không gắn nhóm nào thì không có trong Map (người gọi tự coi là `[]`).
+ *
+ * Dùng chung cho `GET /items/:id/modifier-groups` (một món) và
+ * `GET /item-modifier-groups` (cả chi nhánh) — HAI ĐƯỜNG PHẢI TRẢ Y HỆT NHAU, vì
+ * hộp thoại chọn tùy chọn trên POS đọc cùng một khoá bộ đệm cho cả hai.
+ * Thứ tự: nhóm theo `sort_order` rồi tên; tùy chọn trong nhóm cũng vậy.
+ */
+async function loadModifierGroupsForItems(
+  itemIds: string[],
+  branchId: string,
+  organizationId: string,
+): Promise<Map<string, any[]>> {
+  const out = new Map<string, any[]>();
+  if (itemIds.length === 0) return out;
+
+  const links = await db
+    .select()
+    .from(schema.menuItemModifierGroups)
+    .where(inArray(schema.menuItemModifierGroups.item_id, itemIds));
+  if (links.length === 0) return out;
+
+  const groupIds = [...new Set(links.map((l) => l.group_id))];
+  const groups = await db
+    .select()
+    .from(schema.modifierGroups)
+    .where(
+      and(
+        inArray(schema.modifierGroups.id, groupIds),
+        eq(schema.modifierGroups.branch_id, branchId),
+        eq(schema.modifierGroups.organization_id, organizationId),
+      ),
+    )
+    .orderBy(asc(schema.modifierGroups.sort_order), asc(schema.modifierGroups.name));
+
+  const allModifiers = await db
+    .select()
+    .from(schema.modifiers)
+    .where(inArray(schema.modifiers.group_id, groupIds))
+    .orderBy(asc(schema.modifiers.sort_order), asc(schema.modifiers.name));
+
+  const fullGroups = groups.map((g) => ({
+    ...g,
+    modifiers: allModifiers.filter((m) => m.group_id === g.id),
+  }));
+
+  for (const itemId of itemIds) {
+    const mine = new Set(links.filter((l) => l.item_id === itemId).map((l) => l.group_id));
+    const list = fullGroups.filter((g) => mine.has(g.id));
+    if (list.length) out.set(itemId, list);
+  }
+  return out;
+}
+
+// GET /item-modifier-groups — nhóm tùy chọn của MỌI món trong chi nhánh, một lần.
+//
+// Vì sao có (25/10/2026): trước đây POS hỏi riêng từng món lúc chạm vào, nên lần
+// đầu chạm một món là phải chờ một lượt mạng mới mở được hộp thoại — kể cả món
+// KHÔNG có tùy chọn nào (thuốc lá, túi hạt). Nay POS tải sẵn cả bảng khi vào trang.
+//
+// ⚠️ Đặt TRƯỚC các route `/items/:id…` cho dễ đọc; đường này không trùng mẫu đó.
+menu.get("/item-modifier-groups", requirePermission("menu:read"), async (c) => {
+  const tenant = c.get("tenant") as any;
+  const items = await db
+    .select({ id: schema.menuItems.id })
+    .from(schema.menuItems)
+    .where(
+      and(
+        eq(schema.menuItems.branch_id, tenant.branchId),
+        eq(schema.menuItems.organization_id, tenant.organizationId),
+      ),
+    );
+  const ids = items.map((i) => i.id);
+  const byItem = await loadModifierGroupsForItems(ids, tenant.branchId, tenant.organizationId);
+  // Món nào cũng có mặt (kể cả `[]`) để POS biết chắc "món này không có tùy chọn".
+  const data: Record<string, any[]> = {};
+  for (const id of ids) data[id] = byItem.get(id) ?? [];
+  return c.json({ success: true, data });
+});
+
 // GET /items/:id/modifier-groups
 menu.get(
   "/items/:id/modifier-groups",
@@ -797,50 +878,8 @@ menu.get(
       );
     }
 
-    const links = await db
-      .select()
-      .from(schema.menuItemModifierGroups)
-      .where(eq(schema.menuItemModifierGroups.item_id, id));
-
-    if (links.length === 0) {
-      return c.json({ success: true, data: [] });
-    }
-
-    const groupIds = links.map((l) => l.group_id);
-    const groups = await db
-      .select()
-      .from(schema.modifierGroups)
-      .where(
-        and(
-          groupIds.length === 1
-            ? eq(schema.modifierGroups.id, groupIds[0])
-            : inArray(schema.modifierGroups.id, groupIds),
-          eq(schema.modifierGroups.branch_id, tenant.branchId),
-          eq(schema.modifierGroups.organization_id, tenant.organizationId),
-        )
-      )
-      .orderBy(asc(schema.modifierGroups.sort_order), asc(schema.modifierGroups.name));
-
-    // Also fetch modifiers for these groups
-    let allModifiers: any[] = [];
-    if (groupIds.length > 0) {
-      allModifiers = await db
-        .select()
-        .from(schema.modifiers)
-        .where(
-          groupIds.length === 1
-            ? eq(schema.modifiers.group_id, groupIds[0])
-            : inArray(schema.modifiers.group_id, groupIds)
-        )
-        .orderBy(asc(schema.modifiers.sort_order), asc(schema.modifiers.name));
-    }
-
-    const result = groups.map((g) => ({
-      ...g,
-      modifiers: allModifiers.filter((m) => m.group_id === g.id),
-    }));
-
-    return c.json({ success: true, data: result });
+    const byItem = await loadModifierGroupsForItems([id], tenant.branchId, tenant.organizationId);
+    return c.json({ success: true, data: byItem.get(id) ?? [] });
   },
 );
 

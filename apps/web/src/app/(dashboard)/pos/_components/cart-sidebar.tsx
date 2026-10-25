@@ -14,6 +14,8 @@ import {
   Loader2,
   UtensilsCrossed,
   Printer,
+  Banknote,
+  Receipt,
 } from "lucide-react";
 import { formatCurrency } from "@/lib/utils";
 import { modifierLabel } from "@restai/config";
@@ -26,7 +28,7 @@ export function CartSidebar({
   orderType,
   customerName,
   orderNotes,
-  isPending,
+  pendingAction,
   tableNumber,
   onCustomerNameChange,
   onOrderNotesChange,
@@ -44,7 +46,8 @@ export function CartSidebar({
   orderType: "dine_in" | "takeout";
   customerName: string;
   orderNotes: string;
-  isPending: boolean;
+  /** Nút nào đang chạy — chỉ nút đó quay vòng, các nút khác chỉ mờ đi. */
+  pendingAction: "send" | "pay" | "prebill" | null;
   tableNumber: string | null;
   onCustomerNameChange: (name: string) => void;
   onOrderNotesChange: (notes: string) => void;
@@ -304,66 +307,58 @@ export function CartSidebar({
         </div>
       )}
 
-      {cart.length > 0 && (
-        <div className="mb-2 space-y-1 border-t pt-2">
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">{t("pos.subtotal")}</span>
-            <span>{formatCurrency(subtotal)}</span>
-          </div>
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">
-              {t("pos.tax")} ({(taxRate / 100).toFixed(2).replace(/\.00$/, "")}%)
+      {/* Con số tổng phải đọc được từ xa một bước chân — thu ngân đọc to cho khách. */}
+      {(cart.length > 0 || hasUnpaid) && (
+        <div className="mb-2 border-t pt-2">
+          <div className="flex items-baseline justify-between gap-2">
+            <span className="text-sm font-semibold text-muted-foreground">
+              {cart.length > 0
+                ? t("pos.total")
+                : lang === "vi" ? "Cần thanh toán" : "Total due"}
             </span>
-            <span>{formatCurrency(tax)}</span>
+            <span className="text-2xl font-extrabold tabular-nums text-primary">
+              {formatCurrency(cart.length > 0 ? total : unpaidTotal)}
+            </span>
           </div>
-          <div className="flex justify-between border-t pt-1.5 text-lg font-bold">
-            <span>{t("pos.total")}</span>
-            <span className="text-primary">{formatCurrency(total)}</span>
-          </div>
+          {cart.length > 0 && (
+            <p className="text-right text-xs text-muted-foreground tabular-nums">
+              {t("pos.tax")} {(taxRate / 100).toFixed(2).replace(/\.00$/, "")}%: {formatCurrency(tax)}
+            </p>
+          )}
         </div>
       )}
 
-      {cart.length === 0 && hasUnpaid && (
-        <div className="mb-2 space-y-1 border-t pt-2">
-          <div className="flex justify-between text-xs">
-            <span className="text-muted-foreground">
-              {lang === "vi" ? "Tiền món đã dùng" : "Ordered Total"}
-            </span>
-            <span>{formatCurrency(unpaidTotal)}</span>
-          </div>
-          <div className="flex justify-between border-t pt-1.5 text-lg font-bold">
-            <span>{lang === "vi" ? "Cần thanh toán" : "Total Due"}</span>
-            <span className="text-primary">{formatCurrency(unpaidTotal)}</span>
-          </div>
-        </div>
-      )}
-
+      {/*
+        ⚠️ THỨ BẬC NÚT THEO TẦN SUẤT THẬT (đo 14 ngày, 2.316 đơn, 25/10/2026):
+        tại bàn 94% / mang về 61% là "gửi phiếu trước, thu tiền sau" → ~82% lượt
+        bấm là GỬI & IN PHIẾU. Nên nút đó to nhất, đặc, chiếm cả hàng. "Thu tiền
+        ngay" đứng hàng hai; "Tạm tính" (vài lần một ngày) nhỏ nhất.
+        Thứ tự KHÔNG đổi theo loại đơn — tay thu ngân quen vị trí, đảo là bấm nhầm.
+      */}
       {cart.length === 0 ? (
         hasUnpaid ? (
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="outline"
-              className="h-11 text-sm font-semibold"
-              disabled={isPending}
+          <div className="space-y-2">
+            <BigButton
+              tone="pay"
+              icon={<Check className="h-6 w-6" />}
+              label={lang === "vi" ? "Thanh toán" : "Pay"}
+              sub={formatCurrency(unpaidTotal)}
+              loading={false}
+              disabled={!!pendingAction}
+              onClick={() => onPayUnpaidOrders?.()}
+            />
+            <SmallButton
+              icon={<Receipt className="h-4.5 w-4.5" />}
+              label="Tạm tính"
+              loading={pendingAction === "prebill"}
+              disabled={!!pendingAction}
               onClick={onPrintTemporaryBill}
-            >
-              <Printer className="mr-1.5 h-4 w-4" />
-              Tạm tính
-            </Button>
-          <Button
-            className="flex h-11 min-w-0 items-center justify-center gap-1.5 bg-emerald-600 px-2 text-sm font-semibold text-white hover:bg-emerald-700"
-            disabled={isPending}
-            onClick={onPayUnpaidOrders}
-          >
-            <Check className="h-4 w-4" />
-            <span className="truncate">{lang === "vi" ? "Thanh toán" : "Pay"}</span>
-          </Button>
+            />
           </div>
         ) : (
-          <Button className="h-11 w-full text-sm font-semibold" disabled>
-            <Check className="mr-2 h-4 w-4" />
+          <div className="flex h-16 items-center justify-center rounded-xl border-2 border-dashed text-base font-semibold text-muted-foreground">
             {lang === "vi" ? "Chọn món để gửi" : "Select items to send"}
-          </Button>
+          </div>
         )
       ) : (
         <div className="space-y-2">
@@ -374,56 +369,118 @@ export function CartSidebar({
                 : "Select a table to send the order (dine-in)"}
             </p>
           )}
-          <div className="grid grid-cols-2 gap-2">
-            <Button
-              variant="outline"
-              className="h-11 min-w-0 text-sm font-semibold"
-              disabled={isPending || needsTable}
-              onClick={() => onCreateOrder(false)}
-            >
-              {isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <span className="flex min-w-0 items-center justify-center gap-1.5">
-                  <Printer className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{lang === "vi" ? "Gửi & in phiếu" : "Send & print"}</span>
-                </span>
-              )}
-            </Button>
-            <Button
-              variant="outline"
-              className="h-11 min-w-0 text-sm font-semibold"
-              disabled={isPending || needsTable}
+          <BigButton
+            tone="send"
+            icon={<Printer className="h-6 w-6" />}
+            label={lang === "vi" ? "Gửi & in phiếu" : "Send & print"}
+            sub={lang === "vi" ? `${totalQty} món` : `${totalQty} items`}
+            loading={pendingAction === "send"}
+            loadingLabel={lang === "vi" ? "Đang gửi…" : "Sending…"}
+            disabled={!!pendingAction || needsTable}
+            onClick={() => onCreateOrder(false)}
+          />
+          <div className="grid grid-cols-3 gap-2">
+            <SmallButton
+              className="col-span-2 border-2 border-emerald-600 font-bold text-emerald-700 dark:text-emerald-400"
+              icon={<Banknote className="h-5 w-5" />}
+              label={lang === "vi" ? "Thu tiền ngay" : "Pay now"}
+              loading={pendingAction === "pay"}
+              disabled={!!pendingAction || needsTable}
+              onClick={() => onCreateOrder(true)}
+            />
+            <SmallButton
+              icon={<Receipt className="h-4.5 w-4.5" />}
+              label="Tạm tính"
+              loading={pendingAction === "prebill"}
+              disabled={!!pendingAction || needsTable}
               onClick={onPrintTemporaryBill}
-            >
-              {isPending ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
-              ) : (
-                <span className="flex min-w-0 items-center justify-center gap-1.5">
-                  <Printer className="h-4 w-4 shrink-0" />
-                  <span className="truncate">{lang === "vi" ? "Tạm tính" : "Pre-bill"}</span>
-                </span>
-              )}
-            </Button>
+            />
           </div>
-          <Button
-            className="h-12 w-full text-base font-bold"
-            disabled={isPending || needsTable}
-            onClick={() => onCreateOrder(true)}
-          >
-            {isPending ? (
-              <Loader2 className="h-5 w-5 animate-spin" />
-            ) : (
-              <span className="flex min-w-0 items-center justify-center gap-2">
-                <Check className="h-5 w-5 shrink-0" />
-                <span className="truncate">
-                  {lang === "vi" ? "Thanh toán" : "Pay"} · {formatCurrency(total)}
-                </span>
-              </span>
-            )}
-          </Button>
         </div>
       )}
     </div>
+  );
+}
+
+/**
+ * Nút chính chân giỏ: cao 64px, chữ to, cả hàng. Bấm là đổi nền + lún nhẹ ngay
+ * (không chờ máy chủ) để thu ngân biết máy đã nhận cú chạm.
+ */
+function BigButton({
+  tone,
+  icon,
+  label,
+  sub,
+  loading,
+  loadingLabel,
+  disabled,
+  onClick,
+}: {
+  tone: "send" | "pay";
+  icon: React.ReactNode;
+  label: string;
+  sub?: string;
+  loading: boolean;
+  loadingLabel?: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  const color =
+    tone === "send"
+      ? "bg-primary text-primary-foreground active:bg-primary/80"
+      : "bg-emerald-600 text-white active:bg-emerald-700";
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex h-16 w-full items-center justify-center gap-3 rounded-xl px-4 shadow-md transition-transform duration-75 active:scale-[0.98] disabled:opacity-50 disabled:shadow-none ${color}`}
+    >
+      {loading ? (
+        <>
+          <Loader2 className="h-6 w-6 animate-spin" />
+          <span className="text-lg font-bold">{loadingLabel ?? label}</span>
+        </>
+      ) : (
+        <>
+          {icon}
+          <span className="text-lg font-extrabold uppercase tracking-wide">{label}</span>
+          {sub && (
+            <span className="rounded-full bg-black/15 px-2.5 py-0.5 text-sm font-bold tabular-nums">
+              {sub}
+            </span>
+          )}
+        </>
+      )}
+    </button>
+  );
+}
+
+/** Nút hàng hai: cao 48px, vẫn đủ vùng chạm, nhẹ hơn hẳn nút chính. */
+function SmallButton({
+  icon,
+  label,
+  loading,
+  disabled,
+  onClick,
+  className = "",
+}: {
+  icon: React.ReactNode;
+  label: string;
+  loading: boolean;
+  disabled: boolean;
+  onClick: () => void;
+  className?: string;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      onClick={onClick}
+      className={`flex h-12 w-full min-w-0 items-center justify-center gap-1.5 rounded-xl border bg-card px-2 text-sm font-semibold transition-transform duration-75 active:scale-[0.97] active:bg-muted disabled:opacity-50 ${className}`}
+    >
+      {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : icon}
+      <span className="truncate">{label}</span>
+    </button>
   );
 }

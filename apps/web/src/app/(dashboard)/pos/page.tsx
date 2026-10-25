@@ -11,7 +11,7 @@ import {
 } from "@restai/ui/components/sheet";
 import { Button } from "@restai/ui/components/button";
 import { formatCurrency } from "@/lib/utils";
-import { useCategories, useMenuItems, useBestSellers } from "@/hooks/use-menu";
+import { useCategories, useMenuItems, useBestSellers, useAllItemModifierGroups } from "@/hooks/use-menu";
 import { useCreateOrder, useAddOrderItems } from "@/hooks/use-orders";
 import { useCreatePaymentRequest } from "@/hooks/use-payments";
 import { toast } from "sonner";
@@ -134,6 +134,8 @@ export default function PosPage() {
   const { data: menuItems, isLoading: itemsLoading } = useMenuItems();
   // Nhóm ảo "Bán chạy" — server đã trả rỗng nếu chủ quán tắt trong Cài đặt
   const { data: bestSellers } = useBestSellers();
+  // Nạp sẵn nhóm tùy chọn của mọi món — chạm món là mở ngay, không chờ mạng.
+  useAllItemModifierGroups();
 
   // Không có "Tất cả" — mặc định vào thẳng danh mục đầu tiên cho lưới nhẹ, đỡ render 50+ ô
   useEffect(() => {
@@ -279,7 +281,27 @@ export default function PosPage() {
     });
   };
 
-  const handlePrintTemporaryBill = async () => {
+  /**
+   * Nút nào đang chạy. Thay cho `createOrder.isPending` cũ: cái đó không biết gì về
+   * "Tạm tính" hay "thêm món vào đơn mang về" (bấm hai lần là gửi hai lần), và làm
+   * CẢ BA nút cùng quay vòng nên thu ngân không biết lệnh nào đang chạy.
+   */
+  const [pendingAction, setPendingAction] = useState<"send" | "pay" | "prebill" | null>(null);
+
+  /** Chạy một thao tác, chặn bấm chồng trong lúc nó chưa xong. */
+  const runExclusive = async (action: "send" | "pay" | "prebill", fn: () => Promise<void>) => {
+    if (pendingAction) return;
+    setPendingAction(action);
+    try {
+      await fn();
+    } finally {
+      setPendingAction(null);
+    }
+  };
+
+  const handlePrintTemporaryBill = () => runExclusive("prebill", printTemporaryBillNow);
+
+  const printTemporaryBillNow = async () => {
     try {
       if (cart.length > 0) {
         if (orderType === "dine_in" && !tableId) {
@@ -328,7 +350,10 @@ export default function PosPage() {
     }
   };
 
-  const handleCreateOrder = async (payImmediately = false) => {
+  const handleCreateOrder = (payImmediately = false) =>
+    runExclusive(payImmediately ? "pay" : "send", () => createOrderNow(payImmediately));
+
+  const createOrderNow = async (payImmediately: boolean) => {
     if (cart.length === 0) return;
 
     // Thêm món vào đơn có sẵn: KHÔNG tạo đơn mới, cộng thẳng vào đơn cũ để khách
@@ -477,7 +502,7 @@ export default function PosPage() {
     orderType,
     customerName,
     orderNotes,
-    isPending: createOrder.isPending,
+    pendingAction,
     tableNumber,
     onCustomerNameChange: setCustomerName,
     onOrderNotesChange: setOrderNotes,

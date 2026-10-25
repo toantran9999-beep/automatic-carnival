@@ -33,6 +33,8 @@ import android.widget.Toast;
 import org.json.JSONObject;
 
 import java.util.HashMap;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
 
 /**
  * Vỏ Android cho TODA POS chạy ở quầy.
@@ -52,6 +54,12 @@ public class MainActivity extends Activity {
     private WebView webView;
     private UsbManager usbManager;
     private volatile long lastPrintAt = 0L;
+
+    /**
+     * MỘT luồng in duy nhất cho `printAsync`: phiếu vẫn ra đúng thứ tự gửi, và
+     * `writeToPrinter` vẫn giữ khoảng giãn PRINT_GAP_MS như cũ.
+     */
+    private final ExecutorService printExecutor = Executors.newSingleThreadExecutor();
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -277,6 +285,40 @@ public class MainActivity extends Activity {
             }
         }
 
+        /**
+         * In KHÔNG CHẶN trang web (thêm 25/10/2026, versionCode 2).
+         *
+         * ⚠️ Vì sao: mọi hàm `@JavascriptInterface` là lời gọi ĐỒNG BỘ với trang —
+         * JS đứng chờ Java trả về. `printBase64` thì chờ tới khi USB đẩy xong cả ảnh
+         * phiếu (cộng 300 ms giãn, có khi thêm 400 ms thử lại) → suốt lúc đó giao
+         * diện POS ĐỨNG HÌNH, chạm gì cũng không ăn. Quán in mỗi ly một phiếu nên
+         * đơn 3 ly là 3 lần đứng. Hàm này nhận việc rồi trả về NGAY; in xong mới báo
+         * kết quả về trang qua `window.__todaPrintDone(jobId, ok)`.
+         *
+         * Giữ nguyên `printBase64`/`print` đồng bộ cho bản web cũ.
+         */
+        @JavascriptInterface
+        public void printAsync(final String b64, final String jobId) {
+            // jobId đi thẳng vào chuỗi JS ở dưới — chỉ cho chữ, số, gạch.
+            final String id = jobId == null ? "" : jobId.replaceAll("[^A-Za-z0-9_-]", "");
+            printExecutor.execute(() -> {
+                boolean ok;
+                try {
+                    ok = writeToPrinter(Base64.decode(b64, Base64.DEFAULT));
+                } catch (Exception e) {
+                    toast("In lỗi: " + e.getMessage());
+                    ok = false;
+                }
+                final String js = "window.__todaPrintDone&&window.__todaPrintDone('" + id + "'," + ok + ")";
+                runOnUiThread(() -> { if (webView != null) webView.evaluateJavascript(js, null); });
+            });
+        }
+
+        @JavascriptInterface
+        public int bridgeVersion() {
+            return 2;
+        }
+
         @JavascriptInterface
         public boolean isReady() {
             return findPrinter() != null;
@@ -295,6 +337,7 @@ public class MainActivity extends Activity {
     @Override
     protected void onDestroy() {
         try { unregisterReceiver(usbReceiver); } catch (Exception ignored) {}
+        printExecutor.shutdown();
         super.onDestroy();
     }
 }

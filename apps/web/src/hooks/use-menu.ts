@@ -42,6 +42,35 @@ const bestSellersQuery = (branch: string) => ({
 });
 
 /**
+ * Nhóm tùy chọn của MỌI món trong chi nhánh, tải một lần — rồi rải vào đúng khoá
+ * từng món (`["menu", branch, "items", id, "modifier-groups"]`) mà `ModifierDialog`
+ * đang đọc qua `useItemModifierGroups`.
+ *
+ * ⚠️ Vì sao rải ngay trong `queryFn`: tải ở đâu (hâm nóng từ trang Bàn ăn, vào
+ * trang POS, hay WS `menu:updated` làm mới) thì khoá từng món cũng được nạp theo.
+ * Trước đây chạm một món lần đầu là phải chờ một lượt mạng mới mở được hộp thoại —
+ * kể cả món không có tùy chọn nào. Món không có nhóm vẫn được gán `[]` để hộp thoại
+ * biết chắc mà thêm thẳng vào giỏ.
+ */
+const allItemModifierGroupsQuery = (branch: string, qc: ReturnType<typeof useQueryClient>) => ({
+  queryKey: ["menu", branch, "item-modifier-groups"],
+  queryFn: async () => {
+    const byItem = await apiFetch<Record<string, any[]>>("/api/menu/item-modifier-groups");
+    for (const [itemId, groups] of Object.entries(byItem)) {
+      qc.setQueryData(["menu", branch, "items", itemId, "modifier-groups"], groups);
+    }
+    return byItem;
+  },
+  ...STATIC_QUERY,
+});
+
+/** Gọi ở trang POS để chắc chắn bảng tùy chọn đã nạp sẵn (xem ghi chú ở trên). */
+export function useAllItemModifierGroups() {
+  const qc = useQueryClient();
+  return useQuery(allItemModifierGroupsQuery(useBranchKey(), qc));
+}
+
+/**
  * Tải sẵn thực đơn cho màn Bán hàng. Gọi từ trang Bàn ăn — chỗ nhân viên đứng chờ
  * giữa hai lượt khách — để lúc bấm vô bàn chỉ còn phải chờ đúng phiên của bàn đó.
  * Dùng lại đúng 3 khai báo ở trên nên khoá không bao giờ lệch với lúc hiển thị
@@ -54,6 +83,7 @@ export function usePrefetchPosMenu() {
     void qc.prefetchQuery(categoriesQuery(branch));
     void qc.prefetchQuery(itemsQuery(branch));
     void qc.prefetchQuery(bestSellersQuery(branch));
+    void qc.prefetchQuery(allItemModifierGroupsQuery(branch, qc));
   }, [qc, branch]);
 }
 

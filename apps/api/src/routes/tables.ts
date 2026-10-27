@@ -1471,6 +1471,20 @@ tables.post(
           .limit(1);
         const numbering = await nextOrderNumber(tx, openShift?.id ?? null);
 
+        // Tách bàn chỉ CHUYỂN món, không ai order lại — người order là người đã
+        // bấm món đó lúc đầu, KHÔNG phải người bấm tách. Bản cũ bỏ trống cột này
+        // nên mọi đơn tách hiện "—" ở hộp thoại bàn / mang về.
+        // Món chuyển sang mang nhiều người khác nhau thì lấy người của món sớm
+        // nhất; tên từng món vẫn giữ riêng ở order_items.created_by bên dưới.
+        const authorOf = (row: (typeof sourceItems)[number]) =>
+          row.item.created_by ?? row.order.created_by ?? null;
+        const orderedAt = (row: (typeof sourceItems)[number]) =>
+          row.item.created_at ?? row.order.created_at;
+        const earliestAuthored = sourceItems
+          .filter((row) => authorOf(row))
+          .sort((a, b) => orderedAt(a).getTime() - orderedAt(b).getTime())[0];
+        const targetAuthor = earliestAuthored ? authorOf(earliestAuthored) : null;
+
         const [targetOrder] = await tx
           .insert(schema.orders)
           .values({
@@ -1489,6 +1503,7 @@ tables.post(
             discount: 0,
             total: 0,
             notes: `Tach tu phien ${id}`,
+            created_by: targetAuthor,
           })
           .returning();
 
@@ -1527,6 +1542,9 @@ tables.post(
               total: splitTotal,
               notes: row.item.notes,
               status: row.item.status,
+              // Giữ người order + GIỜ order gốc của món, không lấy giờ bấm tách.
+              created_by: authorOf(row),
+              created_at: orderedAt(row),
             })
             .returning();
 

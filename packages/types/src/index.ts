@@ -46,7 +46,10 @@ export interface WsOrderPayload {
   tableNumber?: number | null;
   /** Tên khu vực của bàn (Khu A, Khu B...) — in kèm số bàn cho dễ tìm. */
   tableZone?: string | null;
+  /** Tên khách THẬT — máy chủ đã bỏ chữ mặc định "Khách POS". */
   customerName?: string | null;
+  /** Ghi chú của CẢ ĐƠN (ai lấy, giao đâu…) — in một lần ở đầu phiếu, đọc một lần. */
+  notes?: string | null;
   /**
    * Tên NHÂN VIÊN BẤM ĐƠN, in ở dòng "Nhân viên" của phiếu đặt món.
    * Bắt buộc đi kèm trong gói tin: phiếu do Trạm quầy (máy dùng chung) in ra,

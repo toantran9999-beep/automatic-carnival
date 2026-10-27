@@ -299,7 +299,9 @@ export function CartSidebar({
       {cart.length > 0 && (
         <div className="mb-2">
           <Input
-            placeholder={t("pos.notes")}
+            // Ô của CẢ ĐƠN — in một lần ngay dưới BÀN / MANG VỀ và loa đọc một lần.
+            // Ghi "giao đâu" ở đây chứ đừng gõ vào ghi chú từng món (in lặp mỗi món).
+            placeholder={t("pos.orderNotesPlaceholder")}
             value={orderNotes}
             onChange={(e) => onOrderNotesChange(e.target.value)}
             className="h-11 rounded-lg text-base"

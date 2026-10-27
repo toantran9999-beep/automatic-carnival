@@ -6,7 +6,7 @@ import { QRCodeSVG } from "qrcode.react";
 import { useLangStore } from "@/stores/lang-store";
 import { useAuthStore } from "@/stores/auth-store";
 import { useBranchSettings } from "@/hooks/use-settings";
-import { buildVietQrPayload, resolveBankBin, bankDisplayName } from "@restai/config";
+import { buildVietQrPayload, resolveBankBin, bankDisplayName, realCustomerName } from "@restai/config";
 
 /**
  * Vẽ QR thành SVG nhúng thẳng vào HTML in.
@@ -476,6 +476,7 @@ function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAUL
   const rows: Array<string | number[]> = [
     cfg.kitchen.show.title ? centered(cfg.kitchen.title, width) : "",
     centered(subtitle, width),
+    ...wrapPlain(kitchenWhoLine(data) ?? "", width).map((l) => centered(l, width)),
     // Không có dòng này thì pha chế tưởng đơn mới, làm lại từ đầu cả đơn.
     data.isAddOn ? centered("*** THEM MON ***", width) : "",
     // Tờ giấy phải tự khai là bản in lại, kẻo quầy tưởng có đơn mới.
@@ -483,7 +484,7 @@ function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAUL
     data.ticketLabel ? centered(`Phieu ${data.ticketLabel}`, width) : "",
     SEP,
     cfg.kitchen.show.time ? twoCol(`Gio: ${time}`, `Ngay: ${date}`, width) : "",
-    cfg.kitchen.show.staff ? `Nhan vien: ${plainLine(staff || data.customerName || "-", width - 11)}` : "",
+    cfg.kitchen.show.staff ? `Nhan vien: ${plainLine(staff || "-", width - 11)}` : "",
     cfg.kitchen.show.orderNumber ? `So thu tu: #${data.orderNumber}` : "",
     SEP,
   ].filter((r) => r !== "");
@@ -513,10 +514,6 @@ function buildKitchenEscPos(data: KitchenTicketData, cfg: ReceiptConfig = DEFAUL
     }
   }
 
-  if (data.notes) {
-    rows.push(SEP);
-    for (const nl of wrapPlain(`Ghi chu: ${data.notes}`, width)) rows.push(nl);
-  }
   if (cfg.kitchen.footerLines.length) {
     rows.push(SEP, ...cfg.kitchen.footerLines.map((l) => centered(l, width)));
   }
@@ -830,6 +827,19 @@ function buildReceiptRasterEscPos(data: ReceiptTicketData, cfg: ReceiptConfig): 
   return wrapRasterTicket(segsToEscPosBytes(receiptRasterSegments(data, cfg), cfg), cfg);
 }
 
+/**
+ * Dòng "ai lấy / giao đâu" của phiếu đặt món = tên khách thật + ghi chú CẢ ĐƠN.
+ *
+ * ⚠️ In NGAY DƯỚI chữ BÀN / MANG VỀ, không phải cuối tờ: người pha nhìn đầu
+ * phiếu trước. Trước 27/10/2026 ghi chú đơn nằm cuối tờ (mà gói tin còn không
+ * mang theo), nên nhân viên nhét "chị Trinh", "Sở xây dựng" vào ghi chú từng
+ * món — đơn hai món là in lặp hai lần.
+ */
+function kitchenWhoLine(data: KitchenTicketData): string | null {
+  const parts = [realCustomerName(data.customerName), (data.notes ?? "").trim()].filter(Boolean);
+  return parts.length ? parts.join(" · ") : null;
+}
+
 function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): RasterSeg[] {
   const { time, date } = vnTimeParts(data.createdAt);
   // Ưu tiên tên thu ngân trực ca; chỉ khi thiếu mới lùi về tài khoản của máy in.
@@ -847,6 +857,8 @@ function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): Ras
     bold: true,
     big: !cfg.kitchen.show.title,
   });
+  const who = kitchenWhoLine(data);
+  if (who) segs.push({ kind: "text", text: who, align: "center", bold: true });
   // Không có dòng này thì pha chế tưởng đơn mới, làm lại từ đầu cả đơn.
   if (data.isAddOn) {
     segs.push({ kind: "text", text: "*** THÊM MÓN ***", align: "center", bold: true });
@@ -858,7 +870,7 @@ function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): Ras
   if (data.ticketLabel) segs.push({ kind: "text", text: `Phiếu ${data.ticketLabel}`, align: "center" });
   segs.push({ kind: "sep" });
   if (cfg.kitchen.show.time) segs.push({ kind: "twoCol", left: `Giờ: ${time}`, right: `Ngày: ${date}` });
-  if (cfg.kitchen.show.staff) segs.push({ kind: "text", text: `Nhân viên: ${staff || data.customerName || "-"}` });
+  if (cfg.kitchen.show.staff) segs.push({ kind: "text", text: `Nhân viên: ${staff || "-"}` });
   if (cfg.kitchen.show.orderNumber) segs.push({ kind: "text", text: `Số thứ tự: #${data.orderNumber}` });
   segs.push({ kind: "sep" });
   for (const item of data.items) {
@@ -868,10 +880,6 @@ function kitchenRasterSegments(data: KitchenTicketData, cfg: ReceiptConfig): Ras
       segs.push({ kind: "text", text: `- ${mod.name}`, indent: MOD_INDENT_PX });
     }
     if (item.notes) segs.push({ kind: "text", text: `* ${item.notes}`, indent: MOD_INDENT_PX });
-  }
-  if (data.notes) {
-    segs.push({ kind: "sep" });
-    segs.push({ kind: "text", text: `Ghi chú: ${data.notes}` });
   }
   if (cfg.kitchen.footerLines.length) {
     segs.push({ kind: "sep" });
@@ -1191,6 +1199,7 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
 <body>
   ${cfg.kitchen.show.title ? `<div class="ticket-title">${escapeHtml(L.title)}</div>` : ""}
   <div class="ticket-sub">${escapeHtml(subtitle)}</div>
+  ${kitchenWhoLine(data) ? `<div class="ticket-sub">${escapeHtml(kitchenWhoLine(data)!)}</div>` : ""}
   ${/* Không có dòng này thì pha chế tưởng đơn mới, làm lại từ đầu cả đơn. */ ""}
   ${data.isAddOn ? `<div class="ticket-sub">*** ${isVi ? "THÊM MÓN" : "ADDED ITEMS"} ***</div>` : ""}
   ${data.isReprint ? `<div class="ticket-sub">*** ${isVi ? "IN LẠI" : "REPRINT"} ***</div>` : ""}
@@ -1201,7 +1210,7 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
       <td><b>${L.date}:</b> ${date}</td>
     </tr>` : ""}
     <tr>
-      ${cfg.kitchen.show.staff ? `<td><b>${L.staff}:</b> ${escapeHtml(staff || (data.customerName || "-"))}</td>` : "<td></td>"}
+      ${cfg.kitchen.show.staff ? `<td><b>${L.staff}:</b> ${escapeHtml(staff || "-")}</td>` : "<td></td>"}
       ${cfg.kitchen.show.orderNumber ? `<td><b>${L.no}:</b> #${data.orderNumber}</td>` : "<td></td>"}
     </tr>
   </table>
@@ -1215,7 +1224,6 @@ function buildKitchenTicketHtml(data: KitchenTicketData, cfg: ReceiptConfig = DE
     </thead>
     <tbody>${rowsHtml}</tbody>
   </table>
-  ${data.notes ? `<div class="note">${escapeHtml(data.notes)}</div>` : ""}
   ${cfg.kitchen.footerLines.map((l) => `<div class="center" style="font-size:11px;font-weight:700;margin-top:8px;">${escapeHtml(l)}</div>`).join("")}
 </body>
 </html>`;

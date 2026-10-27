@@ -80,8 +80,12 @@ services:
       # `read_book_tts` của stack read-book đã nằm sẵn trên network này nên gọi
       # thẳng bằng tên. Bỏ trống thì tính năng đọc tự tắt, POS không ảnh hưởng.
       TTS_URL: ${TTS_URL:-http://read_book_tts:8080}
+      # Mảnh tiếng đã làm sẵn ("Bàn ba", "một Cà phê sữa đá"…). Nằm trên volume
+      # để deploy không xoá — mất là cả quán phải chờ tổng hợp lại từ đầu.
+      TTS_CACHE_DIR: /app/tts-cache
     volumes:
       - uploadsdata:/app/apps/web/public/uploads
+      - ttscache:/app/tts-cache
     depends_on:
       postgres:
         condition: service_healthy
@@ -141,3 +145,4 @@ volumes:
   caddydata:
   caddyconfig:
   uploadsdata:
+  ttscache:

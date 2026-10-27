@@ -322,3 +322,6 @@ export function modifierLabel(
   const shown = String(parseFloat(num.toFixed(3)));
   return `${name} ${shown}${unit ?? ""}`;
 }
+
+// Câu đọc phiếu cho loa trạm quầy — máy chủ và máy quầy phải dựng giống hệt nhau.
+export * from "./speech";

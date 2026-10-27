@@ -18,6 +18,17 @@ import { useItemModifierGroups } from "@/hooks/use-menu";
 import { useTranslation } from "@/stores/lang-store";
 import { modifierLabel } from "@restai/config";
 
+/**
+ * Ghi chú cách pha nhân viên GÕ TAY nhiều nhất (30 ngày tới 14/10/2026) — bấm
+ * một cái là chèn, khỏi gõ trên bàn phím điện thoại lúc đông khách.
+ *
+ * Chỉ để CÁCH PHA. Tên khách / nơi giao ("chị Trinh", "Sở xây dựng") thuộc ô
+ * của cả đơn ở giỏ hàng — gõ vào đây là đơn hai món in lặp hai lần.
+ * Mấy thứ đã có sẵn tùy chọn (Ly nhựa, Bột, Ống hút, Đá riêng) cố ý KHÔNG đưa
+ * vào: bấm tùy chọn mới đúng, còn trừ được kho.
+ */
+const QUICK_NOTES = ["Nửa gói", "Thêm nước nóng", "Xíu để đá", "Chanh tươi", "Đá đập", "Đá viên"];
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -377,6 +388,33 @@ export function ModifierDialog({
                 onChange={(e) => setNotes(e.target.value)}
                 className="h-11 text-base"
               />
+              <div className="mt-2 flex flex-wrap gap-2">
+                {QUICK_NOTES.map((q) => {
+                  const on = notes
+                    .split(",")
+                    .map((x) => x.trim().toLowerCase())
+                    .includes(q.toLowerCase());
+                  return (
+                    <Button
+                      key={q}
+                      type="button"
+                      size="sm"
+                      variant={on ? "default" : "outline"}
+                      className="rounded-full"
+                      onClick={() => {
+                        // Bấm lần nữa là gỡ ra — chạm nhầm không phải xoá tay.
+                        const parts = notes.split(",").map((x) => x.trim()).filter(Boolean);
+                        const next = on
+                          ? parts.filter((x) => x.toLowerCase() !== q.toLowerCase())
+                          : [...parts, q];
+                        setNotes(next.join(", "));
+                      }}
+                    >
+                      {q}
+                    </Button>
+                  );
+                })}
+              </div>
             </div>
           </div>
         )}

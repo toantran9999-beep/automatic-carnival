@@ -1,5 +1,6 @@
 import { eq, inArray } from "drizzle-orm";
 import { db, schema } from "@restai/db";
+import { realCustomerName } from "@restai/config";
 
 /**
  * Dựng gói tin `order:new` — thứ Trạm quầy dùng để IN PHIẾU ĐẶT MÓN.
@@ -17,6 +18,8 @@ export interface OrderTicketOrder {
   order_number: string;
   status: string;
   customer_name: string | null;
+  /** Ô ghi chú của CẢ ĐƠN trên máy bấm đơn (giao đâu, ai lấy…). */
+  notes?: string | null;
   type: string;
   table_session_id: string | null;
   created_at: Date | string;
@@ -118,7 +121,16 @@ export async function buildOrderTicketPayload(args: BuildOrderTicketArgs) {
     status: order.status,
     tableNumber,
     tableZone,
-    customerName: order.customer_name,
+    // ⚠️ "Khách POS" là chữ máy bấm đơn tự điền khi ô tên trống (4.890/4.890 đơn
+    // trong 30 ngày, đo 14/10/2026) — không phải tên ai. Gửi null để phiếu
+    // không in, loa không đọc thứ tiếng ồn đó.
+    customerName: realCustomerName(order.customer_name),
+    /**
+     * Ghi chú CẢ ĐƠN. ⚠️ Trước 27/10/2026 trường này KHÔNG có trong gói tin, nên
+     * ô "Ghi chú" cuối giỏ hàng gõ gì quầy cũng không thấy — nhân viên quay ra
+     * nhét tên khách/nơi giao vào ghi chú TỪNG MÓN, đơn hai món in lặp hai lần.
+     */
+    notes: order.notes?.trim() || null,
     /** Người bấm đơn — trạm quầy in đúng tên này lên dòng "Nhân viên". */
     staffName,
     createdAt: args.createdAt ?? order.created_at,

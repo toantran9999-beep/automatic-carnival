@@ -1,9 +1,9 @@
 import { Hono } from "hono";
-import { createHash } from "node:crypto";
 import type { AppEnv } from "../types.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
+import { speakSentence } from "../services/tts.service.js";
 
 /**
  * Đọc phiếu bằng giọng nói — cầu nối sang service TTS tự host trên VPS
@@ -30,37 +30,6 @@ const REQUEST_TIMEOUT_MS = 15_000;
  * đúng 2 nhân CPU mà cả quán đang dùng để bán hàng.
  */
 const ALLOWED_TEXT = /^[\p{L}\p{N} .,:;!?%/()+-]+$/u;
-
-interface CacheEntry {
-  body: Uint8Array;
-  at: number;
-}
-/** Câu cố định ("đã thanh toán", "lỗi in phiếu") và phiếu in lại về 0 giây. */
-const cache = new Map<string, CacheEntry>();
-const CACHE_MAX = 40;
-const CACHE_TTL_MS = 60 * 60 * 1000;
-
-function cacheGet(key: string): Uint8Array | null {
-  const hit = cache.get(key);
-  if (!hit) return null;
-  if (Date.now() - hit.at > CACHE_TTL_MS) {
-    cache.delete(key);
-    return null;
-  }
-  // Chạm vào là đẩy xuống cuối — Map giữ thứ tự chèn nên đây là LRU rẻ nhất.
-  cache.delete(key);
-  cache.set(key, hit);
-  return hit.body;
-}
-
-function cacheSet(key: string, body: Uint8Array) {
-  cache.set(key, { body, at: Date.now() });
-  while (cache.size > CACHE_MAX) {
-    const oldest = cache.keys().next().value;
-    if (oldest === undefined) break;
-    cache.delete(oldest);
-  }
-}
 
 /** Danh sách giọng đổi rất hiếm — giữ một giờ, khỏi đánh thức service mỗi lần mở Cài đặt. */
 let voicesCache: { at: number; data: unknown } | null = null;
@@ -99,7 +68,7 @@ tts.get("/voices", async (c) => {
   }
 });
 
-// POST /speak — {text, voice} → WAV 24 kHz.
+// POST /speak — {text, voice} → WAV 24 kHz, ghép từ mảnh làm sẵn (services/tts.service.ts).
 tts.post("/speak", async (c) => {
   const body = await c.req.json().catch(() => null);
   const rawText = typeof body?.text === "string" ? body.text.trim() : "";
@@ -112,31 +81,15 @@ tts.post("/speak", async (c) => {
     );
   }
 
-  const key = createHash("sha1").update(`${voice}|${rawText}`).digest("hex");
-  const cached = cacheGet(key);
-  if (cached) {
-    return new Response(cached as unknown as BodyInit, {
-      headers: { "Content-Type": "audio/wav", "Cache-Control": "private, max-age=3600", "X-Tts-Cache": "hit" },
-    });
-  }
-
-  // Hai nút mặc định của service là `voice: nu|nam`; chọn giọng cụ thể thì đi
-  // bằng `voice_name`. Gửi nhầm khóa là service lặng lẽ dùng giọng mặc định.
-  const payload =
-    voice === "nu" || voice === "nam" ? { text: rawText, voice } : { text: rawText, voice_name: voice };
-
   try {
-    const res = await callTts("/tts", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (!res.ok) throw new Error(`TTS ${res.status}`);
-    const buf = new Uint8Array(await res.arrayBuffer());
-    if (!buf.byteLength) throw new Error("TTS rỗng");
-    cacheSet(key, buf);
-    return new Response(buf as unknown as BodyInit, {
-      headers: { "Content-Type": "audio/wav", "Cache-Control": "private, max-age=3600", "X-Tts-Cache": "miss" },
+    const { wav, segments, hits } = await speakSentence(rawText, voice);
+    return new Response(wav as unknown as BodyInit, {
+      headers: {
+        "Content-Type": "audio/wav",
+        "Cache-Control": "private, max-age=3600",
+        // Soi log: "3/3" là cả câu có sẵn, không phải chờ tổng hợp.
+        "X-Tts-Segments": `${hits}/${segments}`,
+      },
     });
   } catch {
     // Im lặng có chủ ý: service đọc hỏng thì quầy vẫn in, vẫn kêu chuông như cũ.

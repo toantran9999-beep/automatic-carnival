@@ -61,6 +61,12 @@ export function StationProvider() {
    *  phiếu đặt món, kẻo cùng một đơn thì hóa đơn bị coi là đã in. */
   const printedReceiptRef = useRef<Set<string>>(new Set());
   /**
+   * Phiếu nào đã ĐỌC ra loa. Tách khỏi `printedRef` vì tiếng nay đọc TRƯỚC khi
+   * in: in hỏng thì `printedRef` gỡ khoá cho vòng đòi phiếu in lại, nhưng loa
+   * thì không được đọc lại đơn đó lần nữa.
+   */
+  const spokenRef = useRef<Set<string>>(new Set());
+  /**
    * Phiếu KHÔNG in được — hiện khối đỏ phải bấm mới tắt.
    *
    * ⚠️ Cố ý không dùng toast: toast tự biến mất sau vài giây, mà máy quầy không
@@ -109,7 +115,9 @@ export function StationProvider() {
       if (!key || printedReceiptRef.current.has(key)) return;
       printedReceiptRef.current.add(key);
 
-      speakStation(() => `Phiếu ${docSoPhieu(p.orderNumber ?? "")} đã thanh toán.`);
+      // Ngắt bằng dấu phẩy có chủ ý: "Phiếu hai mươi bảy" và "đã thanh toán" là hai
+      // mảnh tiếng làm sẵn, ghép lại là đọc tức thì (xem `speechSegments`).
+      speakStation(() => `Phiếu ${docSoPhieu(p.orderNumber ?? "")}, đã thanh toán.`);
 
       const org = orgSettings as any;
       printReceipt({
@@ -252,6 +260,42 @@ export function StationProvider() {
             ? "Mang về"
             : "Takeaway";
 
+      /**
+       * ĐỌC NGAY, song song với in — không đợi in xong.
+       *
+       * ⚠️ Trước 27/10/2026 câu chỉ được xếp hàng sau `printKitchenTicket` +
+       * `sendPrintAck`, trong khi giấy ra 0,3 s sau khi có đơn (sổ `order_prints`
+       * 14 ngày, 1.922 phiếu một tờ) → tiếng luôn tới sau tờ phiếu 2–3 giây.
+       * Hàm này không chặn: nó chỉ xếp hàng rồi trả về, đường in chạy y như cũ.
+       */
+      // Phiếu in BÙ (vòng đòi phiếu lúc máy vừa mở lại, tới 20 phút trước) thì
+      // in thôi, không đọc — đọc ầm lên một loạt đơn cũ chỉ làm cả quầy rối.
+      // Bản in lại vẫn đọc: đó là thao tác cố ý, và câu đọc tự xướng "In lại".
+      const createdMs = p.createdAt ? Date.parse(p.createdAt) : NaN;
+      const fresh = !Number.isFinite(createdMs) || Date.now() - createdMs < 120_000;
+      if ((fresh || p.reprintToken) && !spokenRef.current.has(printKey)) {
+        spokenRef.current.add(printKey);
+        speakStation((m) =>
+          buildOrderSpeech(
+            {
+              orderNumber: p.orderNumber,
+              tableNumber: p.tableNumber,
+              addOnId: p.addOnId,
+              reprintToken: p.reprintToken,
+              customerName: p.customerName,
+              orderNotes: p.notes,
+              items: (p.items ?? []).map((i) => ({
+                name: i.name,
+                quantity: i.quantity,
+                modifiers: i.modifiers ?? [],
+                notes: i.notes,
+              })),
+            },
+            m,
+          ),
+        );
+      }
+
       try {
         const res = await printKitchenTicket(
           {
@@ -259,6 +303,8 @@ export function StationProvider() {
             tableNumber: p.tableNumber ?? undefined,
             tableZone: p.tableZone ?? undefined,
             customerName: p.customerName ?? undefined,
+            // Ghi chú CẢ ĐƠN (ai lấy / giao đâu) — in ngay dưới BÀN / MANG VỀ.
+            notes: p.notes ?? undefined,
             // Tên người bấm đơn do máy chủ gửi kèm. Máy này là máy dùng chung nên
             // KHÔNG được lấy tài khoản đang đăng nhập ở đây làm tên trên phiếu.
             staffName: p.staffName ?? undefined,
@@ -297,28 +343,11 @@ export function StationProvider() {
             message: `Chỉ ra ${res.ok}/${res.total} phiếu — thiếu ${res.total - res.ok} tờ.`,
           });
           // Khối đỏ chỉ ăn thua khi có người nhìn màn hình — nói ra loa mới chắc.
-          speakStation(() => `Thiếu phiếu in, đơn số ${docSoPhieu(p.orderNumber)}. Kiểm tra máy in.`);
+          speakStation(() => `Thiếu tờ in. Phiếu ${docSoPhieu(p.orderNumber)}. Kiểm tra máy in.`);
           return;
         }
 
         if (useStationStore.getState().soundEnabled) beep();
-        speakStation((mode) =>
-          buildOrderSpeech(
-            {
-              orderNumber: p.orderNumber,
-              tableNumber: p.tableNumber,
-              addOnId: p.addOnId,
-              reprintToken: p.reprintToken,
-              items: (p.items ?? []).map((i) => ({
-                name: i.name,
-                quantity: i.quantity,
-                modifiers: i.modifiers ?? [],
-                notes: i.notes,
-              })),
-            },
-            mode,
-          ),
-        );
         const kind = p.addOnId
           ? lang === "vi" ? "Thêm món" : "Added items"
           : lang === "vi" ? "Đơn mới" : "New order";
@@ -333,7 +362,7 @@ export function StationProvider() {
           error: String(e?.message || e).slice(0, 400),
         });
         setPrintAlarm({ orderNumber: p.orderNumber, where, message: e?.message || "Không in được." });
-        speakStation(() => `Lỗi in phiếu, đơn số ${docSoPhieu(p.orderNumber)}. Kiểm tra máy in.`);
+        speakStation(() => `Lỗi in. Phiếu ${docSoPhieu(p.orderNumber)}. Kiểm tra máy in.`);
       }
     },
     [branchSettings, printKitchenTicket, lang, sendPrintAck],

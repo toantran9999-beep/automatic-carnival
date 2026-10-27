@@ -104,7 +104,7 @@ export function StationSpeechSettings() {
           onClick={() => {
             primeAudio();
             setSpeechVoice(speechVoice);
-            speak("Mang về. Hai bạc xỉu nóng, ít đường. Một trà đào cam sả.");
+            speak("Mang về, chị Trinh. hai Bạc xỉu nóng, Ít đường. một Trà đào cam sả.");
           }}
         >
           {vi ? "Nghe thử" : "Test voice"}

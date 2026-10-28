@@ -92,7 +92,11 @@ data_old/
 docker-compose.override.yml
 
 # Claude Code local settings (may contain credentials in permission rules)
-.claude/
+# Chỉ đưa lên git cấu hình hook dùng chung + script hook; settings.local.json,
+# worktree và mọi thứ khác trong .claude/ vẫn bị bỏ qua.
+.claude/*
+!.claude/settings.json
+!.claude/hooks/
 
 # Misc
 .vercel/

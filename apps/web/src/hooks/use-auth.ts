@@ -35,28 +35,6 @@ export function useAuth() {
     router.push(landingPathForRole(data.data.user.role));
   };
 
-  const register = async (input: {
-    organizationName: string;
-    slug: string;
-    email: string;
-    password: string;
-    name: string;
-  }) => {
-    const res = await fetch(
-      `${process.env.NEXT_PUBLIC_API_URL}/api/auth/register`,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(input),
-      }
-    );
-    const data = await res.json();
-    if (!data.success)
-      throw new Error(data.error?.message || "Error al registrarse");
-    setAuth(data.data.user, data.data.accessToken, data.data.refreshToken);
-    router.push(landingPathForRole(data.data.user.role));
-  };
-
   const logout = () => {
     clearAuth();
     router.push("/login");
@@ -68,7 +46,6 @@ export function useAuth() {
     selectedBranchId,
     setSelectedBranch,
     login,
-    register,
     logout,
     isAuthenticated: isAuthenticated(),
   };

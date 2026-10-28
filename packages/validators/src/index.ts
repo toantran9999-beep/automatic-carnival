@@ -22,14 +22,6 @@ export const loginSchema = z.object({
   password: z.string().min(8, "La contraseña debe tener al menos 8 caracteres"),
 });
 
-export const registerOrgSchema = z.object({
-  organizationName: z.string().min(2, "Nombre muy corto").max(255),
-  slug: z.string().min(2).max(100).regex(/^[a-z0-9-]+$/, "Solo letras minúsculas, números y guiones"),
-  email: z.string().email("Email inválido"),
-  password: z.string().min(8, "Mínimo 8 caracteres"),
-  name: z.string().min(2, "Nombre muy corto").max(255),
-});
-
 export const createUserSchema = z.object({
   email: z.string().email(),
   password: z.string().min(8),
@@ -365,7 +357,6 @@ export const movementQuerySchema = z.object({
 
 // Export types inferred from schemas
 export type LoginInput = z.infer<typeof loginSchema>;
-export type RegisterOrgInput = z.infer<typeof registerOrgSchema>;
 export type CreateUserInput = z.infer<typeof createUserSchema>;
 export type CreateBranchInput = z.infer<typeof createBranchSchema>;
 export type UpdateBranchInput = z.infer<typeof updateBranchSchema>;

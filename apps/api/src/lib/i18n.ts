@@ -15,7 +15,6 @@ export const translations = {
     table_in_use_cannot_delete:
       "Bàn đang có khách. Thanh toán hoặc huỷ bàn ở màn Bàn ăn trước khi xoá.",
     email_exists: "Email này đã được đăng ký",
-    org_slug_exists: "Đường dẫn tổ chức đã tồn tại",
     branch_slug_exists: "Đường dẫn chi nhánh đã tồn tại",
     user_not_org: "Tài khoản không thuộc tổ chức/chi nhánh này",
     user_already_table: "Nhân viên đã được phân công bàn này",
@@ -95,7 +94,6 @@ export const translations = {
     table_in_use_cannot_delete:
       "This table is in use. Settle or void it on the Tables screen before deleting.",
     email_exists: "Email is already registered",
-    org_slug_exists: "Organization slug already exists",
     branch_slug_exists: "Branch slug already exists",
     user_not_org: "User does not belong to this organization/branch",
     user_already_table: "User is already assigned to this table",

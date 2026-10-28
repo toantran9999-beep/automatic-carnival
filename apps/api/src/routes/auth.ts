@@ -4,7 +4,7 @@ import { zValidator } from "@hono/zod-validator";
 import { z } from "zod";
 import { eq, and, gt } from "drizzle-orm";
 import { db, schema } from "@restai/db";
-import { registerOrgSchema, loginSchema } from "@restai/validators";
+import { loginSchema } from "@restai/validators";
 import { hashPassword, verifyPassword } from "../lib/hash.js";
 import {
   signAccessToken,
@@ -16,114 +16,8 @@ import { t } from "../lib/i18n.js";
 
 const auth = new Hono<AppEnv>();
 
-// POST /register
-auth.post("/register", zValidator("json", registerOrgSchema), async (c) => {
-  const body = c.req.valid("json");
-
-  // Check if email already exists
-  const existing = await db
-    .select({ id: schema.users.id })
-    .from(schema.users)
-    .where(eq(schema.users.email, body.email))
-    .limit(1);
-
-  if (existing.length > 0) {
-    return c.json(
-      { success: false, error: { code: "CONFLICT", message: t(c, "email_exists") } },
-      409,
-    );
-  }
-
-  // Check if org slug exists
-  const existingOrg = await db
-    .select({ id: schema.organizations.id })
-    .from(schema.organizations)
-    .where(eq(schema.organizations.slug, body.slug))
-    .limit(1);
-
-  if (existingOrg.length > 0) {
-    return c.json(
-      { success: false, error: { code: "CONFLICT", message: t(c, "org_slug_exists") } },
-      409,
-    );
-  }
-
-  const passwordHash = await hashPassword(body.password);
-
-  // Create org + user + default branch in a single transaction
-  const result = await db.transaction(async (tx) => {
-    const [org] = await tx
-      .insert(schema.organizations)
-      .values({ name: body.organizationName, slug: body.slug })
-      .returning();
-
-    const [user] = await tx
-      .insert(schema.users)
-      .values({
-        organization_id: org.id,
-        email: body.email,
-        password_hash: passwordHash,
-        name: body.name,
-        role: "org_admin",
-      })
-      .returning({ id: schema.users.id, email: schema.users.email, name: schema.users.name, role: schema.users.role });
-
-    // Create default branch
-    const [branch] = await tx
-      .insert(schema.branches)
-      .values({
-        organization_id: org.id,
-        name: "Chi Nhánh Chính",
-        slug: body.slug,
-      })
-      .returning({ id: schema.branches.id });
-
-    // Link user to branch
-    await tx.insert(schema.userBranches).values({
-      user_id: user.id,
-      branch_id: branch.id,
-    });
-
-    return { org, user, branchId: branch.id };
-  });
-
-  const { org, user, branchId } = result;
-
-  const accessToken = await signAccessToken({
-    sub: user.id,
-    org: org.id,
-    role: user.role,
-    branches: [branchId],
-  });
-  const refreshToken = await signRefreshToken({ sub: user.id });
-
-  // Store refresh token hash
-  const tokenHash = await hashPassword(refreshToken);
-  await db.insert(schema.refreshTokens).values({
-    user_id: user.id,
-    token_hash: tokenHash,
-    expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
-  });
-
-  return c.json(
-    {
-      success: true,
-      data: {
-        user: {
-          id: user.id,
-          email: user.email,
-          name: user.name,
-          role: user.role,
-          organizationId: org.id,
-          branches: [branchId],
-        },
-        accessToken,
-        refreshToken,
-      },
-    },
-    201,
-  );
-});
+// Không có đường tự đăng ký: tài khoản do quản lý tạo trong màn Nhân viên.
+// (Gỡ 28/10/2026 — cửa tự tạo tổ chức + admin của RestAI gốc đang mở công khai.)
 
 // POST /login
 auth.post("/login", zValidator("json", loginSchema), async (c) => {

@@ -1,5 +1,7 @@
 # Codex Activity Log
 
+> 🗄️ **LƯU TRỮ** — Codex không còn dùng từ 28/09/2026, file này không ghi thêm. Giữ lại để tra phần code cũ do Codex viết.
+
 ## 2026-06-11 19:55 +07
 
 Task: Fix dashboard crash and Vietnamese fallback/loading text.

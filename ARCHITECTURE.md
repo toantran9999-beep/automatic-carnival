@@ -9,7 +9,7 @@
 - **Monorepo** Bun + Turborepo. `apps/api` (Hono/Bun, :3001, WebSocket `/ws`), `apps/web` (Next.js 16 App Router, :3000), `packages/{db,validators,config,ui,types}`.
 - **DB:** PostgreSQL 17 + Redis 7 (Drizzle ORM).
 - **Deploy:** Docker Compose + **Caddy** (auto-HTTPS) trên VPS **14.225.212.172** (`/root/toda-pos`). Domain nip.io: web `https://pos.14.225.212.172.nip.io`, api `https://api.14.225.212.172.nip.io`.
-- **Git nguồn:** GitHub `toantran9999-beep/automatic-carnival`, nhánh `master`. Quy tắc phối hợp đa-agent (Codex + Claude) ở `AGENTS.md`.
+- **Git nguồn:** GitHub `toantran9999-beep/automatic-carnival`, nhánh `master`. Quy tắc phối hợp nhiều phiên Claude ở `AGENTS.md` (Codex không còn dùng từ 28/09/2026; các dòng "Codex" bên dưới là lịch sử ai làm phần nào).
 
 ## 2. apps/api/src — Backend
 

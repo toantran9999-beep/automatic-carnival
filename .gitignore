@@ -91,12 +91,10 @@ data_old/
 # Docker
 docker-compose.override.yml
 
-# Claude Code local settings (may contain credentials in permission rules)
-# Chỉ đưa lên git cấu hình hook dùng chung + script hook; settings.local.json,
-# worktree và mọi thứ khác trong .claude/ vẫn bị bỏ qua.
-.claude/*
-!.claude/settings.json
-!.claude/hooks/
+# Claude Code: .claude/ (hook, settings.json…) đưa lên git để máy khác dùng chung.
+# Chỉ bỏ qua cấu hình riêng từng máy (có thể chứa quyền/bí mật) và worktree tạm.
+.claude/settings.local.json
+.claude/worktrees/
 
 # Misc
 .vercel/

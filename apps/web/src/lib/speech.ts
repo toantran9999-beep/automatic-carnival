@@ -11,7 +11,7 @@ import { apiFetchBlob } from "@/lib/fetcher";
  * chạy y như hôm chưa có nó — không ném lỗi ra ngoài, không chặn việc in.
  *
  * Phần DỰNG CÂU nằm ở `@restai/config` (dùng chung với máy chủ, để máy chủ làm
- * sẵn đúng từng mảnh tiếng). File này chỉ còn hàng đợi phát.
+ * sẵn đúng những câu hay gặp). File này chỉ còn hàng đợi phát.
  */
 
 export { buildOrderSpeech, docSoPhieu, type SpeechMode } from "@restai/config";

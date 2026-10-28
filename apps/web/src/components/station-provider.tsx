@@ -25,8 +25,9 @@ import { buildOrderSpeech, docSoPhieu, setSpeechVoice, speak, speechQueueLength 
 /**
  * Đọc một câu qua loa quầy — tự lấy cấu hình theo máy, tự im khi tắt.
  *
- * ⚠️ Luôn gọi SAU khi đã in và đã gửi xác nhận in. Tiếng nói không được phép
- * chen vào đường in: nó là lớp phụ trợ, hỏng thì quầy chạy như cũ.
+ * ⚠️ Không bao giờ `await` hàm này và không để nó ném lỗi: phiếu đặt món gọi nó
+ * TRƯỚC khi in để tiếng kịp tờ giấy, nên nó chặn là chặn luôn máy in. Tiếng nói
+ * là lớp phụ trợ, hỏng thì quầy chạy như cũ.
  */
 function speakStation(build: (mode: "short" | "full") => string | null) {
   try {
@@ -115,8 +116,6 @@ export function StationProvider() {
       if (!key || printedReceiptRef.current.has(key)) return;
       printedReceiptRef.current.add(key);
 
-      // Ngắt bằng dấu phẩy có chủ ý: "Phiếu hai mươi bảy" và "đã thanh toán" là hai
-      // mảnh tiếng làm sẵn, ghép lại là đọc tức thì (xem `speechSegments`).
       speakStation(() => `Phiếu ${docSoPhieu(p.orderNumber ?? "")}, đã thanh toán.`);
 
       const org = orgSettings as any;

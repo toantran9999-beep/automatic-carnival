@@ -3,7 +3,7 @@ import type { AppEnv } from "../types.js";
 import { authMiddleware } from "../middleware/auth.js";
 import { tenantMiddleware } from "../middleware/tenant.js";
 import { requirePermission } from "../middleware/rbac.js";
-import { speakSentence } from "../services/tts.service.js";
+import { getSpeech } from "../services/tts.service.js";
 
 /**
  * Đọc phiếu bằng giọng nói — cầu nối sang service TTS tự host trên VPS
@@ -68,7 +68,7 @@ tts.get("/voices", async (c) => {
   }
 });
 
-// POST /speak — {text, voice} → WAV 24 kHz, ghép từ mảnh làm sẵn (services/tts.service.ts).
+// POST /speak — {text, voice} → WAV 24 kHz, đọc nguyên câu, có đệm đĩa (services/tts.service.ts).
 tts.post("/speak", async (c) => {
   const body = await c.req.json().catch(() => null);
   const rawText = typeof body?.text === "string" ? body.text.trim() : "";
@@ -82,13 +82,13 @@ tts.post("/speak", async (c) => {
   }
 
   try {
-    const { wav, segments, hits } = await speakSentence(rawText, voice);
+    const { wav, hit } = await getSpeech(rawText, voice);
     return new Response(wav as unknown as BodyInit, {
       headers: {
         "Content-Type": "audio/wav",
         "Cache-Control": "private, max-age=3600",
-        // Soi log: "3/3" là cả câu có sẵn, không phải chờ tổng hợp.
-        "X-Tts-Segments": `${hits}/${segments}`,
+        // Soi log: "hit" là câu có sẵn, không phải chờ tổng hợp.
+        "X-Tts-Cache": hit ? "hit" : "miss",
       },
     });
   } catch {

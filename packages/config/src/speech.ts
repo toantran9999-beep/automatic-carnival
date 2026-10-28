@@ -1,9 +1,9 @@
 /**
  * Dựng câu đọc phiếu cho loa trạm quầy — DÙNG CHUNG máy chủ và máy quầy.
  *
- * ⚠️ Phải nằm ở gói dùng chung, không được chép đôi: máy chủ làm sẵn từng mảnh
- * tiếng (script `tts-prewarm`) theo đúng chữ máy quầy sẽ gửi lên. Lệch một chữ
- * ("Bàn ba" với "bàn ba") là trật khoá bộ nhớ đệm, phiếu lại phải chờ tổng hợp.
+ * ⚠️ Phải nằm ở gói dùng chung, không được chép đôi: máy chủ làm sẵn tiếng các
+ * câu hay gặp (script `tts-prewarm`) theo đúng chữ máy quầy sẽ gửi lên. Lệch một
+ * chữ ("Bàn ba" với "bàn ba") là trật khoá bộ nhớ đệm, phiếu lại phải chờ tổng hợp.
  *
  * Toàn bộ là hàm thuần — không đụng DOM, không gọi mạng.
  */
@@ -121,9 +121,6 @@ export interface SpeechOrderLike {
  * **pha gì, cho bàn nào**, còn số phiếu thì đã nằm trên tờ giấy vừa in — đọc
  * thêm chỉ làm câu dài ra và loãng phần quan trọng. Số phiếu chỉ còn xuất hiện
  * ở câu báo LỖI và câu báo đã thanh toán, vì hai chỗ đó là để tra cứu.
- *
- * Câu được ngắt bằng dấu phẩy/chấm có chủ đích: máy chủ cắt đúng ở đó thành
- * từng mảnh để dùng lại tiếng đã làm sẵn (xem `speechSegments`).
  */
 export function buildOrderSpeech(p: SpeechOrderLike, mode: SpeechMode): string | null {
   if (mode === "off") return null;
@@ -147,30 +144,4 @@ export function buildOrderSpeech(p: SpeechOrderLike, mode: SpeechMode): string |
   });
 
   return sanitizeSpeech(items.length ? `${head} ${items.join(". ")}.` : head);
-}
-
-export interface SpeechSegment {
-  /** Mảnh chữ, không kèm dấu ngắt. */
-  text: string;
-  /** Dấu đứng sau mảnh — quyết định khoảng lặng khi ghép. */
-  pause: "comma" | "period";
-}
-
-/**
- * Cắt câu thành mảnh tại dấu phẩy và dấu chấm.
- *
- * Câu phiếu lặp lại rất nhiều ("Bàn ba", "một Cà phê sữa đá", "Không đường"):
- * 30 ngày chỉ có 106 cụm món, 38 tùy chọn, 24 bàn. Mỗi mảnh làm tiếng một lần
- * rồi dùng mãi, nên phiếu thường không phải chờ tổng hợp giây nào.
- */
-export function speechSegments(text: string): SpeechSegment[] {
-  const out: SpeechSegment[] = [];
-  const re = /([^.,]+)([.,]?)/g;
-  let m: RegExpExecArray | null;
-  while ((m = re.exec(text))) {
-    const t = m[1].replace(/\s+/g, " ").trim();
-    if (t) out.push({ text: t, pause: m[2] === "," ? "comma" : "period" });
-    if (!m[0]) re.lastIndex++;
-  }
-  return out;
 }

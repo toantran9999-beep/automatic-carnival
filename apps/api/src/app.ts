@@ -73,8 +73,9 @@ app.use("/api/customer/*", rateLimiter(30, 60_000, "customer"));
 // Mỗi phiếu đọc tốn vài giây CPU trên máy 2 nhân đang bán hàng — chặn trước khi
 // một máy quầy kẹt vòng lặp kéo sập cả POS.
 // Cả quán ra internet bằng một IP, nên giới hạn này là của CẢ QUÁN chứ không
-// phải một máy. 60 từng làm rơi 4 câu lúc đông (log 14/10/2026); câu nay phần
-// lớn trả từ mảnh làm sẵn, gần như không tốn CPU.
+// phải một máy. 60 từng làm rơi 4 câu lúc đông (log 14/10/2026). Nới ra được vì
+// câu đã có sẵn trả từ đĩa, câu mới thì tts.service xếp hàng một-một — không bắn
+// dồn CPU dù có bao nhiêu yêu cầu.
 app.use("/api/tts/*", rateLimiter(120, 60_000, "tts"));
 
 // Public routes

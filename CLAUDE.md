@@ -25,7 +25,9 @@ Repo này có sẵn tài liệu tốt. **Đọc tài liệu trước, rồi nh�
 
 ## Deploy
 
-VPS `/root/toda-pos` · repo `toantran9999-beep/automatic-carnival` (`master`) · **dùng `/deploy-pos`** (= `bash scripts/deploy-pos.sh [--only api|web]`): tự chặn file dở, build cả `migrate` khi có `.sql` mới, rồi tự kiểm.
+VPS `/root/toda-pos` · repo `toantran9999-beep/automatic-carnival` (`master`).
+
+⚠️ **KHÔNG deploy giữa giờ bán** (anh Toàn chốt 28/10/2026). Ban ngày chỉ commit + push (`/deploy-pos` = push + xem trước). **VPS tự deploy lúc 22h** (cron → `scripts/vps-deploy.sh --nightly`): chờ job AI đêm xong, build đúng dịch vụ cần (+`migrate` khi có `.sql` mới), tự kiểm, hỏng thì tự quay về, nhắn Telegram. Deploy ngay (`--now`) chỉ khi anh nói rõ. APK mới: chỉ nhắc cài sau giờ đóng cửa.
 
 Hook trong `.claude/` (Python, không cần jq): chặn sửa `.env` thật + `momo key/` (`.env.example` vẫn sửa được), nhắc khi số `.sql` ≠ số mục journal.
 

@@ -26,6 +26,6 @@ export function canTouchLiveOps(role?: string): boolean {
 
 export function landingPathForRole(role?: string): string {
   if (isManagerRole(role)) return "/dashboard";
-  if (role === "kitchen") return "/kitchen";
+  if (role === "kitchen") return "/orders";
   return "/tables";
 }

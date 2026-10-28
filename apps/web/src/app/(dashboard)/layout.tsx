@@ -12,7 +12,6 @@ import {
   Grid3X3,
   Package,
   Wifi,
-  Heart,
   Users,
   CreditCard,
   BarChart3,
@@ -60,13 +59,11 @@ const allowedPaths = {
     "/pos",
     "/orders",
     "/tables",
-    "/kitchen",
     "/connections",
     "/menu",
     "/inventory",
     "/staff",
     "/payments",
-    "/loyalty",
     "/reports",
     "/settings",
   ]),
@@ -75,13 +72,11 @@ const allowedPaths = {
     "/pos",
     "/orders",
     "/tables",
-    "/kitchen",
     "/connections",
     "/menu",
     "/inventory",
     "/staff",
     "/payments",
-    "/loyalty",
     "/reports",
     "/settings",
   ]),
@@ -90,8 +85,9 @@ const allowedPaths = {
   // (tổng thu, tiền mặt, thẻ, QR, tip). Thu tiền vẫn làm bình thường ở màn POS và
   // trang Bàn ăn. Đổi lại, nhân viên không tự in lại hóa đơn cũ được — chủ quán đã chọn vậy.
   cashier: new Set(["/pos", "/orders", "/tables", "/connections"]),
-  waiter: new Set(["/pos", "/orders", "/tables", "/connections", "/kitchen"]),
-  kitchen: new Set(["/kitchen"]),
+  waiter: new Set(["/pos", "/orders", "/tables", "/connections"]),
+  // Màn Bếp/KDS đã gỡ (quán không có bếp) — vai trò cũ này chỉ còn xem đơn.
+  kitchen: new Set(["/orders"]),
 };
 
 function getTranslatedNavGroups(t: any): NavGroup[] {
@@ -106,7 +102,6 @@ function getTranslatedNavGroups(t: any): NavGroup[] {
         { href: "/pos", label: t("nav.pos"), icon: Smartphone },
         { href: "/orders", label: t("nav.orders"), icon: ClipboardList },
         { href: "/tables", label: t("nav.tables"), icon: Grid3X3 },
-        // Quán không có bếp — chạy theo phiếu in + Trạm in tại quầy, nên ẩn màn KDS.
         { href: "/connections", label: t("nav.connections"), icon: Wifi },
         { href: "/menu", label: t("nav.menu"), icon: UtensilsCrossed },
       ],
@@ -122,7 +117,6 @@ function getTranslatedNavGroups(t: any): NavGroup[] {
     {
       label: t("nav.business"),
       items: [
-        { href: "/loyalty", label: t("nav.loyalty"), icon: Heart },
         { href: "/reports", label: t("nav.reports"), icon: BarChart3 },
         { href: "/settings", label: t("nav.settings"), icon: Settings },
       ],

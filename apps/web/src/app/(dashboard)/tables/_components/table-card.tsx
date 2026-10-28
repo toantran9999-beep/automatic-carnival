@@ -8,7 +8,6 @@ import {
   SelectValue,
 } from "@restai/ui/components/select";
 import {
-  QrCode,
   Trash2,
   History,
   UserPlus,
@@ -40,11 +39,9 @@ interface TableCardProps {
    */
   canOperate?: boolean;
   /** Ẩn nút QR bàn (quán không dùng luồng khách tự quét) */
-  hideQr?: boolean;
   waiterAssignmentEnabled: boolean;
   statusChangePending: boolean;
   serviceRequest?: TableServiceRequestIndicator;
-  onQr: (table: any) => void;
   onHistory: (table: any) => void;
   onAssign: (table: any) => void;
   onDelete: (table: any) => void;
@@ -113,11 +110,9 @@ export function TableCard({
   now,
   canManage,
   canOperate = true,
-  hideQr,
   waiterAssignmentEnabled,
   statusChangePending,
   serviceRequest,
-  onQr,
   onHistory,
   onAssign,
   onDelete,
@@ -160,7 +155,6 @@ export function TableCard({
 
   // Chỉ giữ đúng những mục thao tác được — thứ tự theo tần suất dùng trong ca.
   const actions: ActionItem[] = [
-    ...(hideQr ? [] : [{ key: "qr", label: "QR bàn", icon: QrCode, onSelect: () => onQr(table) }]),
     { key: "history", label: t("tables.history"), icon: History, onSelect: () => onHistory(table) },
     ...(waiterAssignmentEnabled
       ? [{ key: "assign", label: t("tables.assign"), icon: UserPlus, onSelect: () => onAssign(table) }]

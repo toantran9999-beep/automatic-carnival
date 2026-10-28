@@ -29,7 +29,6 @@ export default function PosSettingsPage() {
 
   const [form, setForm] = useState({
     hidePosNav: false,
-    hideTableQr: false,
     inventoryEnabled: false,
     waiterTableAssignmentEnabled: false,
     showBestSellers: true,
@@ -42,7 +41,6 @@ export default function PosSettingsPage() {
     const s = branchData.settings ?? {};
     setForm({
       hidePosNav: s.hide_pos_nav ?? false,
-      hideTableQr: s.hide_table_qr ?? false,
       inventoryEnabled: s.inventory_enabled ?? false,
       waiterTableAssignmentEnabled: s.waiter_table_assignment_enabled ?? false,
       // Chưa có khóa = BẬT (tính năng mặc định bật sẵn).
@@ -56,7 +54,6 @@ export default function PosSettingsPage() {
     try {
       await updateBranch.mutateAsync({
         hidePosNav: form.hidePosNav,
-        hideTableQr: form.hideTableQr,
         inventoryEnabled: form.inventoryEnabled,
         waiterTableAssignmentEnabled: form.waiterTableAssignmentEnabled,
         showBestSellers: form.showBestSellers,
@@ -98,18 +95,6 @@ export default function PosSettingsPage() {
             <Switch
               checked={form.hidePosNav}
               onCheckedChange={(v) => setForm({ ...form, hidePosNav: v })}
-            />
-          </SettingRow>
-          <SettingRow
-            label={t("settings.hideTableQr", "Ẩn nút QR trên thẻ bàn")}
-            help={t(
-              "settings.hideTableQrHelp",
-              "Quán chưa dùng luồng khách tự quét QR gọi món — ẩn để thẻ bàn gọn hơn. Tắt lại khi muốn dùng.",
-            )}
-          >
-            <Switch
-              checked={form.hideTableQr}
-              onCheckedChange={(v) => setForm({ ...form, hideTableQr: v })}
             />
           </SettingRow>
           <SettingRow

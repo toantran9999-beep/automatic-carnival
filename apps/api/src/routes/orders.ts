@@ -928,14 +928,11 @@ orders.patch(
       await wsManager.publish(`session:${order.table_session_id}`, updatePayload);
     }
 
-    // Handle side effects when order is completed (loyalty points + inventory deduction)
+    // Đơn xong thì trừ kho
     if (status === "completed") {
       await handleOrderCompletion({
         orderId: order.id,
         orderNumber: order.order_number,
-        orderTotal: order.total,
-        customerId: order.customer_id,
-        organizationId: tenant.organizationId,
         branchId: tenant.branchId,
         inventoryDeducted: order.inventory_deducted,
       });

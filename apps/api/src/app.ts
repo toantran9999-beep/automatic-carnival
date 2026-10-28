@@ -17,17 +17,13 @@ import { menu } from "./routes/menu.js";
 import { tables } from "./routes/tables.js";
 import { spaces } from "./routes/spaces.js";
 import { orders } from "./routes/orders.js";
-import { kitchen } from "./routes/kitchen.js";
 import { payments } from "./routes/payments.js";
 import { invoices } from "./routes/invoices.js";
 import { inventory } from "./routes/inventory.js";
-import { loyalty } from "./routes/loyalty.js";
 import { staff } from "./routes/staff.js";
 import { reports } from "./routes/reports.js";
 import { settings } from "./routes/settings.js";
-import { customer } from "./routes/customer.js";
 import { uploads } from "./routes/uploads.js";
-import { coupons } from "./routes/coupons.js";
 import { aiImages } from "./routes/ai-images.js";
 import { shifts } from "./routes/shifts.js";
 import { tts } from "./routes/tts.js";
@@ -69,7 +65,6 @@ app.use("*", logger());
 app.onError(errorHandler);
 app.use("*", rateLimiter(100, 60_000, "global"));
 app.use("/api/auth/*", rateLimiter(20, 60_000, "auth"));
-app.use("/api/customer/*", rateLimiter(30, 60_000, "customer"));
 // Mỗi phiếu đọc tốn vài giây CPU trên máy 2 nhân đang bán hàng — chặn trước khi
 // một máy quầy kẹt vòng lặp kéo sập cả POS.
 // Cả quán ra internet bằng một IP, nên giới hạn này là của CẢ QUÁN chứ không
@@ -81,7 +76,6 @@ app.use("/api/tts/*", rateLimiter(120, 60_000, "tts"));
 // Public routes
 app.route("/health", health);
 app.route("/api/auth", auth);
-app.route("/api/customer", customer);
 
 // Protected routes (auth middleware applied within each route module)
 app.route("/api/orgs", orgs);
@@ -90,16 +84,13 @@ app.route("/api/menu", menu);
 app.route("/api/tables", tables);
 app.route("/api/spaces", spaces);
 app.route("/api/orders", orders);
-app.route("/api/kitchen", kitchen);
 app.route("/api/payments", payments);
 app.route("/api/invoices", invoices);
 app.route("/api/inventory", inventory);
-app.route("/api/loyalty", loyalty);
 app.route("/api/staff", staff);
 app.route("/api/reports", reports);
 app.route("/api/settings", settings);
 app.route("/api/uploads", uploads);
-app.route("/api/coupons", coupons);
 app.route("/api/ai-images", aiImages);
 app.route("/api/shifts", shifts);
 app.route("/api/tts", tts);

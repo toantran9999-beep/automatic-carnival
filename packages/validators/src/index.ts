@@ -179,8 +179,6 @@ export const createOrderSchema = z.object({
   customerName: z.string().max(255).optional(),
   notes: z.string().max(500).optional(),
   items: z.array(createOrderItemSchema).min(1, "Đơn hàng phải có ít nhất một món"),
-  couponCode: z.string().max(50).optional(),
-  redemptionId: z.string().uuid().optional(),
   tableId: z.string().uuid().optional(),
   tableSessionId: z.string().uuid().optional(),
 });
@@ -300,21 +298,6 @@ export const createStockIssueSchema = z.object({
   reason: z.string().min(1).max(500),
 });
 
-// Loyalty validators
-export const createLoyaltyProgramSchema = z.object({
-  name: z.string().min(1).max(255),
-  pointsPerCurrencyUnit: z.number().int().min(1).default(1),
-  currencyPerPoint: z.number().int().min(1).default(100),
-  isActive: z.boolean().default(true),
-});
-
-export const createCustomerSchema = z.object({
-  name: z.string().min(1).max(255),
-  email: z.string().email().optional(),
-  phone: z.string().max(20).optional(),
-  birthDate: z.string().optional(),
-});
-
 // Report validators
 export const reportQuerySchema = z.object({
   startDate: z.string(),
@@ -355,7 +338,6 @@ export const updateBranchSettingsSchema = z.object({
   // Ẩn mục "POS (Bán hàng)" trên menu — nhân viên vào POS qua màn Bàn ăn (chọn bàn/mang về)
   hidePosNav: z.boolean().optional(),
   // Ẩn nút QR bàn (quán không dùng luồng khách tự quét QR gọi món)
-  hideTableQr: z.boolean().optional(),
   // Cấu hình mẫu hóa đơn — merge vào settings.receipt (không ghi đè settings khác như sepay)
   receipt: z.record(z.unknown()).optional(),
   // Nhóm "Bán chạy" trên màn Bán hàng (mặc định BẬT khi chưa có khóa trong settings)
@@ -381,21 +363,6 @@ export const movementQuerySchema = z.object({
   itemId: z.string().uuid().optional(),
 });
 
-export const customerSearchSchema = z.object({
-  search: z.string().optional(),
-  page: z.coerce.number().int().min(1).default(1),
-  limit: z.coerce.number().int().min(1).max(100).default(20),
-});
-
-export const couponQuerySchema = z.object({
-  status: z.enum(["active", "inactive", "expired"]).optional(),
-  type: z.enum(["percentage", "fixed", "item_free", "item_discount", "category_discount", "buy_x_get_y"]).optional(),
-});
-
-export const kitchenQuerySchema = z.object({
-  status: z.enum(["pending", "confirmed", "preparing", "ready"]).optional(),
-});
-
 // Export types inferred from schemas
 export type LoginInput = z.infer<typeof loginSchema>;
 export type RegisterOrgInput = z.infer<typeof registerOrgSchema>;
@@ -417,8 +384,6 @@ export type CreateInventoryItemInput = z.infer<typeof createInventoryItemSchema>
 export type CreateInventoryMovementInput = z.infer<typeof createInventoryMovementSchema>;
 export type CreateStockReceiptInput = z.infer<typeof createStockReceiptSchema>;
 export type CreateStockIssueInput = z.infer<typeof createStockIssueSchema>;
-export type CreateLoyaltyProgramInput = z.infer<typeof createLoyaltyProgramSchema>;
-export type CreateCustomerInput = z.infer<typeof createCustomerSchema>;
 export type ReportQueryInput = z.infer<typeof reportQuerySchema>;
 export type PaginationInput = z.infer<typeof paginationSchema>;
 export type UpdateModifierGroupInput = z.infer<typeof updateModifierGroupSchema>;

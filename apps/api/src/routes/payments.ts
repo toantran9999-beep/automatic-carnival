@@ -453,15 +453,12 @@ async function completePaymentForOrder(tx: any, args: {
   return { order, paymentsCreated, completedOrders, fullyPaid };
 }
 
-/** Chạy side-effect sau thanh toán (trừ kho + tích điểm) cho các đơn vừa completed. */
-async function runCompletionSideEffects(orders: any[], organizationId: string, branchId: string) {
+/** Chạy side-effect sau thanh toán (trừ kho) cho các đơn vừa completed. */
+async function runCompletionSideEffects(orders: any[], branchId: string) {
   for (const o of orders) {
     await handleOrderCompletion({
       orderId: o.id,
       orderNumber: o.order_number,
-      orderTotal: o.total,
-      customerId: o.customer_id,
-      organizationId,
       branchId,
       inventoryDeducted: o.inventory_deducted,
     });
@@ -862,7 +859,7 @@ async function finalizePaidRequest(request: any, args: {
   if (!result) return null;
 
   // Sau khi tx commit: trừ kho + tích điểm (idempotent, tự nuốt lỗi).
-  await runCompletionSideEffects(result.completedOrders || [], request.organization_id, request.branch_id);
+  await runCompletionSideEffects(result.completedOrders || [], request.branch_id);
 
   const orderPayload = await buildPaidOrderPayload(request.order_id);
 
@@ -2513,7 +2510,7 @@ payments.post(
             .set({ status: "completed", updated_at: new Date() })
             .where(eq(schema.orders.id, o.id));
           // Trừ kho + tích điểm (idempotent, tự nuốt lỗi — không fail thanh toán)
-          await runCompletionSideEffects([o], tenant.organizationId, tenant.branchId);
+          await runCompletionSideEffects([o], tenant.branchId);
         }
       }
 
@@ -2603,7 +2600,7 @@ payments.post(
           .set({ status: "completed", updated_at: new Date() })
           .where(eq(schema.orders.id, order.id));
         // Trừ kho + tích điểm (idempotent, tự nuốt lỗi — không fail thanh toán)
-        await runCompletionSideEffects([order], tenant.organizationId, tenant.branchId);
+        await runCompletionSideEffects([order], tenant.branchId);
       }
     }
 

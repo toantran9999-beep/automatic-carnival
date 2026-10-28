@@ -60,7 +60,6 @@ import { PageHeader } from "@/components/page-header";
 import { ConfirmDialog } from "@/components/confirm-dialog";
 import { FloorPlannerView } from "./_components/floor-planner-view";
 import { GridView } from "./_components/grid-view";
-import { QrDialog } from "./_components/qr-dialog";
 import { SpaceInfoCard } from "./_components/space-management";
 import { HistoryDialog } from "./_components/history-dialog";
 import { AssignmentDialog } from "./_components/assignment-dialog";
@@ -100,7 +99,6 @@ export default function TablesPage() {
   const [activeTab, setActiveTab] = useState("all");
   const [viewMode, setViewMode] = useState<"grid" | "planner">("grid");
   const [withBillOnly, setWithBillOnly] = useState(false);
-  const [qrDialog, setQrDialog] = useState<any>(null);
   const [deleteConfirm, setDeleteConfirm] = useState<{ type: "table" | "space"; id: string; name: string } | null>(null);
   const [historyDialog, setHistoryDialog] = useState<any>(null);
   const [assignDialog, setAssignDialog] = useState<any>(null);
@@ -215,11 +213,8 @@ export default function TablesPage() {
   }, [router, prefetchPosMenu]);
 
   const waiterAssignmentEnabled = (branchSettingsData as any)?.settings?.waiter_table_assignment_enabled ?? false;
-  // Ẩn chức năng QR bàn (quán chưa dùng luồng khách tự quét) — bật/tắt trong Cài đặt → Chi nhánh
-  const hideTableQr = (branchSettingsData as any)?.settings?.hide_table_qr ?? false;
   const spaces: any[] = spacesData ?? [];
   const allTables: any[] = tablesData?.tables ?? [];
-  const branchSlug: string = tablesData?.branchSlug ?? "";
   const isLoading = spacesLoading || tablesLoading;
   const currentTableIds = useMemo(
     () => new Set(allTables.map((table: any) => String(table.id))),
@@ -834,11 +829,9 @@ export default function TablesPage() {
             isLoading={isLoading}
             canManage={canManageTables}
             canOperate={canOperate}
-            hideQr={hideTableQr}
             waiterAssignmentEnabled={waiterAssignmentEnabled}
             statusChangePending={updateTableStatus.isPending}
             requestByTableId={requestByTableId}
-            onQr={setQrDialog}
             onHistory={setHistoryDialog}
             onAssign={setAssignDialog}
             onOperations={setOperationsDialog}
@@ -906,7 +899,6 @@ export default function TablesPage() {
           )}
         </DialogContent>
       </Dialog>
-      <QrDialog table={qrDialog} branchSlug={branchSlug} onClose={() => setQrDialog(null)} />
       <ConfirmDialog
         open={!!deleteConfirm}
         onOpenChange={(open) => !open && setDeleteConfirm(null)}

@@ -33,11 +33,9 @@ interface GridViewProps {
   canManage?: boolean;
   /** false = chỉ xem dữ liệu đang bán hàng (quản lý/admin). Xem `canTouchLiveOps`. */
   canOperate?: boolean;
-  hideQr?: boolean;
   waiterAssignmentEnabled: boolean;
   statusChangePending: boolean;
   requestByTableId: Record<string, TableServiceRequestIndicator>;
-  onQr: (table: any) => void;
   onHistory: (table: any) => void;
   onAssign: (table: any) => void;
   onDelete: (table: any) => void;
@@ -54,11 +52,9 @@ export function GridView({
   isLoading,
   canManage,
   canOperate = true,
-  hideQr,
   waiterAssignmentEnabled,
   statusChangePending,
   requestByTableId,
-  onQr,
   onHistory,
   onAssign,
   onDelete,
@@ -88,11 +84,9 @@ export function GridView({
               now={now}
               canManage={canManage}
               canOperate={canOperate}
-              hideQr={hideQr}
               waiterAssignmentEnabled={waiterAssignmentEnabled}
               statusChangePending={statusChangePending}
               serviceRequest={requestByTableId[table.id]}
-              onQr={onQr}
               onHistory={onHistory}
               onAssign={onAssign}
               onDelete={onDelete}

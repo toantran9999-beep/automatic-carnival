@@ -17,8 +17,8 @@
 |---|---|
 | `index.ts` | `Bun.serve` :3001, nâng cấp WS tại `/ws`, graceful shutdown. |
 | `app.ts` | Mount tất cả route Hono + CORS (`CORS_ORIGINS`) + rate-limit. |
-| `routes/` | `auth, orgs, branches, menu, tables, spaces, orders, kitchen, payments, invoices, inventory, loyalty, staff, reports, settings, customer, uploads, coupons, ai-images`. |
-| `services/` | `order.service` (tạo đơn + coupon + loyalty + inventory + snapshot unit), `session.service` (phiên bàn: create/approve/end), `inventory/loyalty/customer.service`. |
+| `routes/` | `auth, orgs, branches, menu, tables, spaces, orders, payments, invoices, inventory, staff, reports, settings, uploads, ai-images, shifts, tts…` (kitchen/loyalty/coupons/customer đã gỡ 28/10/2026). |
+| `services/` | `order.service` (tạo đơn + trừ kho + snapshot unit + hủy đơn), `session.service` (phiên bàn: create/approve/end), `inventory.service`. |
 | `middleware/` | `auth` (JWT), `tenant` (đọc `x-branch-id` → tenant), `rbac` (`requirePermission`), `error-handler`, `rate-limit`. |
 | `lib/` | `r2` (`storeUpload`/`deleteUpload` — R2 nếu cấu hình, ngược lại lưu cục bộ volume), `i18n` (`t(c,key)`), `logger`, `redis`, `id`, `timezone`. |
 | `ws/` | `manager` (publish theo channel `branch:<id>`), `handlers`. |
@@ -38,11 +38,11 @@
 | POS | `app/(dashboard)/pos/page.tsx` + `_components/`: `product-grid`, `cart-sidebar`, `modifier-dialog`, `pos-payment-dialog`, `success-dialog`. URL: `?tableId=&pay=1` (mở thanh toán), `?takeout=1`. |
 | Bàn ăn | `app/(dashboard)/tables/page.tsx` + `_components/`: `grid-view`, `table-card`, `table-operations-dialog` (gộp/tách/chuyển — Codex), `space-management`, `floor-planner-view`. |
 | Thực đơn | `app/(dashboard)/menu/page.tsx` + `_components/`: `products-panel`, `product-dialog`, `category-dialog`, `modifier-groups-panel`, `modifier-group-dialog`, `image-upload-button`. |
-| Khác | `orders, kitchen, inventory, staff, payments, loyalty, reports, settings, connections`. |
-| Khách QR | `app/(customer)/...` — tồn tại nhưng **đã ẩn** trong luồng bàn (`showCustomerQrFlow=false`). |
+| Khác | `orders, inventory, staff, payments, reports, settings, connections`. |
+| Khách QR | **Đã gỡ 28/10/2026** (0 đơn khách tự gọi từ 30/07). Đặt món qua app sẽ viết MỚI, không dựa code cũ. |
 | Components dùng chung | `print-ticket` (phiếu bếp + in Android), `station-provider` (nghe `order:new` → tự in tại quầy), `station-toggle` (bật/tắt Trạm quầy theo thiết bị), `theme-switcher`, `brand-logo` (logo quán, dùng ảnh gốc làm mặt nạ + `currentColor`), `clock-now`, `sw-register`, `page-header`, `confirm-dialog`. |
 | Stores (Zustand) | `auth-store`, `cart-store`, `customer-store`, `lang-store`, `theme-store`, `station-store` (cờ Trạm quầy + chuông, lưu theo thiết bị). |
-| Hooks | `use-menu`, `use-tables`, `use-orders`, `use-payments`, `use-reports`, `use-dashboard`, `use-settings`, `use-uploads`, `use-ai-images`, `use-kitchen/inventory/loyalty/staff/coupons`, `use-websocket`, `use-auth`. |
+| Hooks | `use-menu`, `use-tables`, `use-orders`, `use-payments`, `use-reports`, `use-dashboard`, `use-settings`, `use-uploads`, `use-ai-images`, `use-inventory/staff`, `use-websocket`, `use-auth`. |
 | Lib | `api-client`, `fetcher` (`apiFetch` tự gắn `x-branch-id`), `translations` (VI/EN), `utils` (`formatCurrency`). |
 
 ## 4. packages

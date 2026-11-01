@@ -118,8 +118,9 @@ const CATEGORIES: { name: string; items: Ing[] }[] = [
   {
     name: "Bao bì",
     items: [
-      // Quán chỉ có hai cỡ ly: 360ml (mặc định) và 700ml (Americano, soda).
-      { name: "Ly nhựa 360ml", unit: "cái", pack: [50, "lốc 50 cái"], min: 100 },
+      // Quán chỉ có hai cỡ ly: 400ml (mặc định) và 700ml (Americano, soda).
+      // Nhà cung cấp ghi ly nhỏ là "360ml" — cùng một ly, quán gọi 400ml theo menu in.
+      { name: "Ly nhựa 400ml", unit: "cái", pack: [50, "lốc 50 cái"], min: 100 },
       { name: "Ly nhựa 700ml", unit: "cái", pack: [50, "lốc 50 cái"], min: 100 },
       { name: "Nắp ly", unit: "cái", pack: [50, "lốc 50 cái"], min: 100 },
       { name: "Ống hút", unit: "cái", pack: [100, "gói 100 cái"], min: 200 },
@@ -175,6 +176,8 @@ const RENAMES: [from: string, to: string][] = [
   // Tên do sửa tay trên giao diện (đúng vùng trồng, chỉ khác cách gọi). Gom về
   // đúng tên trong bảng giá sỉ để công thức và kho cùng trỏ một bao.
   ["Hạt Honey Robusta — Đắk Lắk", "Hạt Robusta mật ong"],
+  // Cùng một ly: nhà cung cấp ghi 360ml, menu in 400ml (anh Toàn chốt 01/11/2026).
+  ["Ly nhựa 360ml", "Ly nhựa 400ml"],
 ];
 
 /** Cấp mã nội bộ TODA-0001 tăng dần trong phạm vi một chi nhánh. */

@@ -39,9 +39,9 @@ const SHOT1 = 12;
  * số để sửa một chỗ khi cân lại thực tế. Sai vài chục gram đá không ảnh hưởng tiền,
  * nhưng cần có số thì mới biết lúc nào hết đá.
  *
- * Quán chỉ có hai cỡ ly: 360ml (mặc định) và 700ml (Americano, soda).
+ * Quán chỉ có hai cỡ ly: 400ml (mặc định) và 700ml (Americano, soda).
  */
-const DA_360 = 110;
+const DA_400 = 110;
 const DA_700 = 250;
 const NUOC_AMERICANO = 400;
 
@@ -63,12 +63,12 @@ const LO_HAT_DANG_DUNG: Record<string, string> = {
   Mix: "Hạt Mix",
 };
 
-const LY_360 = "Ly nhựa 360ml";
+const LY_400 = "Ly nhựa 400ml";
 const LY_700 = "Ly nhựa 700ml";
 
 /** Bao bì mặc định của một ly nước — SOP Mục V (đóng gói). */
 const BAO_BI: [string, number][] = [
-  [LY_360, 1],
+  [LY_400, 1],
   ["Nắp ly", 1],
   ["Ống hút", 1],
 ];
@@ -121,14 +121,14 @@ const RECIPES: Record<string, Recipe> = {
   // --- Nhóm cà phê (SOP IV.1) ---
 
   // Thường: Ít 4g / Vừa 7g / Nhiều 10g đường → nền lấy mức Vừa.
-  "Cà phê đá": [[HAT_NEN, SHOT2], ["Đường vàng", 7], ["Đá viên", DA_360], ...BAO_BI],
+  "Cà phê đá": [[HAT_NEN, SHOT2], ["Đường vàng", 7], ["Đá viên", DA_400], ...BAO_BI],
 
   // Hai món dưới là cùng công thức, khác đúng loại hạt (bán thành món riêng trên
   // thực đơn chứ không qua tùy chọn).
   "Cà phê đá (hạt Arabica)": [
     ["Hạt Arabica — Brazil Cerrado", SHOT2],
     ["Đường vàng", 7],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   // Dùng chung bao "Hạt Blend" với tùy chọn "Loại hạt — Blend" cho nhất quán.
@@ -137,12 +137,12 @@ const RECIPES: Record<string, Recipe> = {
   "Cà phê đá (Blend)": [
     ["Hạt Blend", SHOT2],
     ["Đường vàng", 7],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
 
   // Thường: Ít 20g / Vừa 30g / Nhiều 35g sữa đặc → nền lấy Vừa.
-  "Cà phê sữa đá": [[HAT_NEN, SHOT2], ["Sữa đặc", 30], ["Đá viên", DA_360], ...BAO_BI],
+  "Cà phê sữa đá": [[HAT_NEN, SHOT2], ["Sữa đặc", 30], ["Đá viên", DA_400], ...BAO_BI],
 
   // Hai món "(nhẹ)" vẫn còn đứng riêng trên thực đơn (chưa gộp hết vào tùy chọn
   // "Độ đậm"). SOP có cột Nhẹ riêng: 1 shot, bớt 1g đường, +25ml nước.
@@ -154,14 +154,14 @@ const RECIPES: Record<string, Recipe> = {
     [HAT_NEN, SHOT1],
     ["Đường vàng", 6],
     ["Nước lọc", 25],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Cà phê sữa đá (nhẹ)": [
     [HAT_NEN, SHOT1],
     ["Sữa đặc", 25],
     ["Nước lọc", 25],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
 
@@ -171,7 +171,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Sữa đặc", 30],
     ["Sữa tươi", 50],
     ["Đường vàng", 4],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
 
@@ -180,7 +180,7 @@ const RECIPES: Record<string, Recipe> = {
     [HAT_NEN, SHOT2],
     ["Sữa đặc", 40],
     ["Nước lọc", 40],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
 
@@ -194,7 +194,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Đường vàng", 4.5],
     ["Bột xanthan", 0.2],
     ["Whipping cream", 20],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
 
@@ -204,7 +204,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Sữa tươi", 50],
     ["Đường vàng", 4],
     ["Whipping cream", 5],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
 
@@ -213,7 +213,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Sữa đặc", 30],
     ["Sữa tươi", 50],
     ["Hạnh nhân", 7],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
 
@@ -222,7 +222,7 @@ const RECIPES: Record<string, Recipe> = {
     [HAT_NEN, SHOT2],
     ["Sữa tươi", 100],
     ["Nước đường", 15],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
 
@@ -243,7 +243,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước lọc", 130],
     ["Nước đường", 40],
     ["Chanh", 10],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Trà tắc": [
@@ -251,7 +251,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước lọc", 130],
     ["Nước đường", 40],
     ["Tắc", 2],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Trà tắc xí muội": [
@@ -260,7 +260,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước lọc", 130],
     ["Nước đường", 40],
     ["Tắc", 2],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Trà chanh quế": [
@@ -269,7 +269,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước lọc", 130],
     ["Nước đường", 40],
     ["Chanh", 11],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Trà chanh bạc hà": [
@@ -278,7 +278,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước đường", 30],
     ["Chanh", 10],
     ["Syrup bạc hà", 10],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   // SOP "Trà Xanh Bạc Hà" — không chanh.
@@ -287,21 +287,21 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước lọc", 130],
     ["Nước đường", 25],
     ["Syrup bạc hà", 10],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Trà bông cúc": [
     ["Bông cúc", 1],
     ["Nước lọc", 130],
     ["Nước đường", 40],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Trà Atiso đỏ": [
     ["Atiso đỏ", 2],
     ["Nước lọc", 130],
     ["Nước đường", 40],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Trà dâu tây": [
@@ -309,7 +309,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước lọc", 100],
     ["Nước đường", 40],
     ["Dâu tây", 5],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Trà đào": [
@@ -318,14 +318,14 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước đường", 20],
     ["Mứt đào", 35],
     ["Syrup đào", 10],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Soda chanh": [
     ["Soda", 160],
     ["Nước đường", 40],
     ["Chanh", 10],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Soda chanh bạc hà": [
@@ -333,7 +333,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước đường", 30],
     ["Chanh", 10],
     ["Syrup bạc hà", 10],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
 
@@ -345,7 +345,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Sữa đặc", 30],
     ["Sữa tươi", 55],
     ["Đường vàng", 3.5],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Matcha sữa": [
@@ -354,7 +354,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Sữa đặc", 25],
     ["Sữa tươi", 50],
     ["Đường vàng", 3.5],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Cacao đá xay": [
@@ -364,7 +364,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước đường", 25],
     ["Sữa đặc", 25],
     ["Bột xanthan", 0.2],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Matcha đá xay": [
@@ -374,7 +374,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước đường", 25],
     ["Sữa đặc", 25],
     ["Bột xanthan", 0.2],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
   "Cà phê đá xay": [
@@ -385,7 +385,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước đường", 25],
     ["Sữa đặc", 25],
     ["Bột xanthan", 0.2],
-    ["Đá viên", DA_360],
+    ["Đá viên", DA_400],
     ...BAO_BI,
   ],
 
@@ -498,13 +498,13 @@ const MOD_RULES: ModRule[] = [
   },
   // "Sữa đặc 30g" = đúng mức nền → không cần dòng nào.
 
-  // Đá — ⚠️ ước lượng như DA_360.
+  // Đá — ⚠️ ước lượng như DA_400.
   { group: "Đá", modifier: "Ít đá", deltas: [["Đá viên", -40]] },
   { group: "Đá", modifier: "Rất ít đá", deltas: [["Đá viên", -75]] },
-  { group: "Đá", modifier: "Không đá", deltas: [["Đá viên", -DA_360]] },
-  { group: "Đá", modifier: "Nóng", deltas: [["Đá viên", -DA_360]] },
+  { group: "Đá", modifier: "Không đá", deltas: [["Đá viên", -DA_400]] },
+  { group: "Đá", modifier: "Nóng", deltas: [["Đá viên", -DA_400]] },
   // Đá để riêng = tốn thêm một cái ly, đá vẫn đủ chừng đó.
-  { group: "Đá", modifier: "Đá riêng", deltas: [[LY_360, 1]] },
+  { group: "Đá", modifier: "Đá riêng", deltas: [[LY_400, 1]] },
 
   { group: "Món thêm", modifier: "Thêm 1 shot cà phê", deltas: [[HAT_NEN, SHOT1]] },
   { group: "Món thêm", modifier: "Thêm 2 shot cà phê", deltas: [[HAT_NEN, SHOT2]] },

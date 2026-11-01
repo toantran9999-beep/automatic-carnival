@@ -15,7 +15,7 @@
  * ⚠️ CHƯA CÓ ĐỊNH LƯỢNG (SOP không ghi) — cố ý để trống:
  *   Trà lài (đang pha ước chừng, cần cân lại), Espresso (nóng), Espresso nhẹ (nóng),
  *   Cà phê V60, Cà phê đá/sữa đá (pha phin), Cà phê mix, Cà phê sữa đặc biệt,
- *   Hồng trà, Trà gừng, Trà chanh gừng, Ly trà đá, Cacao kem muối, Matcha kem muối,
+ *   Hồng trà, Trà gừng, Trà chanh gừng, Ly trà đá mang đi, Cacao kem muối, Matcha kem muối,
  *   Cam vắt, Sữa tươi, Chanh đá.
  *
  * ⚠️ "Blend" và "Mix" (tùy chọn Loại hạt, và món "Cà phê đá (Blend)") đang trỏ vào
@@ -166,8 +166,9 @@ const RECIPES: Record<string, Recipe> = {
   ],
 
   // 30g sữa đặc + 50ml sữa tươi + 4g đường + đá → cà phê đổ lên tầng.
+  // Bạc xỉu (cả hai loại) ly 400ml = 1 shot 12g — menu in "Nhẹ 20K" (anh Toàn chốt 12/09).
   "Bạc xỉu": [
-    [HAT_NEN, SHOT2],
+    [HAT_NEN, SHOT1],
     ["Sữa đặc", 30],
     ["Sữa tươi", 50],
     ["Đường vàng", 4],
@@ -177,7 +178,7 @@ const RECIPES: Record<string, Recipe> = {
 
   // 40g sữa đặc + 40g nước sôi đánh sủi bọt → đá → cà phê lên trên.
   "Bạc xỉu truyền thống": [
-    [HAT_NEN, SHOT2],
+    [HAT_NEN, SHOT1],
     ["Sữa đặc", 40],
     ["Nước lọc", 40],
     ["Đá viên", DA_400],
@@ -217,9 +218,9 @@ const RECIPES: Record<string, Recipe> = {
     ...BAO_BI,
   ],
 
-  // 100ml sữa tươi + 15ml nước đường → đá → cà phê lên trên.
+  // 100ml sữa tươi + 15ml nước đường → đá → cà phê lên trên. Ly 400ml = 1 shot (11/09).
   "Cà phê sữa tươi": [
-    [HAT_NEN, SHOT2],
+    [HAT_NEN, SHOT1],
     ["Sữa tươi", 100],
     ["Nước đường", 15],
     ["Đá viên", DA_400],
@@ -392,8 +393,9 @@ const RECIPES: Record<string, Recipe> = {
   // --- Nhóm sữa chua (SOP IV.4) ---
   // Nền: 1 hũ sữa chua + 25g sữa đặc + xanthan + 1 ly đá 300ml.
 
-  // SOP gọi là "Sữa chua cơ bản"; trên thực đơn tên là "Sữa chua đá xay".
-  "Sữa chua đá xay": [
+  // SOP gọi là "Sữa chua cơ bản"; trên thực đơn tên là "Yaourt đá xay"
+  // (nhóm đổi tên "Yaourt" theo menu in 2026; nguyên liệu kho vẫn tên "Sữa chua").
+  "Yaourt đá xay": [
     ["Sữa chua", 1],
     ["Sữa đặc", 25],
     ["Bột xanthan", 0.2],
@@ -402,7 +404,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước đường", 25],
     ...BAO_BI,
   ],
-  "Sữa chua dâu tây": [
+  "Yaourt dâu tây": [
     ["Sữa chua", 1],
     ["Sữa đặc", 25],
     ["Bột xanthan", 0.2],
@@ -411,7 +413,7 @@ const RECIPES: Record<string, Recipe> = {
     ["Nước đường", 25],
     ...BAO_BI,
   ],
-  "Sữa chua việt quất": [
+  "Yaourt việt quất": [
     ["Sữa chua", 1],
     ["Sữa đặc", 25],
     ["Bột xanthan", 0.2],

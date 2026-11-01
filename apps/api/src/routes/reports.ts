@@ -98,6 +98,13 @@ const LEGACY_ITEM_ALIASES: Record<string, string> = {
   "Cà phê sữa đá (nhẹ)": "Cà phê sữa đá",
   "Trà đường (Trà lài)": "Trà lài",
   "Cà phê bột Toda 1 (500g)": "Cà phê Toda 1 (500g)",
+  // Đổi tên theo menu in 2026 (01/11/2026). Đơn cũ giữ tên cũ trong order_items.name.
+  "Sữa chua": "Yaourt đá xay", // tên ở POS cũ (25K, SOP "Sữa chua cơ bản")
+  "Sữa chua đá xay": "Yaourt đá xay",
+  "Sữa chua đá": "Yaourt đá",
+  "Sữa chua việt quất": "Yaourt việt quất",
+  "Sữa chua dâu tây": "Yaourt dâu tây",
+  "Ly trà đá": "Ly trà đá mang đi",
 };
 
 const canonicalItemName = (name: string) => LEGACY_ITEM_ALIASES[name] ?? name;

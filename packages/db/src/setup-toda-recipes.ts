@@ -187,8 +187,9 @@ const RECIPES: Record<string, Recipe> = {
 
   // 30g sữa đặc + cà phê + kem muối phủ lên (kem muối: 0.5g muối + 25ml sữa tươi
   // + 4.5g đường + xanthan + 20g whipping).
+  // Nhóm "Đặc biệt của quán" mặc định là ly ít cà phê = 1 shot (menu in cột Nhẹ, chốt 15/09).
   "Cà phê muối": [
-    [HAT_NEN, SHOT2],
+    [HAT_NEN, SHOT1],
     ["Sữa đặc", 30],
     ["Muối", 0.5],
     ["Sữa tươi", 25],
@@ -200,7 +201,7 @@ const RECIPES: Record<string, Recipe> = {
   ],
 
   "Cà phê vết loang": [
-    [HAT_NEN, SHOT2],
+    [HAT_NEN, SHOT1],
     ["Sữa đặc", 30],
     ["Sữa tươi", 50],
     ["Đường vàng", 4],

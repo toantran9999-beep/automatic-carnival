@@ -43,6 +43,8 @@ interface GridViewProps {
   onStatusChange: (tableId: string, status: string) => void;
   onCardClick?: (table: any) => void;
   onPay?: (table: any) => void;
+  /** Bàn đang tải phiên để mở hộp thoại thanh toán — thẻ đó hiện vòng quay. */
+  payingTableId?: string | null;
   onVoid?: (table: any) => void;
   onReprint?: (table: any) => void;
 }
@@ -62,6 +64,7 @@ export function GridView({
   onStatusChange,
   onCardClick,
   onPay,
+  payingTableId,
   onVoid,
   onReprint,
 }: GridViewProps) {
@@ -94,6 +97,7 @@ export function GridView({
               onStatusChange={onStatusChange}
               onCardClick={onCardClick}
               onPay={onPay}
+              paying={payingTableId === table.id}
               onVoid={onVoid}
               onReprint={onReprint}
             />

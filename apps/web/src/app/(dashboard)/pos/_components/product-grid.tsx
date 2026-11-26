@@ -9,6 +9,7 @@ import { toThumbUrl } from "@/lib/image-thumb";
 import { sortByOrder } from "@/lib/utils";
 import { BrandLogo } from "@/components/brand-logo";
 import { useTranslation } from "@/stores/lang-store";
+import { perfEnd } from "@/lib/perf";
 import type { PosCartItem } from "../page";
 
 /** Giá gọn kiểu iPOS: 1.500.000 cents → "15K", 1.550.000 → "15.5K" */
@@ -131,6 +132,15 @@ export function ProductGrid({
       onCategoryChange(sortedCategories[0].id);
     }
   }, [selectedCategory, hasBestSellers, sortedCategories, onCategoryChange]);
+
+  // Mốc đo "chạm bàn → thực đơn hiện" (lib/perf.ts): lúc lưới món đã có dữ liệu,
+  // đo sau khung vẽ kế tiếp để tính cả thời gian máy vẽ lưới.
+  const gridReady = !isLoading && items.length > 0;
+  useEffect(() => {
+    if (!gridReady) return;
+    const raf = requestAnimationFrame(() => perfEnd("mo-ban"));
+    return () => cancelAnimationFrame(raf);
+  }, [gridReady]);
 
   const filteredItems = useMemo(() => {
     const normalizedSearch = search.trim().toLowerCase();

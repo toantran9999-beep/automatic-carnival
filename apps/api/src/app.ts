@@ -27,6 +27,7 @@ import { uploads } from "./routes/uploads.js";
 import { aiImages } from "./routes/ai-images.js";
 import { shifts } from "./routes/shifts.js";
 import { tts } from "./routes/tts.js";
+import { perf } from "./routes/perf.js";
 
 const CORS_ORIGINS = process.env.CORS_ORIGINS
   ? process.env.CORS_ORIGINS.split(",")
@@ -94,6 +95,7 @@ app.route("/api/uploads", uploads);
 app.route("/api/ai-images", aiImages);
 app.route("/api/shifts", shifts);
 app.route("/api/tts", tts);
+app.route("/api/perf", perf);
 
 export type AppType = typeof app;
 export { app };

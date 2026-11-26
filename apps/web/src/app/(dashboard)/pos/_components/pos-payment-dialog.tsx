@@ -4,11 +4,10 @@ import { useState, useEffect, useCallback, useRef } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import type { WsMessage } from "@restai/types";
 import { toast } from "sonner";
-import { Printer, CheckCircle2, Loader2, Banknote, CreditCard, Landmark, Clock3, Wallet } from "lucide-react";
+import { Printer, Loader2, Banknote, CreditCard, Landmark, Clock3, Wallet } from "lucide-react";
 import { Input } from "@restai/ui/components/input";
 import { Label } from "@restai/ui/components/label";
 import { Button } from "@restai/ui/components/button";
-import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@restai/ui/components/select";
 import {
   Dialog,
   DialogContent,
@@ -29,6 +28,7 @@ import { modifierLabel } from "@restai/config";
 import { useTranslation } from "@/stores/lang-store";
 import { useWebSocket } from "@/hooks/use-websocket";
 import { useAuthStore } from "@/stores/auth-store";
+import { perfStart, perfEnd } from "@/lib/perf";
 import type { PosCartItem } from "../page";
 
 interface PosPaymentDialogProps {
@@ -61,15 +61,15 @@ export function PosPaymentDialog({
   const { t, lang } = useTranslation();
   const qc = useQueryClient();
   const { accessToken, selectedBranchId } = useAuthStore();
-  const [docType, setDocType] = useState<"boleta_simple" | "boleta_electronica" | "factura">("boleta_simple");
-  const [docNumber, setDocNumber] = useState("");
-  const [docHolderName, setDocHolderName] = useState("");
   const [method, setMethod] = useState("cash");
   const [amountTendered, setAmountTendered] = useState("");
   const [processing, setProcessing] = useState(false);
-  const [paymentSuccess, setPaymentSuccess] = useState(false);
-  /** Lần thanh toán này có in hóa đơn không — để màn báo thành công nói đúng sự thật. */
-  const [printedReceipt, setPrintedReceipt] = useState(true);
+  /**
+   * Đã chốt tiền cho lần mở này chưa. Ref chứ không phải state: chốt xong là đóng
+   * hộp thoại NGAY, không còn màn "đã thanh toán" nào để vẽ — chỉ cần chặn chốt
+   * hai lần (vd. vừa bấm tay vừa có tin cầu nối báo tiền về).
+   */
+  const finishedRef = useRef(false);
   const [paymentRequestId, setPaymentRequestId] = useState<string | undefined>();
   /** Tiền đã vào tài khoản nhưng không khớp phiếu — xem handlePaymentWs. */
   const [mismatch, setMismatch] = useState<{ received: number; due: number } | null>(null);
@@ -105,17 +105,21 @@ export function PosPaymentDialog({
   useEffect(() => {
     if (open) {
       setAmountTendered((totalAmount / 100).toString());
-      setPaymentSuccess(false);
-      setPrintedReceipt(true);
+      finishedRef.current = false;
       setMethod("cash");
-      setDocType("boleta_simple");
-      setDocNumber("");
-      setDocHolderName("");
       setPaymentRequestId(undefined);
       setMismatch(null);
       adoptedRef.current = false;
     }
   }, [open, totalAmount]);
+
+  // Mốc đo "bấm Thanh toán → hộp thoại hiện" (lib/perf.ts). Đo sau khung vẽ kế
+  // tiếp chứ không phải lúc state đổi, để tính cả thời gian máy vẽ hộp thoại.
+  useEffect(() => {
+    if (!open) return;
+    const raf = requestAnimationFrame(() => perfEnd("mo-thanh-toan"));
+    return () => cancelAnimationFrame(raf);
+  }, [open]);
 
   /**
    * Đơn này đã in phiếu QR chưa? Hỏi mỗi lần mở hộp thoại.
@@ -153,15 +157,12 @@ export function PosPaymentDialog({
     setMethod(reusableQrRequest.provider === "momo" ? "momo" : "transfer");
   }, [open, reusableQrRequest]);
 
+  // Cầu nối ngân hàng báo tiền về → máy chủ đã tự chốt đơn, chỉ việc đóng.
   useEffect(() => {
     const request = paymentRequest as any;
-    if (!request || request.status !== "paid" || paymentSuccess) return;
-    setPaymentSuccess(true);
-    setTimeout(() => {
-      onSuccess();
-      onOpenChange(false);
-    }, 1500);
-  }, [paymentRequest, paymentSuccess, onSuccess, onOpenChange]);
+    if (!open || !request || request.status !== "paid" || finishedRef.current) return;
+    finishWithoutPrint("Đã nhận tiền chuyển khoản");
+  }, [paymentRequest, open]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Nghe máy chủ báo tiền về để hiện NGAY, thay vì đợi tới 5 giây của vòng poll.
   // Vẫn GIỮ poll làm lưới an toàn: WS rớt thì poll cứu, mất tối đa 5 giây còn hơn treo.
@@ -205,19 +206,6 @@ export function PosPaymentDialog({
     accessToken || undefined,
   );
 
-  const isFormValid = () => {
-    if (docType === "boleta_simple") return true;
-    if (docType === "boleta_electronica") return /^\d{8}$/.test(docNumber);
-    if (docType === "factura") return /^\d{11}$/.test(docNumber) && docHolderName.trim().length > 0;
-    return false;
-  };
-
-  const handleDocTypeChange = (v: string) => {
-    setDocType(v as "boleta_simple" | "boleta_electronica" | "factura");
-    setDocNumber("");
-    setDocHolderName("");
-  };
-
   /**
    * ⚠️ `unit_price` = giá GỐC chưa gồm tùy chọn, `total` = tiền cả dòng đã gồm —
    * đúng quy ước của print-ticket, để phiếu in được dòng phụ "- Nhẹ  -2.000đ" mà
@@ -243,6 +231,66 @@ export function PosPaymentDialog({
   });
 
   /**
+   * Chốt xong một lần thu tiền: ĐÓNG NGAY, báo bằng toast, rồi mới in.
+   *
+   * ⚠️ Trước đây hộp thoại đứng ở màn "Đã thanh toán" CỐ ĐỊNH 1,5 giây rồi mới
+   * đóng — máy chủ ghi tiền chỉ mất ~40ms, nên gần như toàn bộ cảm giác "thanh
+   * toán chậm" ở quầy là do chính cái chờ đó (anh Toàn báo 26/11/2026). Toast vẫn
+   * nói ĐÚNG có in hay không: nói "đã in" mà không in là nhân viên đi tìm tờ hóa
+   * đơn không tồn tại.
+   *
+   * In dời sang SAU khi đóng: dựng ảnh hóa đơn tiếng Việt bằng canvas chiếm luồng
+   * giao diện cả trăm ms trên máy quầy yếu. Cho hộp thoại đóng và khung kế tiếp vẽ
+   * xong trước, rồi mới dựng ảnh. Dữ liệu in chụp lại TRƯỚC khi đóng vì hộp thoại
+   * có thể bị gỡ khỏi cây ngay sau đó.
+   */
+  const finish = (paidMethod: string, shouldPrint: boolean) => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+
+    // KHÔNG in phiếu đặt món ở đây: trạm quầy đã in ngay lúc đơn được tạo (nghe
+    // sự kiện order:new). Chỉ in HÓA ĐƠN cho khách, và chỉ khi bấm nút "& In".
+    const receipt = shouldPrint
+      ? {
+          businessName: (orgSettings as any)?.name || "Restaurante",
+          ruc: (orgSettings as any)?.settings?.ruc || undefined,
+          address: (branchSettings as any)?.address || undefined,
+          orderNumber,
+          createdAt: new Date().toISOString(),
+          items: mappedItems,
+          subtotal: totalAmount - taxAmount,
+          tax: taxAmount,
+          total: totalAmount,
+          paymentMethod: paidMethod,
+          customerName: customerName || undefined,
+          docType: "boleta_simple" as const,
+        }
+      : null;
+
+    toast.success(
+      `Đã thu ${formatCurrency(totalAmount)} · #${orderNumber} · ${shouldPrint ? "đang in hóa đơn" : "không in"}`,
+    );
+    onOpenChange(false);
+    onSuccess();
+
+    requestAnimationFrame(() => {
+      setTimeout(() => {
+        perfEnd("thu-tien");
+        if (receipt) printReceipt(receipt);
+      }, 0);
+    });
+  };
+
+  /** Máy chủ đã tự chốt (cầu nối ngân hàng) — chỉ đóng và báo, không in. */
+  const finishWithoutPrint = (message: string) => {
+    if (finishedRef.current) return;
+    finishedRef.current = true;
+    toast.success(`${message} · #${orderNumber}`);
+    onOpenChange(false);
+    onSuccess();
+  };
+
+  /**
    * Dựng yêu cầu thanh toán QR — rồi TRẠM QUẦY in phiếu, không phải máy này.
    *
    * ⚠️ Trước đây chính máy bấm đơn vừa dựng mã QR vừa gọi lệnh in. Trên điện thoại
@@ -255,7 +303,7 @@ export function PosPaymentDialog({
    * việc chờ tiền về và tự đóng đơn thì máy chủ lo giống hệt nhau.
    */
   const handleQrBill = async (provider: "sepay" | "momo") => {
-    if (!orderId || !isFormValid() || processing) return;
+    if (!orderId || processing) return;
     setProcessing(true);
     try {
       const request = await createPaymentRequest.mutateAsync({
@@ -273,55 +321,27 @@ export function PosPaymentDialog({
   };
 
   /**
-   * Thu ngân tự xác nhận "khách đã chuyển tiền rồi" sau khi đã in phiếu QR.
+   * Ghi tiền rồi chốt. `paidMethod` = "transfer" khi thu ngân tự xác nhận khách đã
+   * chuyển sau khi in phiếu QR.
    *
-   * ⚠️ Không có nút này thì luồng chuyển khoản KHÔNG có đường đóng đơn: màn hình
-   * chỉ có mỗi nút in phiếu, nên thu ngân buộc phải quay ra bấm Tiền mặt/Thẻ để
-   * kết thúc. Hậu quả đo được trên dữ liệu thật (26-28/07): 32 phiếu QR in ra thì
-   * 24 đơn bị ghi thành "Thẻ", 7 đơn thành "Tiền mặt" — doanh thu chuyển khoản
-   * trong báo cáo bằng 0 dù ngày nào cũng có khách chuyển.
-   *
-   * Ghi `method: "transfer"` cho cả MoMo lẫn chuyển khoản ngân hàng — enum
+   * ⚠️ Không có nút xác nhận chuyển khoản thì luồng QR KHÔNG có đường đóng đơn:
+   * thu ngân buộc phải quay ra bấm Tiền mặt/Thẻ. Dữ liệu thật 26-28/07: 32 phiếu QR
+   * in ra thì 24 đơn bị ghi "Thẻ", 7 đơn "Tiền mặt" — doanh thu chuyển khoản trong
+   * báo cáo bằng 0. Ghi `method: "transfer"` cho cả MoMo lẫn ngân hàng — enum
    * payment_method không có "momo", phân biệt bằng payment_requests.provider.
    */
-  const handleConfirmQrPaid = async (shouldPrint: boolean) => {
-    if (!orderId || !isFormValid() || processing) return;
+  const recordPayment = async (paidMethod: string, shouldPrint: boolean) => {
+    if (!orderId || processing || finishedRef.current) return;
+    perfStart("thu-tien");
     setProcessing(true);
-    setPrintedReceipt(shouldPrint);
     try {
       await createPayment.mutateAsync({
         orderId,
-        method: "transfer",
+        method: paidMethod,
         amount: totalAmount,
         tip: 0,
       });
-      setPaymentSuccess(true);
-
-      if (shouldPrint) {
-        const org = orgSettings as any;
-        const branch = branchSettings as any;
-        printReceipt({
-          businessName: org?.name || "Restaurante",
-          ruc: org?.settings?.ruc || undefined,
-          address: branch?.address || undefined,
-          orderNumber,
-          createdAt: new Date().toISOString(),
-          items: mappedItems,
-          subtotal: totalAmount - taxAmount,
-          tax: taxAmount,
-          total: totalAmount,
-          paymentMethod: "transfer",
-          customerName: customerName || undefined,
-          docType,
-          docNumber: docType !== "boleta_simple" ? docNumber : undefined,
-          docHolderName: docType === "factura" ? docHolderName : undefined,
-        });
-      }
-
-      setTimeout(() => {
-        onSuccess();
-        onOpenChange(false);
-      }, 1500);
+      finish(paidMethod, shouldPrint);
     } catch {
       // Lỗi đã có toast từ mutateAsync.
     } finally {
@@ -329,62 +349,14 @@ export function PosPaymentDialog({
     }
   };
 
+  const handleConfirmQrPaid = (shouldPrint: boolean) => recordPayment("transfer", shouldPrint);
+
   const handlePaymentSubmit = async (shouldPrint: boolean) => {
-    if (!orderId || !isFormValid() || processing) return;
     if (isQrMethod) {
       await handleQrBill(method === "momo" ? "momo" : "sepay");
       return;
     }
-    setProcessing(true);
-    setPrintedReceipt(shouldPrint);
-
-    try {
-      // 1. Process payment via API
-      await createPayment.mutateAsync({
-        orderId,
-        method,
-        amount: totalAmount,
-        tip: 0,
-      });
-
-      setPaymentSuccess(true);
-
-      // KHÔNG in phiếu đặt món ở đây: trạm quầy đã in ngay lúc đơn được tạo (nghe
-      // sự kiện order:new). In lại là thừa một tờ, và tờ đó mang tên máy đang bấm
-      // chứ không phải người ở quầy.
-
-      // In hóa đơn cho khách — chỉ khi bấm nút "Xác nhận & In hóa đơn"
-      if (shouldPrint) {
-        const org = orgSettings as any;
-        const branch = branchSettings as any;
-        printReceipt({
-          businessName: org?.name || "Restaurante",
-          ruc: org?.settings?.ruc || undefined,
-          address: branch?.address || undefined,
-          orderNumber,
-          createdAt: new Date().toISOString(),
-          items: mappedItems,
-          subtotal: totalAmount - taxAmount,
-          tax: taxAmount,
-          total: totalAmount,
-          paymentMethod: method,
-          customerName: customerName || undefined,
-          docType,
-          docNumber: docType !== "boleta_simple" ? docNumber : undefined,
-          docHolderName: docType === "factura" ? docHolderName : undefined,
-        });
-      }
-
-      // 5. Trigger success callback to clear cart & close
-      setTimeout(() => {
-        onSuccess();
-        onOpenChange(false);
-      }, 1500);
-    } catch (err) {
-      // Error is handled by mutateAsync toast
-    } finally {
-      setProcessing(false);
-    }
+    await recordPayment(method, shouldPrint);
   };
 
   const tenderedCents = Math.round((parseFloat(amountTendered) || 0) * 100);
@@ -425,29 +397,6 @@ export function PosPaymentDialog({
           </DialogTitle>
         </DialogHeader>
 
-        {paymentSuccess ? (
-          <div className="flex flex-col items-center justify-center py-8 space-y-4 animate-in fade-in zoom-in-95 duration-200">
-            <div className="h-16 w-16 bg-green-100 dark:bg-green-950/20 rounded-full flex items-center justify-center">
-              <CheckCircle2 className="h-10 w-10 text-green-600 dark:text-green-400" />
-            </div>
-            {/* Báo đúng thứ vừa xảy ra — nói "đã in" mà không in là nhân viên đi tìm
-                tờ hóa đơn không tồn tại. */}
-            <h3 className="text-lg font-bold text-foreground">
-              {printedReceipt
-                ? lang === "vi" ? "Đã thanh toán & in hóa đơn" : "Paid & receipt printed"
-                : lang === "vi" ? "Đã thanh toán" : "Payment recorded"}
-            </h3>
-            <p className="text-sm text-muted-foreground text-center max-w-xs">
-              {printedReceipt
-                ? lang === "vi"
-                  ? "Hóa đơn đã được gửi tới máy in."
-                  : "Receipt sent to the printer."
-                : lang === "vi"
-                  ? "Đã ghi nhận tiền, không in hóa đơn."
-                  : "Payment recorded, no receipt printed."}
-            </p>
-          </div>
-        ) : (
           <div className="space-y-4 py-2 text-sm">
             {/* Totals panel */}
             {/* min-w-0 + shrink-0: nhãn co lại trước, SỐ TIỀN không bao giờ bị đẩy
@@ -466,71 +415,6 @@ export function PosPaymentDialog({
                 <span className="shrink-0 tabular-nums text-primary">{formatCurrency(totalAmount)}</span>
               </div>
             </div>
-
-            {/* Document type */}
-            <div className="space-y-1.5">
-              <Label className="font-semibold">{lang === "vi" ? "Loại chứng từ" : "Invoice Type"}</Label>
-              <Select value={docType} onValueChange={handleDocTypeChange}>
-                <SelectTrigger className="h-11">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="boleta_simple">{t("payments.receipt")}</SelectItem>
-                  <SelectItem value="boleta_electronica">
-                    {lang === "vi" ? "Hóa đơn bán lẻ (DNI/CCCD)" : "Retail Receipt (DNI)"}
-                  </SelectItem>
-                  <SelectItem value="factura">
-                    {lang === "vi" ? "Hóa đơn VAT (MST công ty)" : "VAT Invoice (RUC)"}
-                  </SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            {/* Document Conditional Inputs */}
-            {docType === "boleta_electronica" && (
-              <div className="space-y-1.5 animate-in fade-in duration-200">
-                <Label htmlFor="posDni">{lang === "vi" ? "Số DNI/CCCD" : "ID Number (DNI)"}</Label>
-                <Input
-                  id="posDni"
-                  placeholder="12345678"
-                  value={docNumber}
-                  onChange={(e) => setDocNumber(e.target.value.replace(/\D/g, "").slice(0, 8))}
-                />
-                {docNumber.length > 0 && docNumber.length !== 8 && (
-                  <p className="text-xs text-destructive">
-                    {lang === "vi" ? "Mã DNI phải gồm 8 chữ số" : "DNI must be 8 digits"}
-                  </p>
-                )}
-              </div>
-            )}
-
-            {docType === "factura" && (
-              <div className="space-y-3 animate-in fade-in duration-200">
-                <div className="space-y-1.5">
-                  <Label htmlFor="posRuc">{lang === "vi" ? "Mã số thuế (RUC)" : "Tax Registry (RUC)"}</Label>
-                  <Input
-                    id="posRuc"
-                    placeholder="20123456789"
-                    value={docNumber}
-                    onChange={(e) => setDocNumber(e.target.value.replace(/\D/g, "").slice(0, 11))}
-                  />
-                  {docNumber.length > 0 && docNumber.length !== 11 && (
-                    <p className="text-xs text-destructive">
-                      {lang === "vi" ? "Mã số thuế RUC phải gồm 11 chữ số" : "RUC must be 11 digits"}
-                    </p>
-                  )}
-                </div>
-                <div className="space-y-1.5">
-                  <Label htmlFor="posRazon">{lang === "vi" ? "Tên đơn vị/công ty" : "Company Name"}</Label>
-                  <Input
-                    id="posRazon"
-                    placeholder={lang === "vi" ? "Tên đầy đủ của công ty..." : "Full company name..."}
-                    value={docHolderName}
-                    onChange={(e) => setDocHolderName(e.target.value)}
-                  />
-                </div>
-              </div>
-            )}
 
             {/* Payment Method */}
             <div className="space-y-1.5">
@@ -693,93 +577,92 @@ export function PosPaymentDialog({
               </div>
             )}
           </div>
-        )}
 
-        {/* Hàng nút LUÔN xếp dọc — KHÔNG dùng DialogFooter dùng chung.
-            DialogFooter xếp ngang theo `sm:`, mà `sm:` đo theo MÀN HÌNH chứ không
-            đo theo khung: máy POS màn rộng nên nó bật ngang, trong khi khung chỉ
-            rộng 448px → 3 nút đội ra ngoài, kéo cả khung trượt ngang và cắt cụt
-            số tiền bên phải. Xếp dọc vừa hết lỗi vừa dễ bấm trên máy quầy. */}
-        {!paymentSuccess && (
-          <div className="mt-2 flex flex-col gap-2">
-            {/* ĐÃ in phiếu QR rồi thì việc chính không còn là in nữa, mà là xác nhận
-                khách đã chuyển tiền. Đưa nút này lên TRÊN CÙNG để thu ngân bấm đúng
-                chỗ — trước đây không có nút này nên họ phải bấm Tiền mặt/Thẻ, làm
-                doanh thu chuyển khoản trong báo cáo bằng 0. */}
-            {isQrMethod && transferRequest && (
-              <Button
-                onClick={() => handleConfirmQrPaid(true)}
-                disabled={processing}
-                className="h-12 w-full font-semibold text-base bg-emerald-600 hover:bg-emerald-700 text-white"
-              >
-                {processing ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                ) : (
-                  <CheckCircle2 className="h-4 w-4 mr-2" />
-                )}
-                Khách đã chuyển — Thu tiền &amp; In hóa đơn
-              </Button>
-            )}
+        {/* Hàng nút chốt — KHÔNG dùng DialogFooter dùng chung.
+            DialogFooter đổi bố cục theo `sm:`, mà `sm:` đo theo MÀN HÌNH chứ không
+            đo theo khung: máy POS màn rộng nên nó bật ngang 3 nút trong khung chỉ
+            rộng 448px → đội ra ngoài, cắt cụt số tiền. Ở đây lưới 2 cột CỐ ĐỊNH, không
+            phụ thuộc cỡ màn hình.
 
-            {/* In phiếu QR chỉ còn là việc chính khi CHƯA in lần nào. In rồi thì nút
-                in lại nằm ngay cạnh mã QR phía trên, khỏi lặp ở đây. */}
-            {!(isQrMethod && transferRequest) && (
+            "Không in" và "& In" là HAI NÚT TO NGANG NHAU (anh Toàn chốt 26/11/2026):
+            trước đây "không in" là nút viền mỏng — ở luồng chuyển khoản còn là nút
+            trơn không viền — nằm dưới nút in to, trong khi quán dùng nó rất nhiều
+            (khách hay không lấy hóa đơn). Khác MÀU để không bấm nhầm. */}
+        <div className="mt-2 flex flex-col gap-2">
+          {isQrMethod && transferRequest ? (
+            // ĐÃ in phiếu QR → việc chính là xác nhận khách đã chuyển. Trước đây không
+            // có nút này nên thu ngân bấm Tiền mặt/Thẻ, doanh thu chuyển khoản = 0.
+            <div className="grid grid-cols-2 gap-2">
               <Button
-                onClick={() => handlePaymentSubmit(true)}
-                disabled={processing || !isFormValid()}
-                className="h-12 w-full font-semibold text-base"
-              >
-                {processing ? (
-                  <>
-                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                    {lang === "vi" ? "Đang xử lý..." : "Processing..."}
-                  </>
-                ) : (
-                  <>
-                    <Printer className="h-4 w-4 mr-2" />
-                    {isQrMethod
-                      ? "In phiếu tạm tính QR"
-                      : (lang === "vi" ? "Xác nhận & In hóa đơn" : "Confirm & Print Receipt")}
-                  </>
-                )}
-              </Button>
-            )}
-
-            {/* Không in hóa đơn — quán nhiều khách không lấy, đỡ tốn giấy. */}
-            {isQrMethod && transferRequest && (
-              <Button
-                variant="ghost"
                 onClick={() => handleConfirmQrPaid(false)}
                 disabled={processing}
-                className="h-11 w-full font-semibold"
+                className="h-16 w-full whitespace-normal px-2 text-base font-bold leading-tight bg-emerald-600 hover:bg-emerald-700 text-white"
               >
-                Khách đã chuyển — Thu tiền, không in
+                {processing ? <Loader2 className="h-5 w-5 animate-spin" /> : "Đã chuyển – KHÔNG IN"}
               </Button>
-            )}
-
-            {/* Chuyển khoản chỉ có MỘT nút: phiếu đó mang mã QR cho khách quét,
-                không in thì khách không có gì để quét. */}
-            {!isQrMethod && (
               <Button
                 variant="outline"
-                onClick={() => handlePaymentSubmit(false)}
-                disabled={processing || !isFormValid()}
-                className="h-11 w-full font-semibold"
+                onClick={() => handleConfirmQrPaid(true)}
+                disabled={processing}
+                className="h-16 w-full whitespace-normal px-2 text-base font-bold leading-tight border-2 border-emerald-600 text-emerald-700 dark:text-emerald-400"
               >
-                {lang === "vi" ? "Xác nhận, không in" : "Confirm, no receipt"}
+                <Printer className="h-5 w-5 shrink-0" />
+                Đã chuyển &amp; IN
               </Button>
-            )}
-
+            </div>
+          ) : isQrMethod ? (
+            // Chuyển khoản chưa in phiếu: chỉ MỘT nút — phiếu đó mang mã QR cho khách
+            // quét, không in thì khách không có gì để quét.
             <Button
-              variant="ghost"
-              className="h-11 w-full"
-              onClick={() => onOpenChange(false)}
+              onClick={() => handlePaymentSubmit(true)}
               disabled={processing}
+              className="h-16 w-full text-base font-bold"
             >
-              {t("common.cancel")}
+              {processing ? (
+                <Loader2 className="h-5 w-5 animate-spin" />
+              ) : (
+                <>
+                  <Printer className="h-5 w-5 mr-2" />
+                  In phiếu tạm tính QR
+                </>
+              )}
             </Button>
-          </div>
-        )}
+          ) : (
+            <div className="grid grid-cols-2 gap-2">
+              <Button
+                onClick={() => handlePaymentSubmit(false)}
+                disabled={processing}
+                className="h-16 w-full whitespace-normal px-2 text-base font-bold leading-tight"
+              >
+                {processing ? (
+                  <Loader2 className="h-5 w-5 animate-spin" />
+                ) : lang === "vi" ? (
+                  "Thu tiền – KHÔNG IN"
+                ) : (
+                  "Pay – no receipt"
+                )}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => handlePaymentSubmit(true)}
+                disabled={processing}
+                className="h-16 w-full whitespace-normal px-2 text-base font-bold leading-tight border-2 border-primary text-primary"
+              >
+                <Printer className="h-5 w-5 shrink-0" />
+                {lang === "vi" ? "Thu tiền & IN" : "Pay & print"}
+              </Button>
+            </div>
+          )}
+
+          <Button
+            variant="ghost"
+            className="h-11 w-full"
+            onClick={() => onOpenChange(false)}
+            disabled={processing}
+          >
+            {t("common.cancel")}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   );

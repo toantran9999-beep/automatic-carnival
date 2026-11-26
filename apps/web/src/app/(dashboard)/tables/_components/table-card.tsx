@@ -17,6 +17,7 @@ import {
   Clock,
   Printer,
   PrinterCheck,
+  Loader2,
 } from "lucide-react";
 import { ActionsMenu, type ActionItem } from "@/components/actions-menu";
 import { cn, formatCurrency, formatElapsed } from "@/lib/utils";
@@ -49,6 +50,8 @@ interface TableCardProps {
   onStatusChange: (tableId: string, status: string) => void;
   onCardClick?: (table: any) => void;
   onPay?: (table: any) => void;
+  /** Đang tải phiên bàn để mở hộp thoại thanh toán. */
+  paying?: boolean;
   onVoid?: (table: any) => void;
   /** In lại phiếu đặt món của cả bàn qua Trạm quầy. */
   onReprint?: (table: any) => void;
@@ -120,6 +123,7 @@ export function TableCard({
   onStatusChange,
   onCardClick,
   onPay,
+  paying = false,
   onVoid,
   onReprint,
 }: TableCardProps) {
@@ -295,8 +299,10 @@ export function TableCard({
           <button
             type="button"
             onClick={() => onPay?.(table)}
-            className="h-11 flex-1 text-sm font-bold px-3 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
+            disabled={paying}
+            className="h-11 flex-1 inline-flex items-center justify-center gap-1.5 text-sm font-bold px-3 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity disabled:opacity-70"
           >
+            {paying && <Loader2 className="h-4 w-4 animate-spin" />}
             {/* Không lặp lại số tiền: nó đã nằm to rõ màu vàng ở khối giữa thẻ —
                 chỗ đọc được từ xa khi lướt cả dãy bàn. */}
             {lang === "vi" ? "Thanh toán" : "Pay"}

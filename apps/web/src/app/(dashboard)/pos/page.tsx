@@ -22,6 +22,7 @@ import { ModifierDialog, type CartModifier } from "./_components/modifier-dialog
 import { CustomItemDialog } from "./_components/custom-item-dialog";
 import { useBranchSettings } from "@/hooks/use-settings";
 import { PosPaymentDialog } from "./_components/pos-payment-dialog";
+import { buildTablePayment } from "@/lib/table-payment";
 import { ShiftClosedBlocker } from "./_components/shift-controls";
 import { useTableActiveSession } from "@/hooks/use-tables";
 import { useCurrentShift } from "@/hooks/use-shifts";
@@ -431,34 +432,17 @@ export default function PosPage() {
     }
   };
 
+  // Phần tính tiền dùng chung với màn Bàn ăn — xem lib/table-payment.ts.
   const handlePayUnpaidOrders = () => {
-    const unpaidOrders = activeSession?.orders?.filter((o: any) => o.status !== "completed" && o.status !== "cancelled") || [];
-    if (unpaidOrders.length === 0) return;
-    
-    const unpaidTotal = unpaidOrders.reduce((sum: number, o: any) => sum + o.total, 0);
-    const taxRate = branchSettings?.tax_rate ?? 1000;
-    const unpaidTax = Math.round(unpaidTotal - (unpaidTotal / (1 + (taxRate / 10000))));
-    const targetOrder = unpaidOrders[0];
-    
-    const allOrderedItems: PosCartItem[] = unpaidOrders.flatMap((order: any) => 
-      order.items.map((item: any) => ({
-        lineId: item.id,
-        menuItemId: item.menu_item_id,
-        name: item.name,
-        imageUrl: item.image_url || null,
-        unitPrice: item.unit_price,
-        quantity: item.quantity,
-        notes: item.notes || undefined,
-        modifiers: item.modifiers || [],
-      }))
-    );
+    const pay = buildTablePayment(activeSession, branchSettings?.tax_rate ?? 1000);
+    if (!pay) return;
 
-    setPaymentOrderId(targetOrder.id);
-    setPaymentOrderNumber(targetOrder.order_number);
-    setPaymentTotal(unpaidTotal);
-    setPaymentTax(unpaidTax);
+    setPaymentOrderId(pay.orderId);
+    setPaymentOrderNumber(pay.orderNumber);
+    setPaymentTotal(pay.total);
+    setPaymentTax(pay.tax);
     setPaymentTableNumber(tableNumber);
-    setPaymentCart(allOrderedItems);
+    setPaymentCart(pay.cart);
     setPaymentDialogOpen(true);
   };
 

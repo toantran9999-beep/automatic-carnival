@@ -65,6 +65,8 @@ import { HistoryDialog } from "./_components/history-dialog";
 import { AssignmentDialog } from "./_components/assignment-dialog";
 import { TableOperationsDialog } from "./_components/table-operations-dialog";
 import { canTouchLiveOps } from "@/lib/roles";
+import { buildTablePayment, type TablePayment } from "@/lib/table-payment";
+import { perfStart } from "@/lib/perf";
 
 interface TableServiceRequest {
   id: string;
@@ -150,11 +152,8 @@ export default function TablesPage() {
   };
 
   const handleCardClick = useCallback((table: any) => {
+    perfStart("mo-ban");
     router.push(`/pos?tableId=${table.id}&tableNumber=${table.number}`);
-  }, [router]);
-
-  const handlePay = useCallback((table: any) => {
-    router.push(`/pos?tableId=${table.id}&tableNumber=${table.number}&pay=1`);
   }, [router]);
 
   /**
@@ -202,6 +201,44 @@ export default function TablesPage() {
   const approveSession = useApproveSession();
   const rejectSession = useRejectSession();
   const { data: branchSettingsData } = useBranchSettings();
+
+  /**
+   * Thanh toán bàn NGAY TẠI ĐÂY, giống đơn mang về.
+   *
+   * ⚠️ Trước đây nút này nhảy sang `/pos?...&pay=1`: máy quầy phải dựng nguyên màn
+   * bán hàng (lưới thực đơn có ảnh, giỏ, 7 truy vấn) chỉ để mở một hộp thoại, rồi
+   * thu xong lại dựng lại cả sơ đồ bàn — anh Toàn báo "cực kỳ chậm" (26/11/2026).
+   * Máy chủ trả phiên bàn ~10ms, nên giờ chỉ hỏi đúng phiên bàn đó rồi mở hộp thoại.
+   *
+   * Phần tính tiền là `buildTablePayment` — CÙNG hàm màn bán hàng dùng.
+   */
+  const [tablePay, setTablePay] = useState<TablePayment | null>(null);
+  const [payingTableId, setPayingTableId] = useState<string | null>(null);
+  const handlePay = useCallback(async (table: any) => {
+    if (payingTableId) return;
+    perfStart("mo-thanh-toan");
+    setPayingTableId(table.id);
+    try {
+      const session = await qc.fetchQuery({
+        // Đúng khoá cache của useTableActiveSession — màn bán hàng dùng lại được.
+        queryKey: ["tables", table.id, "active-session"],
+        queryFn: () => apiFetch<{ session: any; orders: any[] }>(`/api/tables/${table.id}/active-session`),
+        staleTime: 0,
+      });
+      const taxRate = (branchSettingsData as any)?.tax_rate ?? 1000;
+      const pay = buildTablePayment(session, taxRate);
+      if (!pay) {
+        toast.info(lang === "vi" ? "Bàn này không còn món nào chưa thanh toán" : "Nothing left to pay on this table");
+        void refetch();
+        return;
+      }
+      setTablePay(pay);
+    } catch (e: any) {
+      toast.error(e?.message || "Error");
+    } finally {
+      setPayingTableId(null);
+    }
+  }, [payingTableId, qc, branchSettingsData, lang, refetch]);
 
   // Hâm nóng màn Bán hàng ngay khi trang Bàn ăn hiện ra — nhân viên đứng ở đây giữa
   // hai lượt khách, tận dụng lúc rảnh để tải sẵn cả MÃ TRANG lẫn THỰC ĐƠN. Bấm vô bàn
@@ -799,7 +836,10 @@ export default function TablesPage() {
                           </button>
                           <button
                             type="button"
-                            onClick={() => setTakeawayPay(o)}
+                            onClick={() => {
+                              perfStart("mo-thanh-toan");
+                              setTakeawayPay(o);
+                            }}
                             className="h-11 flex-1 text-sm font-bold px-3 rounded-lg bg-primary text-primary-foreground hover:opacity-90 transition-opacity"
                           >
                             {lang === "vi" ? "Thanh toán" : "Pay"}
@@ -841,6 +881,7 @@ export default function TablesPage() {
             onStatusChange={handleStatusChange}
             onCardClick={handleCardClick}
             onPay={handlePay}
+            payingTableId={payingTableId}
             onVoid={setVoidConfirm}
             onReprint={handleReprint}
           />
@@ -946,6 +987,22 @@ export default function TablesPage() {
           onSuccess={() => {
             setTakeawayPay(null);
             qc.invalidateQueries({ queryKey: ["tables", "takeaway"] });
+          }}
+        />
+      )}
+      {tablePay && (
+        <PosPaymentDialog
+          open={!!tablePay}
+          onOpenChange={(open) => !open && setTablePay(null)}
+          orderId={tablePay.orderId}
+          orderNumber={tablePay.orderNumber}
+          totalAmount={tablePay.total}
+          taxAmount={tablePay.tax}
+          cart={tablePay.cart}
+          onSuccess={() => {
+            setTablePay(null);
+            qc.invalidateQueries({ queryKey: ["tables"] });
+            qc.invalidateQueries({ queryKey: ["sessions"] });
           }}
         />
       )}

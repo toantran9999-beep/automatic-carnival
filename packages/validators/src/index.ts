@@ -345,6 +345,9 @@ export const orderQuerySchema = z.object({
   status: z.enum(["pending", "confirmed", "preparing", "ready", "served", "completed", "cancelled"]).optional(),
   page: z.coerce.number().int().min(1).default(1),
   limit: z.coerce.number().int().min(1).max(100).default(20),
+  /** Ngày theo giờ VN, 'YYYY-MM-DD'. Bỏ trống = mọi ngày (như trước). */
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
 });
 
 export const inventoryQuerySchema = z.object({

@@ -8,7 +8,7 @@ import { useOrgSettings, useBranchSettings } from "@/hooks/use-settings";
 import { usePrintReceipt } from "@/components/print-ticket";
 import { apiFetch } from "@/lib/fetcher";
 import { PageHeader } from "@/components/page-header";
-import { OrderFilters } from "./_components/order-filters";
+import { OrderFilters, type DateRange } from "./_components/order-filters";
 import { OrdersTable } from "./_components/orders-table";
 import { OrderDetailDialog } from "./_components/order-detail-dialog";
 import { PaymentDialog } from "../payments/_components/payment-dialog";
@@ -35,11 +35,19 @@ function OrdersPageInner() {
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
   const [page, setPage] = useState(1);
+  /** null = mọi ngày (mặc định, giữ như trước khi có bộ lọc). */
+  const [dateRange, setDateRange] = useState<DateRange | null>(null);
   const [chargeOrderId, setChargeOrderId] = useState<string | null>(null);
   const [detailOrderId, setDetailOrderId] = useState<string | null>(null);
   const { t } = useTranslation();
 
-  const { data, isLoading, error, refetch } = useOrders({ status: statusFilter, page, limit: PAGE_SIZE });
+  const { data, isLoading, error, refetch } = useOrders({
+    status: statusFilter,
+    page,
+    limit: PAGE_SIZE,
+    startDate: dateRange?.start,
+    endDate: dateRange?.end,
+  });
   const updateStatus = useUpdateOrderStatus();
   const { data: orgSettings } = useOrgSettings();
   const { data: branchSettings } = useBranchSettings();
@@ -112,6 +120,11 @@ function OrdersPageInner() {
     setPage(1);
   };
 
+  const handleDateRange = (range: DateRange | null) => {
+    setDateRange(range);
+    setPage(1);
+  };
+
   if (error) {
     return (
       <div className="space-y-6">
@@ -139,6 +152,8 @@ function OrdersPageInner() {
         onSearchChange={setSearch}
         statusFilter={statusFilter}
         onStatusFilterChange={handleStatusFilter}
+        dateRange={dateRange}
+        onDateRangeChange={handleDateRange}
       />
 
       <OrdersTable

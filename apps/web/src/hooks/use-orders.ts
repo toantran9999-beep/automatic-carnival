@@ -6,6 +6,9 @@ interface OrderFilters {
   status?: string;
   page?: number;
   limit?: number;
+  /** Ngày giờ VN 'YYYY-MM-DD'. Bỏ trống = mọi ngày. */
+  startDate?: string;
+  endDate?: string;
 }
 
 interface Pagination {
@@ -34,6 +37,8 @@ export function useOrders(filters?: OrderFilters) {
   if (filters?.status && filters.status !== "all") params.set("status", filters.status);
   if (filters?.page) params.set("page", String(filters.page));
   if (filters?.limit) params.set("limit", String(filters.limit));
+  if (filters?.startDate) params.set("startDate", filters.startDate);
+  if (filters?.endDate) params.set("endDate", filters.endDate);
   const qs = params.toString();
 
   return useQuery<OrdersResponse>({

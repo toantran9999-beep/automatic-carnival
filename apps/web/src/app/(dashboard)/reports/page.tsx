@@ -4,7 +4,10 @@ import { useMemo, useState } from "react";
 import { Button } from "@restai/ui/components/button";
 import { DatePicker } from "@restai/ui/components/date-picker";
 import { Label } from "@restai/ui/components/label";
-import { Check, RefreshCw, Building2, Store } from "lucide-react";
+import { Check, RefreshCw, Building2, Store, FileSpreadsheet, Loader2 } from "lucide-react";
+import { toast } from "sonner";
+import { apiFetch } from "@/lib/fetcher";
+import { downloadReportExcel, type ReportExportData } from "@/lib/report-export";
 import {
   useSalesReport,
   useTopItems,
@@ -23,49 +26,37 @@ import { WeekdayChart } from "./_components/weekday-chart";
 import { ShiftHistoryList } from "./_components/shift-history-list";
 import { useTranslation } from "@/stores/lang-store";
 import { PageHeader } from "@/components/page-header";
+import { addDays, addMonths, daysInRange, vnMonthStart, vnToday } from "@/lib/vn-date";
 
+/** Phải khớp MAX_EXPORT_DAYS ở `routes/reports.ts`. */
+const MAX_EXPORT_DAYS = 93;
+
+/*
+ * Mọi mốc ngày tính theo GIỜ VN (`lib/vn-date`). Trước đây dùng ngày UTC nên từ 0h
+ * đến 7h sáng, bấm "Hôm nay" lại ra số của hôm qua.
+ */
 function getDefaultDates() {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(start.getDate() - 7);
-  return {
-    start: start.toISOString().split("T")[0],
-    end: end.toISOString().split("T")[0],
-  };
+  const end = vnToday();
+  return { start: addDays(end, -7), end };
 }
 
 function getTodayRange() {
-  const today = new Date().toISOString().split("T")[0];
+  const today = vnToday();
   return { start: today, end: today };
 }
 
 function getLastDaysRange(days: number) {
-  const end = new Date();
-  const start = new Date();
-  start.setDate(end.getDate() - (days - 1));
-  return {
-    start: start.toISOString().split("T")[0],
-    end: end.toISOString().split("T")[0],
-  };
+  const end = vnToday();
+  return { start: addDays(end, -(days - 1)), end };
 }
 
 function getCurrentMonthRange() {
-  const now = new Date();
-  const start = new Date(now.getFullYear(), now.getMonth(), 1);
-  return {
-    start: start.toISOString().split("T")[0],
-    end: now.toISOString().split("T")[0],
-  };
+  return { start: vnMonthStart(), end: vnToday() };
 }
 
 function getLastMonthsRange(months: number) {
-  const end = new Date();
-  const start = new Date();
-  start.setMonth(start.getMonth() - months);
-  return {
-    start: start.toISOString().split("T")[0],
-    end: end.toISOString().split("T")[0],
-  };
+  const end = vnToday();
+  return { start: addMonths(end, -months), end };
 }
 
 /**
@@ -75,7 +66,7 @@ function getLastMonthsRange(months: number) {
  * 2020 cho chắc, đỡ phải thêm một vòng gọi chỉ để hỏi ngày cũ nhất.
  */
 function getAllTimeRange() {
-  return { start: "2020-01-01", end: new Date().toISOString().split("T")[0] };
+  return { start: "2020-01-01", end: vnToday() };
 }
 
 export default function ReportsPage() {
@@ -86,6 +77,7 @@ export default function ReportsPage() {
   const [draftStartDate, setDraftStartDate] = useState<string>(defaults.start);
   const [draftEndDate, setDraftEndDate] = useState<string>(defaults.end);
   const [allBranches, setAllBranches] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const user = useAuthStore((s) => s.user);
   const { data: branchList } = useBranches();
@@ -147,6 +139,30 @@ export default function ReportsPage() {
     setDraftEndDate(range.end);
     setStartDate(range.start);
     setEndDate(range.end);
+  };
+
+  /**
+   * Xuất Excel đúng khoảng ĐANG HIỂN THỊ (đã bấm Áp dụng), không phải khoảng đang
+   * chọn dở trong ô ngày — tệp tải về phải khớp con số đang nhìn trên màn hình.
+   */
+  const handleExport = async () => {
+    if (exporting) return;
+    if (daysInRange(startDate, endDate) > MAX_EXPORT_DAYS) {
+      toast.error(`Xuất chi tiết tối đa ${MAX_EXPORT_DAYS} ngày (khoảng 3 tháng) mỗi lần. Hãy chọn khoảng ngắn hơn.`);
+      return;
+    }
+    setExporting(true);
+    try {
+      const params = new URLSearchParams({ startDate, endDate });
+      if (effectiveAll) params.set("allBranches", "true");
+      const data = await apiFetch<ReportExportData>(`/api/reports/export?${params}`);
+      const fileName = await downloadReportExcel(data);
+      toast.success(`Đã tải ${fileName}`);
+    } catch (e: any) {
+      toast.error(e?.message || "Không xuất được tệp Excel");
+    } finally {
+      setExporting(false);
+    }
   };
 
   const applyFilters = () => {
@@ -222,6 +238,16 @@ export default function ReportsPage() {
           >
             <RefreshCw className={`h-4 w-4 ${isRefreshing ? "animate-spin" : ""}`} />
             {lang === "vi" ? "Cập nhật" : "Refresh"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            className="h-9 active:translate-y-px active:scale-[0.98]"
+            disabled={exporting || isLoading}
+            onClick={handleExport}
+          >
+            {exporting ? <Loader2 className="h-4 w-4 animate-spin" /> : <FileSpreadsheet className="h-4 w-4" />}
+            {exporting ? "Đang xuất…" : "Xuất Excel"}
           </Button>
           </div>
         }

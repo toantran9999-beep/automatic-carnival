@@ -36,7 +36,7 @@ orders.use("*", requireBranch);
 // về, phiếu chưa in, in lại phiếu, màn bếp; cắt là chết POS.
 orders.get("/", requirePermission("orders:read"), requireOrdersGate, zValidator("query", orderQuerySchema), async (c) => {
   const tenant = c.get("tenant") as any;
-  const { status, page, limit } = c.req.valid("query");
+  const { status, page, limit, startDate, endDate } = c.req.valid("query");
   const offset = (page - 1) * limit;
 
   const conditions = [
@@ -46,6 +46,18 @@ orders.get("/", requirePermission("orders:read"), requireOrdersGate, zValidator(
 
   if (status) {
     conditions.push(eq(schema.orders.status, status as any));
+  }
+
+  // Lọc theo NGÀY GIỜ VN. Mốc ghi kèm "+07:00" nên Postgres tự đổi sang UTC — đơn
+  // 6h sáng VN (= 23h UTC hôm trước) vẫn nằm đúng ngày, khớp với trang Báo cáo.
+  // So thẳng created_at (không bọc to_char) để còn dùng được chỉ mục ngày tạo.
+  if (startDate) {
+    conditions.push(sql`${schema.orders.created_at} >= ${`${startDate}T00:00:00+07:00`}::timestamptz`);
+  }
+  if (endDate) {
+    conditions.push(
+      sql`${schema.orders.created_at} < (${`${endDate}T00:00:00+07:00`}::timestamptz + interval '1 day')`,
+    );
   }
 
   const whereClause = and(...conditions);

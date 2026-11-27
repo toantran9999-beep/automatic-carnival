@@ -713,6 +713,181 @@ reports.get(
   },
 );
 
+/** Xuất chi tiết dài nhất bao nhiêu ngày. Một tháng ~7.500 đơn; 3 tháng đã là tệp vài MB. */
+const MAX_EXPORT_DAYS = 93;
+const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * GET /export - Dữ liệu CHI TIẾT để trang Báo cáo xuất ra Excel (từng ngày / từng đơn / từng món).
+ *
+ * Máy chủ chỉ trả JSON, tệp .xlsx do trình duyệt tự dựng (`lib/report-export.ts`) —
+ * khỏi phải tải thư viện Excel vào API, và khỏi phải lách `apiFetch` chỉ đọc JSON.
+ *
+ * Phạm vi tiền khớp đúng trang Báo cáo: chỉ đơn `completed`, ngày tính theo giờ VN,
+ * ngày ≤ mốc nối thì lấy số tổng của POS cũ (không có chi tiết đơn/món).
+ * Đơn đã hủy trả riêng để soi lại, KHÔNG cộng vào doanh thu.
+ *
+ * ⚠️ Mọi bảng con đều lọc bằng JOIN sang `orders` chứ không nạp id rồi `inArray`:
+ * một tháng có hơn 10.000 dòng món, `inArray` sẽ đụng trần 65.535 tham số.
+ * ⚠️ Tùy chọn đọc từ SNAPSHOT `order_item_modifiers` (như `loadItemModifiers`),
+ * không join bảng `modifiers` hiện tại kẻo đơn cũ đổi giá theo thực đơn mới.
+ */
+reports.get(
+  "/export",
+  requirePermission("reports:read"),
+  zValidator("query", reportQuerySchema),
+  async (c) => {
+    const { startDate, endDate } = c.req.valid("query");
+    const bad = (message: string) =>
+      c.json({ success: false, error: { code: "BAD_REQUEST", message } }, 400);
+    if (!ISO_DATE.test(startDate) || !ISO_DATE.test(endDate) || startDate > endDate) {
+      return bad("Khoảng ngày không hợp lệ");
+    }
+    if (daysBetween(startDate, endDate) > MAX_EXPORT_DAYS) {
+      return bad(`Xuất chi tiết tối đa ${MAX_EXPORT_DAYS} ngày (khoảng 3 tháng) mỗi lần`);
+    }
+
+    const scope = resolveReportScope(c);
+    if (!scope.ok) return scope.response;
+    const { useAll, tenant, ordersCondition } = scope;
+
+    // Cùng quy tắc nối cũ↔mới với /sales — xem chú thích ở đó.
+    const cutover = useAll ? null : await getLegacyCutover(tenant.branchId);
+    const legacyEnd = cutover && startDate <= cutover ? (endDate < cutover ? endDate : cutover) : null;
+    const liveStart = cutover ? (startDate > cutover ? startDate : nextDay(cutover)) : startDate;
+    const hasLive = liveStart <= endDate;
+
+    const liveRange = and(ordersCondition, ordersInVnRange(liveStart, endDate));
+    const completed = and(liveRange, eq(schema.orders.status, "completed"));
+    const vnTimeExpr = sql<string>`to_char(${schema.orders.created_at} + interval '7 hours', 'HH24:MI')`;
+
+    const [orderRows, itemRows, modifierRows, paymentRows, legacyRows, branchRow] = await Promise.all([
+      hasLive
+        ? db
+            .select({
+              id: schema.orders.id,
+              order_number: schema.orders.order_number,
+              date: vnDayExpr,
+              time: vnTimeExpr,
+              type: schema.orders.type,
+              status: schema.orders.status,
+              table_number: schema.tables.number,
+              created_by_name: schema.users.name,
+              branch_name: schema.branches.name,
+              subtotal: schema.orders.subtotal,
+              discount: schema.orders.discount,
+              tax: schema.orders.tax,
+              total: schema.orders.total,
+              notes: schema.orders.notes,
+            })
+            .from(schema.orders)
+            .innerJoin(schema.branches, eq(schema.branches.id, schema.orders.branch_id))
+            .leftJoin(schema.tableSessions, eq(schema.orders.table_session_id, schema.tableSessions.id))
+            .leftJoin(schema.tables, eq(schema.tableSessions.table_id, schema.tables.id))
+            .leftJoin(schema.users, eq(schema.orders.created_by, schema.users.id))
+            .where(and(liveRange, inArray(schema.orders.status, ["completed", "cancelled"])))
+            .orderBy(schema.orders.created_at)
+        : Promise.resolve([]),
+      hasLive
+        ? db
+            .select({
+              id: schema.orderItems.id,
+              order_id: schema.orderItems.order_id,
+              name: schema.orderItems.name,
+              quantity: schema.orderItems.quantity,
+              unit_price: schema.orderItems.unit_price,
+              total: schema.orderItems.total,
+              unit: schema.orderItems.unit,
+              notes: schema.orderItems.notes,
+            })
+            .from(schema.orderItems)
+            .innerJoin(schema.orders, eq(schema.orders.id, schema.orderItems.order_id))
+            .where(completed)
+            .orderBy(schema.orders.created_at, schema.orderItems.created_at)
+        : Promise.resolve([]),
+      hasLive
+        ? db
+            .select({
+              order_item_id: schema.orderItemModifiers.order_item_id,
+              name: schema.orderItemModifiers.name,
+              price: schema.orderItemModifiers.price,
+            })
+            .from(schema.orderItemModifiers)
+            .innerJoin(schema.orderItems, eq(schema.orderItems.id, schema.orderItemModifiers.order_item_id))
+            .innerJoin(schema.orders, eq(schema.orders.id, schema.orderItems.order_id))
+            .where(completed)
+        : Promise.resolve([]),
+      hasLive
+        ? db
+            .select({
+              order_id: schema.payments.order_id,
+              method: schema.payments.method,
+              amount: schema.payments.amount,
+            })
+            .from(schema.payments)
+            .innerJoin(schema.orders, eq(schema.orders.id, schema.payments.order_id))
+            .where(and(completed, eq(schema.payments.status, "completed")))
+        : Promise.resolve([]),
+      legacyEnd
+        ? db
+            .select({
+              date: sql<string>`to_char(${schema.salesHistoryDaily.business_date}, 'YYYY-MM-DD')`,
+              orders: schema.salesHistoryDaily.order_count,
+              revenue: schema.salesHistoryDaily.revenue,
+            })
+            .from(schema.salesHistoryDaily)
+            .where(
+              and(
+                eq(schema.salesHistoryDaily.branch_id, tenant.branchId),
+                gte(schema.salesHistoryDaily.business_date, startDate),
+                lte(schema.salesHistoryDaily.business_date, legacyEnd),
+              ),
+            )
+            .orderBy(schema.salesHistoryDaily.business_date)
+        : Promise.resolve([]),
+      useAll
+        ? Promise.resolve([] as { name: string }[])
+        : db
+            .select({ name: schema.branches.name })
+            .from(schema.branches)
+            .where(eq(schema.branches.id, tenant.branchId))
+            .limit(1),
+    ]);
+
+    const modsByItem = new Map<string, { name: string; price: number }[]>();
+    for (const m of modifierRows) {
+      const list = modsByItem.get(m.order_item_id) ?? [];
+      list.push({ name: m.name, price: m.price });
+      modsByItem.set(m.order_item_id, list);
+    }
+    const paysByOrder = new Map<string, { method: string; amount: number }[]>();
+    for (const p of paymentRows) {
+      const list = paysByOrder.get(p.order_id) ?? [];
+      list.push({ method: p.method, amount: p.amount });
+      paysByOrder.set(p.order_id, list);
+    }
+
+    return c.json({
+      success: true,
+      data: {
+        startDate,
+        endDate,
+        allBranches: useAll,
+        branchName: branchRow[0]?.name ?? null,
+        /** Ngày đầu tiên có chi tiết đơn/món. null = không có lịch sử POS cũ. */
+        liveDataFrom: cutover ? nextDay(cutover) : null,
+        orders: orderRows.map((o) => ({ ...o, payments: paysByOrder.get(o.id) ?? [] })),
+        items: itemRows.map((i) => ({ ...i, modifiers: modsByItem.get(i.id) ?? [] })),
+        legacyDays: legacyRows.map((r) => ({
+          date: r.date,
+          orders: Number(r.orders || 0),
+          revenue: Number(r.revenue || 0),
+        })),
+      },
+    });
+  },
+);
+
 // GET /top-items - Top selling items
 reports.get(
   "/top-items",

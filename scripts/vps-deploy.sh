@@ -159,7 +159,13 @@ self_check() {
   [ "$after" = "$J" ] && log "✅ Migration DB $after = journal $J" || { log "❌ Migration DB $after ≠ journal $J"; ok=0; }
   docker compose exec -T api wget -qO- http://localhost:3001/health < /dev/null > /dev/null 2>&1 \
     && log "✅ API /health" || { log "❌ API /health không trả lời"; ok=0; }
-  code=$(curl -4 -s -o /dev/null -m 15 -w '%{http_code}' https://pos.14.225.212.172.nip.io/ || echo 000)
+  # Container web KHÔNG có healthcheck → "running" ngay lúc vừa khởi động, Next.js chưa
+  # nghe cổng thì Caddy trả 502. Gọi 1 lần là tự quay về oan (đã dính 27/11/2026).
+  for i in $(seq 1 20); do
+    code=$(curl -4 -s -o /dev/null -m 15 -w '%{http_code}' https://pos.14.225.212.172.nip.io/ || echo 000)
+    case "$code" in 200|30?) break;; esac
+    sleep 3
+  done
   case "$code" in 200|30?) log "✅ Web qua Caddy: $code";; *) log "❌ Web qua Caddy: $code"; ok=0;; esac
   [ "$ok" = 1 ]
 }

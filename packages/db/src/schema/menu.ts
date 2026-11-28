@@ -8,6 +8,8 @@ import {
   boolean,
   primaryKey,
   index,
+  smallint,
+  type AnyPgColumn,
 } from "drizzle-orm/pg-core";
 import { organizations, branches } from "./tenants";
 
@@ -95,6 +97,17 @@ export const modifiers = pgTable("modifiers", {
   max_value: numeric("max_value", { precision: 10, scale: 3 }),
   /** Điền sẵn vào ô cho nhân viên bớt gõ — thường bằng đúng liều nền của công thức. */
   default_value: numeric("default_value", { precision: 10, scale: 3 }),
+
+  /**
+   * Giá shot HẠT ĐẮT — xem `@restai/config` → `applyBeanShotPricing` (migration 0017).
+   * Số shot tùy chọn này thêm/bớt: Nhẹ = -1, Thêm 1 shot = 1, Thêm 2 shot = 2.
+   * null = không dính tới shot, giá giữ nguyên.
+   */
+  shots: smallint("shots"),
+  /** Shot của loại hạt nào — id tùy chọn trong nhóm "Loại hạt" (vd Arabica Brazil). */
+  shot_bean_id: uuid("shot_bean_id").references((): AnyPgColumn => modifiers.id, {
+    onDelete: "set null",
+  }),
 });
 
 export const menuItemModifierGroups = pgTable(

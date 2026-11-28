@@ -323,3 +323,6 @@ export function modifierLabel(
 
 // Câu đọc phiếu cho loa trạm quầy — máy chủ và máy quầy phải dựng giống hệt nhau.
 export * from "./speech";
+
+// Giá shot hạt đắt (Brazil/Cầu Đất) — lấy giá cao hơn; máy chủ và POS dùng chung.
+export * from "./bean-shot-pricing";

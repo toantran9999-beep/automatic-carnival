@@ -3,7 +3,7 @@ import { db, schema } from "@restai/db";
 import { generateOrderNumber } from "../lib/id.js";
 import { logger } from "../lib/logger.js";
 import { deductForOrder } from "./inventory.service.js";
-import { modifierLabel } from "@restai/config";
+import { modifierLabel, applyBeanShotPricing, type BeanShotModifier } from "@restai/config";
 
 // Types for order creation input
 interface OrderItemInput {
@@ -54,7 +54,12 @@ interface ResolvedOrderItem {
   total: number;
   notes?: string;
   unit?: string | null;
-  modifiers: Array<{ modifierId: string; value?: number }>;
+  /**
+   * `price` = giá THẬT của tùy chọn trên dòng này (xu), đã qua `applyBeanShotPricing`.
+   * ⚠️ Chụp vào `order_item_modifiers` phải lấy số này, KHÔNG lấy `modifierMap.price`
+   * (giá niêm yết) — lệch là cộng dọc phiếu không ra tổng.
+   */
+  modifiers: Array<{ modifierId: string; value?: number; price: number }>;
 }
 
 interface ResolvedModifier {
@@ -65,6 +70,7 @@ interface ResolvedModifier {
   unit: string | null;
   min_value: string | null;
   max_value: string | null;
+  shot_bean_id: string | null;
 }
 
 interface ResolvedItems {
@@ -140,6 +146,7 @@ async function resolveOrderItems(
         unit: schema.modifiers.unit,
         min_value: schema.modifiers.min_value,
         max_value: schema.modifiers.max_value,
+        shot_bean_id: schema.modifiers.shot_bean_id,
         item_id: schema.menuItemModifierGroups.item_id,
       })
       .from(schema.modifiers)
@@ -168,10 +175,50 @@ async function resolveOrderItems(
         unit: m.unit,
         min_value: m.min_value,
         max_value: m.max_value,
+        shot_bean_id: m.shot_bean_id,
       });
       const allowed = allowedItemsByModifier.get(m.id) ?? new Set<string>();
       allowed.add(m.item_id);
       allowedItemsByModifier.set(m.id, allowed);
+    }
+  }
+
+  /*
+   * Giá shot HẠT ĐẮT (xem `applyBeanShotPricing`): hàm cần MỌI tùy chọn gắn với món
+   * (để biết giá Nhẹ, giá shot thường, phụ thu từng hạt), không chỉ cái đã chọn.
+   * Chỉ tra khi trong đơn có chọn shot hạt — đơn thường không tốn thêm truy vấn nào.
+   */
+  const attachedByItem = new Map<string, BeanShotModifier[]>();
+  if ([...modifierMap.values()].some((m) => m.shot_bean_id)) {
+    const rows = await db
+      .select({
+        item_id: schema.menuItemModifierGroups.item_id,
+        id: schema.modifiers.id,
+        group_id: schema.modifiers.group_id,
+        price: schema.modifiers.price,
+        shots: schema.modifiers.shots,
+        shot_bean_id: schema.modifiers.shot_bean_id,
+      })
+      .from(schema.modifiers)
+      .innerJoin(
+        schema.modifierGroups,
+        eq(schema.modifierGroups.id, schema.modifiers.group_id),
+      )
+      .innerJoin(
+        schema.menuItemModifierGroups,
+        eq(schema.menuItemModifierGroups.group_id, schema.modifierGroups.id),
+      )
+      .where(
+        and(
+          inArray(schema.menuItemModifierGroups.item_id, menuItemIds),
+          eq(schema.modifierGroups.branch_id, scope.branchId),
+          eq(schema.modifierGroups.organization_id, scope.organizationId),
+        ),
+      );
+    for (const { item_id, ...m } of rows) {
+      const list = attachedByItem.get(item_id) ?? [];
+      list.push(m);
+      attachedByItem.set(item_id, list);
     }
   }
 
@@ -247,10 +294,16 @@ async function resolveOrderItems(
             `Tùy chọn "${modifier.name}" không nhận số`,
           );
         }
-
-        modifierPricePerUnit += modifier.price;
       }
     }
+
+    // Giá thật từng tùy chọn của dòng này — niêm yết, trừ khi dính quy tắc shot hạt đắt.
+    const selectedMods = item.modifiers ?? [];
+    const attached = attachedByItem.get(menuItem.id);
+    const linePrices = attached
+      ? applyBeanShotPricing(attached, selectedMods.map((m) => m.modifierId))
+      : selectedMods.map((m) => modifierMap.get(m.modifierId)?.price ?? 0);
+    for (const p of linePrices) modifierPricePerUnit += p;
 
     const itemTotal = (menuItem.price + modifierPricePerUnit) * item.quantity;
 
@@ -272,7 +325,7 @@ async function resolveOrderItems(
       total: itemTotal,
       notes: item.notes,
       unit: (menuItem as any).unit ?? null,
-      modifiers: item.modifiers || [],
+      modifiers: selectedMods.map((m, i) => ({ ...m, price: linePrices[i] })),
     });
   }
 
@@ -464,7 +517,7 @@ export async function createOrder(params: CreateOrderParams): Promise<CreateOrde
               // Ghép sẵn con số vào TÊN ("Đường 13g"): nhờ vậy mọi đường in và
               // hiển thị chỉ cần đọc `name`, không nơi nào phải biết `input_value`.
               name: modifierLabel(modifier?.name || "Tùy chọn", mod.value, modifier?.unit),
-              price: modifier?.price || 0,
+              price: mod.price,
               input_value: mod.value === undefined ? null : String(mod.value),
             };
           }),
@@ -559,7 +612,7 @@ export async function addItemsToOrder(
               // Ghép sẵn con số vào TÊN ("Đường 13g"): nhờ vậy mọi đường in và
               // hiển thị chỉ cần đọc `name`, không nơi nào phải biết `input_value`.
               name: modifierLabel(modifier?.name || "Tùy chọn", mod.value, modifier?.unit),
-              price: modifier?.price || 0,
+              price: mod.price,
               input_value: mod.value === undefined ? null : String(mod.value),
             };
           }),

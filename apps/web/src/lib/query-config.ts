@@ -26,7 +26,9 @@ export const LIVE_QUERY = {
  * ⚠️ TĂNG số này khi ĐỔI CẤU TRÚC dữ liệu API (đổi tên trường, đổi kiểu…).
  * Cache đã lưu trên máy khách sẽ tự bị bỏ, tránh app đọc nhầm bản cũ không còn khớp.
  */
-export const CACHE_VERSION = "v1";
+// v2 (28/11/2026): tùy chọn có thêm `shots` / `shot_bean_id` — cache v1 thiếu hai
+// trường này thì giỏ tính shot Brazil theo giá cũ trong khi máy chủ tính giá mới.
+export const CACHE_VERSION = "v2";
 
 /** Khoá lưu cache trong localStorage. */
 export const CACHE_STORAGE_KEY = "toda-query-cache";

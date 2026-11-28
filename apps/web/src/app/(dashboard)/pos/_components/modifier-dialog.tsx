@@ -16,7 +16,7 @@ import { cn, formatCurrency } from "@/lib/utils";
 import { toThumbUrl } from "@/lib/image-thumb";
 import { useItemModifierGroups } from "@/hooks/use-menu";
 import { useTranslation } from "@/stores/lang-store";
-import { modifierLabel } from "@restai/config";
+import { modifierLabel, applyBeanShotPricing } from "@restai/config";
 
 /**
  * Ghi chú cách pha nhân viên GÕ TAY nhiều nhất (30 ngày tới 14/10/2026) — bấm
@@ -155,14 +155,19 @@ export function ModifierDialog({
     });
   };
 
-  const modifiersTotal = Object.entries(selected).reduce((sum, [groupId, modIds]) => {
-    const group = modifierGroups.find((g: any) => g.id === groupId);
-    if (!group) return sum;
-    return sum + modIds.reduce((ms, modId) => {
-      const mod = group.modifiers.find((m: any) => m.id === modId);
-      return ms + (mod?.price || 0);
-    }, 0);
-  }, 0);
+  /*
+   * Giá THẬT của từng tùy chọn đang chọn — cùng hàm với máy chủ (`resolveOrderItems`).
+   * Thường bằng giá niêm yết; riêng shot hạt đắt (Brazil/Cầu Đất) trên ly hạt rẻ thì
+   * lên giá theo cách tính cao hơn (vd "+18.000"). Lệch máy chủ là giỏ hiện một số,
+   * phiếu in ra số khác — nên KHÔNG tự cộng `mod.price` ở đây nữa.
+   */
+  const attachedMods = modifierGroups.flatMap((g: any) => g.modifiers || []);
+  const selectedIds = Object.entries(selected).flatMap(([groupId, modIds]) =>
+    modifierGroups.some((g: any) => g.id === groupId) ? modIds : [],
+  );
+  const effectivePrices = applyBeanShotPricing(attachedMods, selectedIds);
+  const priceOf = new Map(selectedIds.map((id, i) => [id, effectivePrices[i]]));
+  const modifiersTotal = effectivePrices.reduce((sum, p) => sum + p, 0);
 
   const lineTotal = (item.price + modifiersTotal) * quantity;
 
@@ -202,7 +207,7 @@ export function ModifierDialog({
         cartMods.push({
           modifierId: mod.id,
           name: mod.name,
-          price: mod.price || 0,
+          price: priceOf.get(mod.id) ?? (mod.price || 0),
           value: isNumeric && Number.isFinite(value as number) ? (value as number) : null,
           unit: mod.unit ?? null,
         });
@@ -299,6 +304,8 @@ export function ModifierDialog({
                       <div className="space-y-1">
                         {(group.modifiers || []).filter((m: any) => m.is_available !== false).map((mod: any) => {
                           const isSelected = sel.includes(mod.id);
+                          // Đang chọn thì hiện giá thật (shot hạt đắt có thể khác giá niêm yết).
+                          const shownPrice = isSelected ? (priceOf.get(mod.id) ?? mod.price) : mod.price;
                           const isNumeric = mod.input_type === "number";
                           const badValue = isSelected && invalidNumericIds.includes(mod.id);
                           return (
@@ -326,12 +333,12 @@ export function ModifierDialog({
                                 </div>
                                 <span className={isSelected ? "font-medium" : ""}>{mod.name}</span>
                               </div>
-                              {mod.price !== 0 && (
+                              {shownPrice !== 0 && (
                                 <span className={cn(
                                   "text-sm font-medium",
-                                  mod.price > 0 ? "text-muted-foreground" : "text-emerald-600 dark:text-emerald-400"
+                                  shownPrice > 0 ? "text-muted-foreground" : "text-emerald-600 dark:text-emerald-400"
                                 )}>
-                                  {mod.price > 0 ? "+" : "−"}{formatCurrency(Math.abs(mod.price))}
+                                  {shownPrice > 0 ? "+" : "−"}{formatCurrency(Math.abs(shownPrice))}
                                 </span>
                               )}
                             </button>
